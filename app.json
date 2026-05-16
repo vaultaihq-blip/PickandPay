@@ -1,0 +1,96 @@
+{
+  "expo": {
+    "name": "Pick&Pay",
+    "slug": "pickandpay",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "pickandpay",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F0F0F"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.pickandpay",
+      "associatedDomains": [
+        "applinks:pickandpay.app"
+      ],
+      "infoPlist": {
+        "NSCameraUsageDescription": "Pick&Pay needs camera access to scan receipts.",
+        "NSPhotoLibraryUsageDescription": "Pick&Pay needs photo library access to upload receipts.",
+        "NSMicrophoneUsageDescription": "Pick&Pay needs microphone access for camera features."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0F0F0F"
+      },
+      "package": "com.pickandpay",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "pickandpay"
+            },
+            {
+              "scheme": "https",
+              "host": "pickandpay.app",
+              "pathPrefix": "/session"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.VIBRATE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Pick&Pay needs camera access to scan receipts."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Pick&Pay needs photo library access to upload receipts."
+        }
+      ],
+      "expo-notifications",
+      "expo-font",
+      "expo-mail-composer",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "276971a9-0129-4e94-a872-69fc16a615cd"
+      }
+    }
+  }
+}
