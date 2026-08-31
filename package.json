@@ -15,7 +15,8 @@
     "submit:android": "eas submit --platform android",
     "submit:ios": "eas submit --platform ios",
     "lint": "eslint . --ext .ts,.tsx",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test:receipt": "tsx lib/receipt/__tests__/index.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
