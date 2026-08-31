@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+﻿import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
   Platform,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
@@ -22,6 +22,9 @@ import { useReceiptStore } from "@/store/receiptStore";
 import { validateEditableItems, EditableItem } from "@/lib/receipt-validator";
 import { ItemCategory, ParsedReceipt, ReceiptItem } from "@/types";
 import { useSessionStore } from "@/store/sessionStore";
+import { useI18nStore } from "@/store/i18nStore";
+import { TranslationKey } from "@/constants/translations";
+import { formatCurrency } from "@/utils/formatter";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -66,42 +69,44 @@ function rebuildReceipt(original: ParsedReceipt, items: EditableItem[]): ParsedR
       type: "individual",
     } as ReceiptItem);
   }
-  const computedTotal = Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100;
-  const receiptTotal = original.validation.receiptTotal;
-  const difference = Math.round((computedTotal - receiptTotal) * 100) / 100;
+  const userItemsTotal = Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100;
+  // Compare user's items against the subtotal (items only), not grand total (includes service/tax).
+  const subtotalTarget = original.validation.computedTotal ?? original.validation.receiptTotal;
+  const receiptTotal = original.validation.receiptTotal; // grand total kept for display reference
+  const difference = Math.round((userItemsTotal - subtotalTarget) * 100) / 100;
   return {
     ...original,
     categories,
     suggestedTips: [
-      { percentage: 10, amount: Math.round(computedTotal * 0.1 * 100) / 100 },
-      { percentage: 15, amount: Math.round(computedTotal * 0.15 * 100) / 100 },
-      { percentage: 20, amount: Math.round(computedTotal * 0.2 * 100) / 100 },
+      { percentage: 10, amount: Math.round(userItemsTotal * 0.1 * 100) / 100 },
+      { percentage: 15, amount: Math.round(userItemsTotal * 0.15 * 100) / 100 },
+      { percentage: 20, amount: Math.round(userItemsTotal * 0.2 * 100) / 100 },
     ],
     validation: {
       receiptTotal,
-      computedTotal,
+      computedTotal: userItemsTotal,
       difference,
       status: Math.abs(difference) <= STRICT_TOLERANCE ? "ok" : "error",
     },
   };
 }
 
-function buildFixSuggestions(diff: number): string[] {
+function buildFixSuggestions(diff: number, t: (k: TranslationKey) => string, currency: string): string[] {
   if (Math.abs(diff) <= STRICT_TOLERANCE) return [];
   if (diff > 0) {
     return [
-      `Total is ${diff.toFixed(2)}€ too high.`,
-      "· Check for duplicate items and remove them",
-      "· Verify quantities (e.g. entered 2 instead of 1)",
-      "· Check that no free items were given a price",
+      `${t("review_fix_prefix")} ${diff.toFixed(2)} ${currency} ${t("review_fix_too_high")}`,
+      t("review_fix_dup"),
+      t("review_fix_qty_hint"),
+      t("review_fix_free_items"),
     ];
   }
   return [
-    `Total is ${Math.abs(diff).toFixed(2)}€ too low.`,
-    "· Look for missing items on the physical receipt",
-    '· Use "+ Add Missing Item" to add them',
-    "· Check quantities (e.g. entered 1 instead of 2)",
-    "· Retry scan with better lighting if receipt is unclear",
+    `${t("review_fix_prefix")} ${Math.abs(diff).toFixed(2)} ${currency} ${t("review_fix_too_low")}`,
+    t("review_fix_missing_items"),
+    t("review_fix_add_hint"),
+    t("review_fix_qty_hint2"),
+    t("review_fix_retry_scan"),
   ];
 }
 
@@ -110,8 +115,11 @@ function buildFixSuggestions(diff: number): string[] {
 export default function ReviewReceiptScreen() {
   const isDark = useColorScheme() === "dark";
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { receipt, setReceipt, rawImageUri } = useReceiptStore();
   const { currentSession, setSession } = useSessionStore();
+  const { t, language } = useI18nStore();
+  void language;
 
   // ── All hooks before any conditional return ────────────────────────────────
 
@@ -130,7 +138,11 @@ export default function ReviewReceiptScreen() {
   const borderColor = isDark ? Colors.cardBorderDark : Colors.cardBorderLight;
   const cardColor = isDark ? Colors.cardDark : Colors.cardLight;
 
-  const receiptTotal = receipt?.validation.receiptTotal ?? 0;
+  // subtotalTarget = items-only sum from OCR (before service charge / tax).
+  // Grand total (receiptTotal) is only used for the display row, not for validation.
+  const subtotalTarget = receipt?.validation.computedTotal ?? receipt?.validation.receiptTotal ?? 0;
+  const grandTotal = receipt?.validation.receiptTotal ?? subtotalTarget;
+  const currency = receipt?.currency ?? "EUR";
 
   const calculatedTotal = useMemo(
     () => Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100,
@@ -138,8 +150,8 @@ export default function ReviewReceiptScreen() {
   );
 
   const validation = useMemo(
-    () => validateEditableItems(items, receiptTotal),
-    [items, receiptTotal]
+    () => validateEditableItems(items, subtotalTarget, currency),
+    [items, subtotalTarget, currency]
   );
 
   const errorMap = useMemo(() => {
@@ -148,9 +160,10 @@ export default function ReviewReceiptScreen() {
     return m;
   }, [validation]);
 
-  const totalDiff = calculatedTotal - receiptTotal;
+  const totalDiff = calculatedTotal - subtotalTarget;
   const canContinue = validation.isValid;
-  const fixSuggestions = useMemo(() => buildFixSuggestions(totalDiff), [totalDiff]);
+  const isWarning = validation.isWarning;
+  const fixSuggestions = useMemo(() => buildFixSuggestions(totalDiff, t, currency), [totalDiff, t, currency]);
 
   const updateItem = useCallback(
     (id: string, field: "name" | "quantity" | "unitPrice", raw: string) => {
@@ -178,11 +191,11 @@ export default function ReviewReceiptScreen() {
   }, []);
 
   const removeItem = useCallback((id: string) => {
-    Alert.alert("Remove Item", "Remove this item from the receipt?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Remove", style: "destructive", onPress: () => setItems((p) => p.filter((i) => i.id !== id)) },
+    Alert.alert(t("review_receipt_remove_title"), t("review_receipt_remove_msg"), [
+      { text: t("cancel"), style: "cancel" },
+      { text: t("review_receipt_remove_btn"), style: "destructive", onPress: () => setItems((p) => p.filter((i) => i.id !== id)) },
     ]);
-  }, []);
+  }, [t]);
 
   // ── Early return after all hooks ────────────────────────────────────────────
   if (!receipt) return null;
@@ -190,9 +203,9 @@ export default function ReviewReceiptScreen() {
   const handleContinue = () => {
     if (!canContinue) {
       Alert.alert(
-        "Fix Errors First",
-        `The items must add up to exactly ${receiptTotal.toFixed(2)}€.\n\nCurrent difference: ${totalDiff > 0 ? "+" : ""}${totalDiff.toFixed(2)}€`,
-        [{ text: "OK" }]
+        t("review_receipt_fix_title"),
+        `The items must add up to exactly ${formatCurrency(subtotalTarget, currency as any)}.\n\nCurrent difference: ${totalDiff > 0 ? "+" : ""}${formatCurrency(Math.abs(totalDiff), currency as any)}`,
+        [{ text: t("ok") }]
       );
       return;
     }
@@ -202,12 +215,10 @@ export default function ReviewReceiptScreen() {
     const liveId = currentSession?.id;
     const isLiveSession = liveId && !liveId.startsWith("session_");
     if (isLiveSession) {
-      // Set receipt in session store so the redirectToSelection effect can fire
       setSession({ ...currentSession!, receipt: rebuilt });
-      // Replace (not push) so the user can't accidentally re-confirm via back
-      router.replace(`/(app)/session/${liveId}?redirectToSelection=1`);
+      router.replace(`/(app)/session-lobby/${liveId}`);
     } else {
-      router.push("/(app)/review");
+      router.replace("/(app)/review");
     }
   };
 
@@ -227,7 +238,14 @@ export default function ReviewReceiptScreen() {
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: 20 + Math.max(insets.bottom, 16) },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
 
           {/* Restaurant */}
           <View style={[styles.restaurantCard, { backgroundColor: cardColor, borderColor }]}>
@@ -238,17 +256,37 @@ export default function ReviewReceiptScreen() {
             </View>
           </View>
 
+          {/* Warning state — small discrepancy, can continue */}
+          {isWarning && canContinue && (
+            <View style={styles.warningBox}>
+              <View style={styles.warningBoxHeader}>
+                <Ionicons name="warning" size={18} color={Colors.warning} />
+                <Text style={styles.warningBoxTitle}>Small discrepancy</Text>
+              </View>
+              <Text style={styles.warningBoxDesc}>
+                Items sum to{" "}
+                <Text style={styles.warningBoxAmount}>{formatCurrency(calculatedTotal, currency as any)}</Text>
+                {" "}but receipt subtotal is{" "}
+                <Text style={styles.warningBoxAmount}>{formatCurrency(subtotalTarget, currency as any)}</Text>
+                {" "}(diff: {totalDiff > 0 ? "+" : ""}{formatCurrency(Math.abs(totalDiff), currency as any)}).
+              </Text>
+              <Text style={styles.warningBoxHint}>
+                Likely missing add-ons or rounding. You can continue or retry the scan for better accuracy.
+              </Text>
+            </View>
+          )}
+
           {/* Blocked state — prominent error box */}
           {!canContinue && (
             <View style={styles.blockedBox}>
               <View style={styles.blockedHeader}>
                 <Ionicons name="lock-closed" size={18} color="#DC2626" />
-                <Text style={styles.blockedTitle}>Cannot continue — fix errors first</Text>
+                <Text style={styles.blockedTitle}>{t("review_receipt_cant_continue")}</Text>
               </View>
               <Text style={styles.blockedDesc}>
                 Items must add up to exactly{" "}
-                <Text style={styles.blockedAmount}>{receiptTotal.toFixed(2)}€</Text>.
-                {" "}Current total: <Text style={styles.blockedAmount}>{calculatedTotal.toFixed(2)}€</Text>.
+                <Text style={styles.blockedAmount}>{formatCurrency(subtotalTarget, currency as any)}</Text>.
+                {" "}Current total: <Text style={styles.blockedAmount}>{formatCurrency(calculatedTotal, currency as any)}</Text>.
               </Text>
               {fixSuggestions.length > 0 && (
                 <View style={styles.fixSuggestions}>
@@ -268,13 +306,13 @@ export default function ReviewReceiptScreen() {
               <Ionicons name="alert-circle" size={15} color="#EF4444" />
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={styles.errorBannerTitle}>
-                  {validation.errors.length} item error{validation.errors.length !== 1 ? "s" : ""}
+                  {validation.errors.length} {validation.errors.length !== 1 ? t("review_receipt_item_errors") : t("review_receipt_item_error")}
                 </Text>
                 {validation.errors.filter(e => e.itemId).slice(0, 3).map((e, i) => (
                   <Text key={i} style={styles.errorBannerItem}>· {e.message}</Text>
                 ))}
                 {validation.errors.filter(e => e.itemId).length > 3 && (
-                  <Text style={styles.errorBannerMore}>+ {validation.errors.filter(e => e.itemId).length - 3} more</Text>
+                  <Text style={styles.errorBannerMore}>+ {validation.errors.filter(e => e.itemId).length - 3} {t("review_receipt_more")}</Text>
                 )}
               </View>
             </View>
@@ -286,7 +324,7 @@ export default function ReviewReceiptScreen() {
               <Ionicons name="information-circle" size={15} color={Colors.warning} />
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={styles.warningBannerTitle}>
-                  {validation.warnings.length} warning{validation.warnings.length !== 1 ? "s" : ""}
+                  {validation.warnings.length} {validation.warnings.length !== 1 ? t("review_receipt_warnings") : t("review_receipt_warning")}
                 </Text>
                 {validation.warnings.map((w, i) => (
                   <Text key={i} style={styles.warningBannerItem}>· {w.message}</Text>
@@ -297,7 +335,7 @@ export default function ReviewReceiptScreen() {
 
           {/* Items */}
           <Text style={[styles.sectionTitle, { color: mutedColor }]}>
-            ITEMS ({items.length})
+            {t("review_receipt_items_label")} ({items.length})
           </Text>
 
           {items.map((item, index) => {
@@ -334,7 +372,7 @@ export default function ReviewReceiptScreen() {
 
                 <View style={styles.fieldRow}>
                   <View style={styles.fieldCol}>
-                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>Qty</Text>
+                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_qty")}</Text>
                     <TextInput
                       value={String(item.quantity)}
                       onChangeText={(v) => updateItem(item.id, "quantity", v)}
@@ -343,7 +381,7 @@ export default function ReviewReceiptScreen() {
                     />
                   </View>
                   <View style={styles.fieldCol}>
-                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>Unit Price</Text>
+                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_receipt_unit_price")}</Text>
                     <TextInput
                       value={item.unitPrice.toFixed(2)}
                       onChangeText={(v) => updateItem(item.id, "unitPrice", v)}
@@ -352,7 +390,7 @@ export default function ReviewReceiptScreen() {
                     />
                   </View>
                   <View style={styles.fieldCol}>
-                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>Total</Text>
+                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_total")}</Text>
                     <View style={[styles.fieldReadonly, { borderColor: hasError ? "#EF4444" : borderColor }]}>
                       <Text style={[styles.fieldReadonlyText, { color: hasError ? "#EF4444" : Colors.primary }]}>
                         {item.totalPrice.toFixed(2)}
@@ -367,7 +405,7 @@ export default function ReviewReceiptScreen() {
           {/* Add item */}
           <TouchableOpacity style={[styles.addItemBtn, { borderColor: Colors.primary }]} onPress={addItem} activeOpacity={0.7}>
             <Ionicons name="add" size={18} color={Colors.primary} />
-            <Text style={styles.addItemText}>Add Missing Item</Text>
+            <Text style={styles.addItemText}>{t("review_receipt_add_missing")}</Text>
           </TouchableOpacity>
 
           {/* Original receipt photo — tap to expand */}
@@ -384,7 +422,7 @@ export default function ReviewReceiptScreen() {
               />
               <View style={styles.photoOverlay}>
                 <Ionicons name="expand-outline" size={20} color="#fff" />
-                <Text style={styles.photoOverlayText}>View Original Receipt</Text>
+                <Text style={styles.photoOverlayText}>{t("review_receipt_view_original")}</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -395,32 +433,43 @@ export default function ReviewReceiptScreen() {
             { backgroundColor: canContinue ? cardColor : "#FEF2F2", borderColor: canContinue ? borderColor : "#FCA5A5" },
           ]}>
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: mutedColor }]}>Items sum</Text>
+              <Text style={[styles.totalLabel, { color: mutedColor }]}>{t("review_receipt_items_sum")}</Text>
               <Text style={[styles.totalValue, { color: canContinue ? textColor : "#DC2626" }]}>
-                {calculatedTotal.toFixed(2)} {receipt.currency}
+                {formatCurrency(calculatedTotal, currency as any)}
               </Text>
             </View>
             <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: mutedColor }]}>Receipt total</Text>
+              <Text style={[styles.totalLabel, { color: mutedColor }]}>{t("review_receipt_total_label")}</Text>
               <Text style={[styles.totalValue, { color: textColor }]}>
-                {receiptTotal.toFixed(2)} {receipt.currency}
+                {formatCurrency(subtotalTarget, currency as any)}
               </Text>
             </View>
+            {grandTotal !== subtotalTarget && (
+              <>
+                <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
+                <View style={styles.totalRow}>
+                  <Text style={[styles.totalLabel, { color: mutedColor }]}>Grand total</Text>
+                  <Text style={[styles.totalValue, { color: mutedColor }]}>
+                    {formatCurrency(grandTotal, currency as any)}
+                  </Text>
+                </View>
+              </>
+            )}
             <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
             <View style={styles.totalRow}>
               {canContinue ? (
                 <>
                   <View style={styles.matchRow}>
                     <Ionicons name="checkmark-circle" size={15} color="#10B981" />
-                    <Text style={styles.matchText}>Totals match — ready to continue</Text>
+                    <Text style={styles.matchText}>{t("review_receipt_match")}</Text>
                   </View>
                 </>
               ) : (
                 <>
-                  <Text style={styles.diffLabel}>Difference</Text>
+                  <Text style={styles.diffLabel}>{t("review_receipt_diff_label")}</Text>
                   <Text style={styles.diffValue}>
-                    {totalDiff > 0 ? "+" : ""}{totalDiff.toFixed(2)} {receipt.currency}
+                    {totalDiff > 0 ? "+" : ""}{formatCurrency(Math.abs(totalDiff), currency as any)}
                   </Text>
                 </>
               )}
@@ -430,27 +479,42 @@ export default function ReviewReceiptScreen() {
         </ScrollView>
 
         {/* Bottom actions */}
-        <View style={[styles.actions, { borderTopColor: borderColor, backgroundColor: bgColor }]}>
+        <View
+          style={[
+            styles.actions,
+            {
+              borderTopColor: borderColor,
+              backgroundColor: bgColor,
+              paddingBottom: 16 + Math.max(insets.bottom, 16),
+            },
+          ]}
+        >
           <TouchableOpacity
             style={[styles.retryBtn, { borderColor }]}
             onPress={() => router.back()}
             activeOpacity={0.8}
           >
             <Ionicons name="refresh-outline" size={15} color={mutedColor} />
-            <Text style={[styles.retryBtnText, { color: mutedColor }]}>Retry Scan</Text>
+            <Text style={[styles.retryBtnText, { color: mutedColor }]}>{t("review_receipt_retry")}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.continueBtn, !canContinue && styles.continueBtnLocked]}
+            style={[
+              styles.continueBtn,
+              !canContinue && styles.continueBtnLocked,
+              isWarning && canContinue && styles.continueBtnWarning,
+            ]}
             onPress={handleContinue}
             activeOpacity={canContinue ? 0.85 : 1}
           >
-            {canContinue ? (
-              <Text style={styles.continueBtnText}>Looks Good →</Text>
+            {canContinue && !isWarning ? (
+              <Text style={styles.continueBtnText}>{t("review_receipt_looks_good")}</Text>
+            ) : canContinue && isWarning ? (
+              <Text style={styles.continueBtnText}>Continue anyway →</Text>
             ) : (
               <View style={styles.lockedBtnInner}>
                 <Ionicons name="lock-closed" size={14} color="#9CA3AF" />
-                <Text style={styles.continueBtnTextLocked}>Fix Errors First</Text>
+                <Text style={styles.continueBtnTextLocked}>{t("review_receipt_locked_btn")}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -497,7 +561,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   headerTitle: { fontSize: 17, fontWeight: "700" },
-  scroll: { paddingHorizontal: 20, paddingBottom: 20, gap: 14 },
+  scroll: { paddingHorizontal: 20, gap: 14 },
 
   restaurantCard: {
     flexDirection: "row",
@@ -509,6 +573,41 @@ const styles = StyleSheet.create({
   },
   restaurantName: { fontSize: 15, fontWeight: "700" },
   restaurantDate: { fontSize: 12, marginTop: 2 },
+
+  // ── Warning state (small discrepancy, can continue) ───────────────────────
+  warningBox: {
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1.5,
+    borderColor: "#FCD34D",
+    gap: 8,
+  },
+  warningBoxHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  warningBoxTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#92400E",
+    flex: 1,
+  },
+  warningBoxDesc: {
+    fontSize: 13,
+    color: "#78350F",
+    lineHeight: 20,
+  },
+  warningBoxAmount: {
+    fontWeight: "700",
+  },
+  warningBoxHint: {
+    fontSize: 12,
+    color: "#92400E",
+    lineHeight: 18,
+    fontStyle: "italic",
+  },
 
   // ── Blocked state ──────────────────────────────────────────────────────────
   blockedBox: {
@@ -675,6 +774,9 @@ const styles = StyleSheet.create({
   },
   continueBtnLocked: {
     backgroundColor: "#F3F4F6",
+  },
+  continueBtnWarning: {
+    backgroundColor: Colors.warning,
   },
   continueBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   continueBtnTextLocked: { color: "#9CA3AF", fontSize: 14, fontWeight: "600" },

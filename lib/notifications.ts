@@ -11,19 +11,18 @@ export async function sendPushNotification({
   body: string;
   data?: Record<string, unknown>;
 }): Promise<void> {
-  const { data: userData } = await supabase
-    .from("profiles")
-    .select("push_token")
-    .eq("id", to)
-    .single();
+  const { data: rows } = await supabase
+    .from("user_push_tokens")
+    .select("token")
+    .eq("user_id", to);
 
-  const token = (userData as Record<string, unknown> | null)?.push_token as string | undefined;
-  if (!token) throw new Error("User has no push token registered.");
+  const tokens = (rows as Array<{ token: string }> | null)?.map((r) => r.token) ?? [];
+  if (tokens.length === 0) throw new Error("User has no push token registered.");
 
   const response = await fetch("https://exp.host/--/api/v2/push/send", {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ to: token, title, body, data }),
+    body: JSON.stringify(tokens.map((token) => ({ to: token, title, body, data }))),
   });
 
   if (!response.ok) {

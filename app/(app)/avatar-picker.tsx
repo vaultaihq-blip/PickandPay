@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import {
   View,
   Text,
@@ -15,10 +15,14 @@ import * as ImagePicker from "expo-image-picker";
 import { Colors } from "@/constants/colors";
 import { AVATAR_OPTIONS } from "@/constants/avatars";
 import { useAuthStore } from "@/store/authStore";
+import { useI18nStore } from "@/store/i18nStore";
+import { uploadAvatarToStorage } from "@/lib/avatarStorage";
 
 export default function AvatarPickerScreen() {
   const isDark = useColorScheme() === "dark";
-  const { updateAvatar, profile } = useAuthStore();
+  const { updateAvatar, profile, user } = useAuthStore();
+  const { t, language } = useI18nStore();
+  void language;
 
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
   const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
@@ -27,14 +31,20 @@ export default function AvatarPickerScreen() {
   const borderColor = isDark ? Colors.cardBorderDark : Colors.cardBorderLight;
 
   const handleIconSelect = async (iconId: string) => {
-    await updateAvatar(undefined, iconId);
-    router.back();
+    try {
+      await updateAvatar(undefined, iconId);
+      router.back();
+    } catch (err) {
+      console.error("[avatar-picker] Avatar icon update failed:", err);
+      const message = err instanceof Error ? err.message : "Please try again.";
+      Alert.alert(t("error"), `Could not update the profile picture. ${message}`);
+    }
   };
 
   const handleTakePhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Camera Access", "Allow camera access in Settings to take photos.");
+      Alert.alert(t("avatar_camera_title"), t("avatar_camera_msg"));
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -44,8 +54,7 @@ export default function AvatarPickerScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      await updateAvatar(result.assets[0].uri, undefined);
-      router.back();
+      await savePhoto(result.assets[0].uri);
     }
   };
 
@@ -57,8 +66,22 @@ export default function AvatarPickerScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      await updateAvatar(result.assets[0].uri, undefined);
+      await savePhoto(result.assets[0].uri);
+    }
+  };
+
+  const savePhoto = async (localUri: string) => {
+    try {
+      const publicUrl = await uploadAvatarToStorage(localUri, user?.id ?? "");
+      await updateAvatar(publicUrl, undefined);
       router.back();
+    } catch (err) {
+      console.error("[avatar-picker] Avatar upload failed:", err);
+      const message = err instanceof Error ? err.message : "Please try again.";
+      Alert.alert(
+        t("error"),
+        `Could not upload the profile photo. ${message}`
+      );
     }
   };
 
@@ -66,7 +89,7 @@ export default function AvatarPickerScreen() {
     <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.title, { color: textColor }]}>Choose Avatar</Text>
+        <Text style={[styles.title, { color: textColor }]}>{t("avatar_title")}</Text>
         <TouchableOpacity
           onPress={() => router.back()}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -80,7 +103,7 @@ export default function AvatarPickerScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Icon grid — shown first */}
-        <Text style={[styles.sectionLabel, { color: mutedColor }]}>ICONS</Text>
+        <Text style={[styles.sectionLabel, { color: mutedColor }]}>{t("avatar_icons")}</Text>
         <View style={styles.iconGrid}>
           {AVATAR_OPTIONS.map((icon) => {
             const isSelected = profile?.avatarIcon === icon.id;
@@ -105,7 +128,7 @@ export default function AvatarPickerScreen() {
         </View>
 
         {/* Photo options — shown below icons */}
-        <Text style={[styles.sectionLabel, { color: mutedColor }]}>PHOTO</Text>
+        <Text style={[styles.sectionLabel, { color: mutedColor }]}>{t("avatar_photo")}</Text>
         <View style={styles.photoRow}>
           <TouchableOpacity
             style={[styles.photoBtn, { backgroundColor: cardColor, borderColor }]}
@@ -113,7 +136,7 @@ export default function AvatarPickerScreen() {
             activeOpacity={0.7}
           >
             <Ionicons name="camera-outline" size={28} color={Colors.primary} />
-            <Text style={[styles.photoBtnLabel, { color: textColor }]}>Take Photo</Text>
+            <Text style={[styles.photoBtnLabel, { color: textColor }]}>{t("avatar_take_photo")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.photoBtn, { backgroundColor: cardColor, borderColor }]}
@@ -121,7 +144,7 @@ export default function AvatarPickerScreen() {
             activeOpacity={0.7}
           >
             <Ionicons name="image-outline" size={28} color={Colors.primary} />
-            <Text style={[styles.photoBtnLabel, { color: textColor }]}>Upload Photo</Text>
+            <Text style={[styles.photoBtnLabel, { color: textColor }]}>{t("avatar_upload_photo")}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

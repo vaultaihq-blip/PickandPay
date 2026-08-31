@@ -9,6 +9,7 @@ import {
   PaymentReminder,
 } from "@/types";
 import { calculateSplit } from "@/utils/splitter";
+import { applySessionParticipantColors } from "@/constants/colors";
 
 interface SessionState {
   currentSession: Session | null;
@@ -34,6 +35,7 @@ interface SessionState {
   setStatus: (status: SessionStatus) => void;
   setCentAdjustment: (adjustment: CentAdjustment) => void;
   markPaid: (userId: string, paid: boolean) => void;
+  markCoveredBy: (userId: string, coveredByUserId: string | null) => void;
   recalculateSplit: () => void;
   setLoading: (isLoading: boolean) => void;
   setError: (error: string | null) => void;
@@ -100,9 +102,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           ? { ...p, selections: ep.selections, tipContribution: ep.tipContribution }
           : p;
       });
-      set({ currentSession: { ...session, participants: mergedParticipants } });
+      set({
+        currentSession: {
+          ...session,
+          participants: applySessionParticipantColors(session.id, mergedParticipants),
+        },
+      });
     } else {
-      set({ currentSession: session });
+      set({
+        currentSession: {
+          ...session,
+          participants: applySessionParticipantColors(session.id, session.participants),
+        },
+      });
     }
     get().recalculateSplit();
   },
@@ -124,7 +136,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       (p) => p.userId === participant.userId
     );
     if (existing) return;
-    const participants = [...session.participants, participant];
+    const participants = applySessionParticipantColors(session.id, [
+      ...session.participants,
+      participant,
+    ]);
     set({ currentSession: { ...session, participants } });
     get().recalculateSplit();
   },
@@ -132,9 +147,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   removeParticipant: (userId) => {
     const session = get().currentSession;
     if (!session) return;
-    const participants = session.participants.filter(
-      (p) => p.userId !== userId
-    );
+    const participants = session.participants.filter((p) => p.userId !== userId);
     set({ currentSession: { ...session, participants } });
     get().recalculateSplit();
   },
@@ -175,6 +188,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (!session) return;
     const participants = session.participants.map((p) =>
       p.userId === userId ? { ...p, paid } : p
+    );
+    set({ currentSession: { ...session, participants } });
+  },
+
+  markCoveredBy: (userId, coveredByUserId) => {
+    const session = get().currentSession;
+    if (!session) return;
+    const participants = session.participants.map((p) =>
+      p.userId === userId ? { ...p, coveredByUserId: coveredByUserId ?? undefined } : p
     );
     set({ currentSession: { ...session, participants } });
   },

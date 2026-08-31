@@ -1,6 +1,6 @@
 // ─── Core Enums / Unions ──────────────────────────────────────────────────────
 
-export type Currency = "EUR" | "USD" | "CAD" | "GBP";
+export type Currency = "EUR" | "USD" | "CAD" | "GBP" | "CNY";
 
 export type ItemCategory =
   | "starters"
@@ -35,6 +35,7 @@ export type SessionStatus =
 
 export type TipStatus = "accepted" | "removed" | "modified" | "pending";
 export type TipMode = "equal" | "individual";
+export type TaxMode = "inclusive" | "exclusive";
 
 // ─── Receipt Types ─────────────────────────────────────────────────────────────
 
@@ -78,6 +79,9 @@ export interface ParsedReceipt {
   restaurant: string;
   date?: string;
   currency: Currency;
+  tax_mode?: TaxMode;
+  printed_total?: number;
+  ocr_passes?: number;
   peopleCountDetected?: number;
   categories: {
     starters: ReceiptItem[];
@@ -138,6 +142,7 @@ export interface SessionParticipant {
   paid: boolean;
   confirmedByCreator: boolean;
   tipContribution?: number;
+  coveredByUserId?: string;
 }
 
 export interface CentAdjustment {

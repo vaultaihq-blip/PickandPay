@@ -1,13 +1,22 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  useColorScheme,
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+
+const JOIN_THEME = {
+  background: "#0A0A0F",
+  card: "#1A1B26",
+  border: "#252A32",
+  text: "#F8FAFC",
+  secondary: "#8B8FA3",
+  muted: "#6B7280",
+};
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
@@ -20,12 +29,14 @@ import { supabase } from "@/lib/supabase";
 import { Session, SessionParticipant, UserProfile } from "@/types";
 import { getColorForIndex } from "@/constants/colors";
 import { getAvatarEmoji } from "@/constants/avatars";
+import { useI18nStore } from "@/store/i18nStore";
 
 interface SessionPreview {
   id: string;
   hostName: string;
   createdAt: string;
   isRejoin: boolean;
+  isLeftRejoin: boolean;
 }
 
 // Busca perfis reais de uma lista de user IDs
@@ -53,23 +64,23 @@ async function fetchProfiles(userIds: string[]): Promise<Map<string, UserProfile
 }
 
 export default function JoinSessionScreen() {
-  const isDark = useColorScheme() === "dark";
   const { profile } = useAuthStore();
   const { setSession } = useSessionStore();
+  const { t, language } = useI18nStore();
+  void language;
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<SessionPreview | null>(null);
 
-  const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
-  const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
-  const bgColor = isDark ? Colors.bgDark : Colors.bgLight;
-  const borderColor = isDark ? Colors.cardBorderDark : Colors.cardBorderLight;
-  const cardColor = isDark ? Colors.cardDark : Colors.cardLight;
+  const textColor = JOIN_THEME.text;
+  const mutedColor = JOIN_THEME.secondary;
+  const borderColor = JOIN_THEME.border;
+  const cardColor = JOIN_THEME.card;
 
   const fetchSessionPreview = async (sessionId: string) => {
     if (!profile) {
-      Alert.alert("Sign in required", "Please set up your profile to join a session.", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Set up profile", onPress: () => router.push("/(auth)/profile-setup") },
+      Alert.alert(t("join_sign_in_required"), t("join_sign_in_body"), [
+        { text: t("cancel"), style: "cancel" },
+        { text: t("join_setup_profile"), onPress: () => router.push("/(auth)/profile-setup") },
       ]);
       return;
     }
@@ -84,6 +95,7 @@ export default function JoinSessionScreen() {
         .insert({ session_id: sessionId, user_id: profile.id, role: "participant", status: "pending" });
 
       let isRejoin = false;
+      let isLeftRejoin = false;
       if (participantError && participantError.code !== "23505") {
         console.warn("[join] Participant insert warning:", participantError.code, participantError.message);
       } else if (participantError?.code === "23505") {
@@ -94,8 +106,11 @@ export default function JoinSessionScreen() {
           .eq("session_id", sessionId)
           .eq("user_id", profile.id)
           .single();
-        isRejoin = existingRow?.status === "joined" || existingRow?.status === "left";
-        console.log("[join]", isRejoin ? "Rejoining session" : "Already pending");
+        const existingStatus = existingRow?.status as string | undefined;
+        isRejoin = existingStatus === "joined" || existingStatus === "left" ||
+          existingStatus === "selecting" || existingStatus === "items_picked";
+        isLeftRejoin = existingStatus === "left";
+        console.log("[join]", isRejoin ? (isLeftRejoin ? "Rejoining after left" : "Rejoining session") : "Already pending");
       } else {
         console.log("[join] Participant inserted (pending)");
       }
@@ -133,10 +148,11 @@ export default function JoinSessionScreen() {
         hostName: hostProfile?.name ?? "Host",
         createdAt: sessionData.created_at,
         isRejoin,
+        isLeftRejoin,
       });
     } catch (err: any) {
       console.error("[join] fetchSessionPreview error:", err);
-      Alert.alert("Error", err?.message ?? "Could not load session. Please check the QR code.");
+      Alert.alert(t("error"), err?.message ?? t("join_error_load"));
     } finally {
       setLoading(false);
     }
@@ -160,11 +176,11 @@ export default function JoinSessionScreen() {
     // Skip credit check when rejoining (user already paid for this session)
     if (!preview.isRejoin && !profile.isPro && (profile.billCredits ?? 0) <= 0) {
       Alert.alert(
-        "No Credits Left",
-        "You need 1 credit to join this split.",
+        t("scan_no_credits"),
+        t("join_no_credits_msg"),
         [
-          { text: "Buy Credits", onPress: () => router.push("/(app)/paywall") },
-          { text: "Cancel", style: "cancel" },
+          { text: t("scan_buy"), onPress: () => router.push("/(app)/paywall") },
+          { text: t("cancel"), style: "cancel" },
         ]
       );
       return;
@@ -240,10 +256,10 @@ export default function JoinSessionScreen() {
 
       setSession(session);
       setPreview(null);
-      router.replace(`/(app)/session/${sessionId}`);
+      router.replace(`/(app)/session-lobby/${sessionId}`);
     } catch (err: any) {
       console.error("[join] confirmJoin error:", err);
-      Alert.alert("Error", "Could not join session. Please try again.");
+      Alert.alert(t("error"), t("join_error_join"));
     } finally {
       setLoading(false);
     }
@@ -254,14 +270,15 @@ export default function JoinSessionScreen() {
     if (sessionId) {
       fetchSessionPreview(sessionId);
     } else {
-      Alert.alert("Invalid QR", "This QR code doesn't appear to be a Pick&Pay session.");
+      Alert.alert(t("join_invalid_qr_title"), t("join_invalid_qr_msg"));
     }
   };
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-        <LoadingSpinner fullScreen label="Loading session..." />
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="light" backgroundColor={JOIN_THEME.background} translucent={false} />
+        <LoadingSpinner fullScreen label={t("join_loading")} />
       </SafeAreaView>
     );
   }
@@ -275,21 +292,22 @@ export default function JoinSessionScreen() {
     });
 
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="light" backgroundColor={JOIN_THEME.background} translucent={false} />
         <View style={styles.previewContainer}>
           <Ionicons name="qr-code-outline" size={40} color={Colors.primary} style={{ marginBottom: 8 }} />
           <Text style={[styles.previewTitle, { color: textColor }]}>
-            {preview.isRejoin ? "Rejoin Session" : "Join Split Session"}
+            {preview.isRejoin ? t("join_rejoin_title") : t("join_title")}
           </Text>
 
           <View style={[styles.previewCard, { backgroundColor: cardColor, borderColor }]}>
             <View style={styles.previewRow}>
-              <Text style={[styles.previewLabel, { color: mutedColor }]}>Session Host</Text>
+              <Text style={[styles.previewLabel, { color: mutedColor }]}>{t("join_session_host")}</Text>
               <Text style={[styles.previewValue, { color: textColor }]}>{preview.hostName}</Text>
             </View>
             <View style={[styles.previewDivider, { backgroundColor: borderColor }]} />
             <View style={styles.previewRow}>
-              <Text style={[styles.previewLabel, { color: mutedColor }]}>Date</Text>
+              <Text style={[styles.previewLabel, { color: mutedColor }]}>{t("join_date")}</Text>
               <Text style={[styles.previewValue, { color: textColor }]}>{dateStr}</Text>
             </View>
           </View>
@@ -298,7 +316,7 @@ export default function JoinSessionScreen() {
             <View style={[styles.creditNotice, { borderColor: Colors.primary + "44", backgroundColor: Colors.primary + "12" }]}>
               <Ionicons name="return-down-forward-outline" size={18} color={Colors.primary} />
               <Text style={[styles.creditNoticeTitle, { color: Colors.primary, flex: 1 }]}>
-                You're rejoining this session — no extra credits will be deducted.
+                {preview.isLeftRejoin ? t("join_left_rejoin_notice") : t("join_rejoin_notice")}
               </Text>
             </View>
           ) : needsCredit && (
@@ -306,16 +324,16 @@ export default function JoinSessionScreen() {
               <Ionicons name="ellipse" size={18} color="#F59E0B" />
               <View style={{ flex: 1, gap: 6 }}>
                 <Text style={[styles.creditNoticeTitle, { color: Colors.primary }]}>
-                  1 credit will be deducted by the end of the session
+                  {t("join_credit_notice")}
                 </Text>
                 <Text style={[styles.creditNoticeBody, { color: mutedColor }]}>
-                  You have{" "}
-                  <Text style={{ fontWeight: "700" }}>{profile?.billCredits ?? 0}</Text> credit
-                  {(profile?.billCredits ?? 0) !== 1 ? "s" : ""} remaining.
+                  {t("join_you_have")}{" "}
+                  <Text style={{ fontWeight: "700" }}>{profile?.billCredits ?? 0}</Text>{" "}
+                  {(profile?.billCredits ?? 0) !== 1 ? t("paywall_credits") : t("paywall_credit")} {t("home_credits_remaining")}.
                 </Text>
                 <TouchableOpacity onPress={() => router.push("/(app)/paywall")} activeOpacity={0.7}>
                   <Text style={[styles.buyCreditsLink, { color: Colors.primary }]}>
-                    Buy more credits →
+                    {t("join_buy_credits_link")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -323,11 +341,11 @@ export default function JoinSessionScreen() {
           )}
 
           <TouchableOpacity style={styles.joinBtn} onPress={confirmJoin} activeOpacity={0.85}>
-            <Text style={styles.joinBtnText}>{preview.isRejoin ? "Rejoin →" : "Join Split →"}</Text>
+            <Text style={styles.joinBtnText}>{preview.isRejoin ? t("join_rejoin_btn") : t("join_btn")}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={[styles.cancelBtn, { borderColor }]} onPress={handleCancel}>
-            <Text style={[styles.cancelBtnText, { color: mutedColor }]}>Cancel</Text>
+            <Text style={[styles.cancelBtnText, { color: mutedColor }]}>{t("cancel")}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -338,7 +356,7 @@ export default function JoinSessionScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: JOIN_THEME.background },
   previewContainer: {
     flex: 1,
     padding: 24,

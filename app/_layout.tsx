@@ -2,21 +2,52 @@ import { useEffect, useRef, useState } from "react";
 import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
-import { useColorScheme } from "react-native";
+import { useColorScheme, Platform, View } from "react-native";
 import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
 import { useAuthStore } from "@/store/authStore";
+import { useI18nStore } from "@/store/i18nStore";
 import { handleDeepLink } from "@/lib/deeplink";
-import { supabase } from "@/lib/supabase";
+import { initRevenueCat } from "@/lib/revenuecat";
+import { supabase, isAuthCallbackUrl } from "@/lib/supabase";
 import "../global.css";
 
-export const ONBOARDING_KEY = "@splitmate:onboardingComplete";
-export const DEV_MODE_KEY = "@splitmate:developerMode";
+export const ONBOARDING_KEY = "@pickandpay:onboardingComplete";
 
-SplashScreen.preventAutoHideAsync();
+async function registerPushToken(userId: string) {
+  try {
+    if (Platform.OS === "android") {
+      await Notifications.setNotificationChannelAsync("default", {
+        name: "default",
+        importance: Notifications.AndroidImportance.MAX,
+      });
+    }
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    let finalStatus = existing;
+    if (existing !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== "granted") return;
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
+    const tokenData = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+    const token = tokenData.data;
+    await supabase
+      .from("user_push_tokens")
+      .upsert({ user_id: userId, token, updated_at: new Date().toISOString() }, { onConflict: "token" });
+  } catch {}
+}
+
+if (Platform.OS !== "web") {
+  SplashScreen.preventAutoHideAsync();
+}
 
 export default function RootLayout() {
   const { initialize, processReferral } = useAuthStore();
+  const { loadLanguage } = useI18nStore();
   const [isReady, setIsReady] = useState(false);
   const colorScheme = useColorScheme();
   const pendingRef = useRef<string | null>(null);
@@ -29,20 +60,24 @@ export default function RootLayout() {
   async function initApp() {
     // Initialize Zustand store: loads profile, sets up internal auth state listener
     try { await initialize(); } catch {}
+    try { await loadLanguage(); } catch {}
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      console.log("[root] Session:", session?.user?.id ?? "none");
+      if (__DEV__) console.log("[root] Session:", session?.user?.id ?? "none");
 
-      const devMode = await AsyncStorage.getItem(DEV_MODE_KEY);
       const seenOnboarding = await AsyncStorage.getItem(ONBOARDING_KEY);
 
-      if (devMode === "true") {
-        initialRoute.current = "/(app)";
-      } else if (!session?.user) {
-        console.log("[root] No user → welcome");
+      if (!session?.user) {
+        if (__DEV__) console.log("[root] No user → welcome");
         initialRoute.current = "/(auth)/welcome";
       } else {
+        try {
+          await initRevenueCat(session.user.id);
+        } catch (error) {
+          console.error("[root] RevenueCat init error:", error);
+        }
+        registerPushToken(session.user.id);
         initialRoute.current = seenOnboarding ? "/(app)" : "/onboarding";
       }
     } catch (err) {
@@ -50,7 +85,7 @@ export default function RootLayout() {
       initialRoute.current = "/(auth)/welcome";
     }
 
-    SplashScreen.hideAsync();
+    if (Platform.OS !== "web") SplashScreen.hideAsync();
     setIsReady(true);
   }
 
@@ -67,7 +102,7 @@ export default function RootLayout() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        console.log("[root] Auth event:", event);
+        if (__DEV__) console.log("[root] Auth event:", event);
 
         if (event === "PASSWORD_RECOVERY") {
           setTimeout(() => router.replace("/(auth)/reset-password"), 0);
@@ -76,12 +111,17 @@ export default function RootLayout() {
 
         if (event === "SIGNED_IN" && session?.user) {
           setTimeout(async () => {
+            try {
+              await initRevenueCat(session.user.id);
+            } catch (error) {
+              console.error("[root] RevenueCat auth init error:", error);
+            }
+            registerPushToken(session.user.id);
             const seenOnboarding = await AsyncStorage.getItem(ONBOARDING_KEY);
             router.replace(seenOnboarding ? "/(app)" : "/onboarding");
           }, 0);
         } else if (event === "SIGNED_OUT") {
-          setTimeout(async () => {
-            await AsyncStorage.removeItem(DEV_MODE_KEY);
+          setTimeout(() => {
             router.replace("/(auth)/welcome");
           }, 0);
         }
@@ -94,6 +134,11 @@ export default function RootLayout() {
   // Deep link listener
   useEffect(() => {
     const handleURL = (url: string) => {
+      // Must call maybeCompleteAuthSession before processing the URL so that
+      // the Chrome Custom Tab (Android OAuth) closes and openAuthSessionAsync resolves.
+      if (isAuthCallbackUrl(url)) {
+        WebBrowser.maybeCompleteAuthSession();
+      }
       handleDeepLink(url, (ref) => { pendingRef.current = ref; });
     };
     Linking.getInitialURL().then((url) => { if (url) handleURL(url); });
@@ -109,8 +154,14 @@ export default function RootLayout() {
     }
   }, [isReady, processReferral]);
 
-  // Return null while initialising — splash screen stays visible, no flash of wrong screen
-  if (!isReady) return null;
+  // On web: show dark background during init (no splash screen to cover it).
+  // On native: return null — the splash screen keeps the screen covered.
+  if (!isReady) {
+    if (Platform.OS === "web") {
+      return <View style={{ flex: 1, backgroundColor: "#0B0D10" }} />;
+    }
+    return null;
+  }
 
   return (
     <>

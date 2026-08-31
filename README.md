@@ -1,8 +1,8 @@
-# SplitMate
+# Pick&Pay
 
 **Smart bill splitting. Pay only what you consumed.**
 
-SplitMate is a mobile app (Android + iOS) that lets groups split restaurant bills fairly — each person pays exactly for what they ordered, not an equal share of everything.
+Pick&Pay is a mobile app (Android + iOS) that lets groups split restaurant bills fairly — each person pays exactly for what they ordered, not an equal share of everything.
 
 ---
 
@@ -48,7 +48,7 @@ SplitMate is a mobile app (Android + iOS) that lets groups split restaurant bill
 ### 1. Create / clone the project
 
 ```bash
-cd C:/Users/Ricardo/VaultAI/SplitMate
+cd C:/Users/Ricardo/VaultAI/Pick&Pay
 ```
 
 ### 2. Install dependencies
@@ -150,8 +150,8 @@ Close Bill ✓
 
 | URL | Action |
 |---|---|
-| `splitmate://session/[id]` | Join a split session |
-| `splitmate://profile/[id]` | View a user profile |
+| `pickandpay://session/[id]` | Join a split session |
+| `pickandpay://profile/[id]` | View a user profile |
 
 ---
 
@@ -165,7 +165,7 @@ Close Bill ✓
 
 ### Phase 2 — AdMob + Pro Plan
 - AdMob banner on history/dashboard (non-intrusive)
-- **SplitMate Pro** at €2.99/month:
+- **Pick&Pay Pro** at €2.99/month:
   - Unlimited history
   - Session export (PDF/CSV)
   - Custom avatar upload
@@ -173,7 +173,7 @@ Close Bill ✓
 
 ### Phase 3 — B2B Restaurant Partnerships
 - Restaurants pay to integrate with their POS
-- Direct digital receipt → SplitMate
+- Direct digital receipt → Pick&Pay
 - Branded experience for restaurants
 - Commission on payments processed
 
@@ -224,7 +224,7 @@ Close Bill ✓
 All monetary calculations use integer cents internally (`toCents()` / `fromCents()`) to avoid floating-point errors. Final display values are rounded to 2 decimal places only at render time.
 
 ### QR Code Strategy
-- MVP: QR encodes the deep link `splitmate://session/[id]`
+- MVP: QR encodes the deep link `pickandpay://session/[id]`
 - Session data loaded from Supabase when joining
 - Offline-capable: if no internet, show last known session data
 
@@ -239,7 +239,7 @@ All monetary calculations use integer cents internally (`toCents()` / `fromCents
 ## Project Structure
 
 ```
-SplitMate/
+Pick&Pay/
 ├── app/                    # Expo Router screens
 │   ├── (auth)/            # Auth flow
 │   └── (app)/             # Main app (tabs + modals)

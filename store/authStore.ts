@@ -3,6 +3,7 @@ import { Session as SupabaseSession, User } from "@supabase/supabase-js";
 import { UserProfile } from "@/types";
 import { supabase, getProfile, upsertProfile } from "@/lib/supabase";
 import { getAuthAvatarUrl, getAuthDisplayName } from "@/lib/authProfile";
+import { uploadAvatarToStorage } from "@/lib/avatarStorage";
 import { getColorForIndex } from "@/constants/colors";
 
 interface AuthState {
@@ -10,7 +11,6 @@ interface AuthState {
   profile: UserProfile | null;
   session: SupabaseSession | null;
   isLoading: boolean;
-  isGuest: boolean;
   initialized: boolean;
   isAuthenticated: boolean;
 
@@ -21,11 +21,10 @@ interface AuthState {
   loadProfile: (userId: string) => Promise<void>;
   updatePhone: (phone: string) => Promise<void>;
   signOut: () => Promise<void>;
-  setGuest: (isGuest: boolean) => void;
   deductCredit: () => boolean;
-  addCredits: (amount: number) => void;
   processReferral: (referrerId: string) => Promise<void>;
   updateAvatar: (avatarUrl?: string, avatarIcon?: string) => Promise<void>;
+  isEmailVerified: () => boolean;
 }
 
 let _authSubscription: { unsubscribe: () => void } | null = null;
@@ -35,7 +34,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   profile: null,
   session: null,
   isLoading: true,
-  isGuest: false,
   initialized: false,
   isAuthenticated: false,
 
@@ -54,7 +52,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Listen for auth state changes
       if (_authSubscription) _authSubscription.unsubscribe();
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        const authed = !!session?.user || get().isGuest;
+        const authed = !!session?.user;
         set({ session, user: session?.user ?? null, isAuthenticated: authed });
         setTimeout(() => {
           if (session?.user) {
@@ -79,6 +77,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   loadProfile: async (userId: string) => {
+    const isRemoteAvatarUrl = (url: unknown) =>
+      typeof url === "string" && /^https?:\/\//i.test(url);
+
     const mapProvider = (provider: unknown): UserProfile["provider"] => {
       if (provider === "azure") return "microsoft";
       if (
@@ -112,7 +113,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const { data, error } = await getProfile(userId);
       if (!error && data) {
-        if (!data.avatar_url) {
+        const storedAvatarUrl = data.avatar_url as string | undefined;
+        if (storedAvatarUrl && !isRemoteAvatarUrl(storedAvatarUrl)) {
+          try {
+            const publicAvatarUrl = await uploadAvatarToStorage(storedAvatarUrl, userId);
+            await upsertProfile({
+              id: userId,
+              name: (data.name as string | undefined) || "User",
+              email: data.email as string | undefined,
+              phone: data.phone as string | undefined,
+              avatar_url: publicAvatarUrl,
+              avatar_icon: undefined,
+              color: (data.color as string | undefined) ?? getColorForIndex(0),
+              provider: mapProvider(data.provider),
+            });
+            data.avatar_url = publicAvatarUrl;
+            data.avatar_icon = undefined;
+          } catch (err) {
+            console.warn("[AuthStore] Could not migrate local avatar to storage:", err);
+          }
+        }
+
+        if (!data.avatar_url && !data.avatar_icon) {
           const { data: { user } } = await supabase.auth.getUser();
           const authAvatarUrl = user ? getAuthAvatarUrl(user) : undefined;
           const authName = user ? getAuthDisplayName(user) : undefined;
@@ -135,9 +157,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return;
       }
 
-      // No profile row yet — create a minimal default so the app isn't stuck
+      // No profile row yet — the server trigger should have created it.
+      // Create a fallback without bill_credits (server trigger sets that).
       if ((error as { code?: string } | null)?.code === "PGRST116") {
-        console.log("[AuthStore] No profile row found, creating default...");
+        if (__DEV__) console.log("[AuthStore] No profile row found, creating default...");
         const { data: { user } } = await supabase.auth.getUser();
         const defaultName = user ? getAuthDisplayName(user) : "User";
         const avatarUrl = user ? getAuthAvatarUrl(user) : undefined;
@@ -148,8 +171,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           avatar_url: avatarUrl,
           avatar_icon: avatarUrl ? undefined : "person",
           color: getColorForIndex(0),
-          bill_credits: 3,
-        } as any);
+          // bill_credits intentionally omitted — server trigger sets initial value
+        });
         const { data: created } = await getProfile(userId);
         if (created) set({ profile: mapRow(created) });
       }
@@ -181,68 +204,39 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     await supabase.auth.signOut();
-    set({ user: null, profile: null, session: null, isGuest: false });
+    set({ user: null, profile: null, session: null });
   },
 
-  setGuest: (isGuest: boolean) => {
-    set({ isGuest, isAuthenticated: isGuest });
-    if (isGuest) {
-      set({
-        profile: {
-          id: `guest_${Date.now()}`,
-          name: "Guest",
-          avatarIcon: "rocket",
-          color: getColorForIndex(0),
-          billCredits: 3,
-          referralCount: 0,
-          isPro: false,
-        },
-      });
+  isEmailVerified: () => {
+    const user = get().user;
+    if (!user) return false;
+    const provider = user.app_metadata?.provider as string | undefined;
+    // Social logins are always pre-verified by the provider
+    if (provider && ["google", "apple", "azure", "facebook", "twitter"].includes(provider)) {
+      return true;
     }
+    return !!user.email_confirmed_at;
   },
 
   deductCredit: () => {
     const profile = get().profile;
     if (!profile) return false;
-    if (profile.isPro) return true;
-    if (profile.billCredits <= 0) return false;
-    const updated = { ...profile, billCredits: profile.billCredits - 1 };
+    // Block unverified email accounts from using credits
+    if (!get().isEmailVerified()) return false;
+    // Optimistic check — server RPC is the authoritative gate
+    if (!profile.isPro && profile.billCredits <= 0) return false;
+    // Optimistic UI update
+    const updated = { ...profile, billCredits: Math.max(0, profile.billCredits - 1) };
     set({ profile: updated });
-    // Persist to Supabase (fire and forget)
-    if (!get().isGuest) {
-      upsertProfile({
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        phone: profile.phone,
-        avatar_url: profile.avatarUrl,
-        avatar_icon: profile.avatarIcon,
-        color: profile.color,
-        provider: profile.provider,
-        bill_credits: updated.billCredits,
-      } as any).catch(() => {});
-    }
+    // Server-side atomic deduction — if it returns false, revert local state
+    supabase.rpc("deduct_credit").then(({ data, error }) => {
+      if (error || data === false) {
+        // Server rejected — revert optimistic update and reload
+        set({ profile });
+        get().loadProfile(profile.id);
+      }
+    });
     return true;
-  },
-
-  addCredits: (amount: number) => {
-    const profile = get().profile;
-    if (!profile) return;
-    const updated = { ...profile, billCredits: profile.billCredits + amount };
-    set({ profile: updated });
-    if (!get().isGuest) {
-      upsertProfile({
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        phone: profile.phone,
-        avatar_url: profile.avatarUrl,
-        avatar_icon: profile.avatarIcon,
-        color: profile.color,
-        provider: profile.provider,
-        bill_credits: updated.billCredits,
-      } as any).catch(() => {});
-    }
   },
 
   updateAvatar: async (avatarUrl?: string, avatarIcon?: string) => {
@@ -250,38 +244,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!profile) return;
     const updated = { ...profile, avatarUrl, avatarIcon };
     set({ profile: updated });
-    if (!get().isGuest) {
-      upsertProfile({
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        phone: profile.phone,
-        avatar_url: avatarUrl,
-        avatar_icon: avatarIcon,
-        color: profile.color,
-        provider: profile.provider,
-      }).catch(() => {});
+    const { error } = await upsertProfile({
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      phone: profile.phone,
+      avatar_url: avatarUrl ?? null,
+      avatar_icon: avatarIcon ?? null,
+      color: profile.color,
+      provider: profile.provider,
+    });
+    if (error) {
+      set({ profile });
+      throw error;
     }
   },
 
   processReferral: async (referrerId: string) => {
     const profile = get().profile;
-    if (!profile || profile.referredBy || get().isGuest) return;
-    // Mark this user as referred
-    set({ profile: { ...profile, referredBy: referrerId, billCredits: profile.billCredits + 1 } });
+    if (!profile || profile.referredBy) return;
     try {
-      await upsertProfile({
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        phone: profile.phone,
-        avatar_url: profile.avatarUrl,
-        avatar_icon: profile.avatarIcon,
-        color: profile.color,
-        provider: profile.provider,
-        referred_by: referrerId,
-        bill_credits: profile.billCredits + 1,
-      } as any);
+      const { error } = await supabase.rpc("process_referral", { referrer_id: referrerId, referred_id: profile.id });
+      if (error) throw error;
+      // Reload profile so local state reflects the DB (referred_by set, no credit change)
+      await get().loadProfile(profile.id);
     } catch (err) {
       console.error("[AuthStore] Failed to process referral:", err);
     }

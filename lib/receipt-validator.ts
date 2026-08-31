@@ -14,14 +14,15 @@ export interface ValidationWarning {
 
 export interface ValidationResult {
   isValid: boolean;
+  isWarning: boolean;   // true when total diff is small (0.50–5.00) but no other errors
   errors: ValidationError[];
   warnings: ValidationWarning[];
   totalDifference: number;
 }
 
-// Tolerance: 0.01€ to allow for floating-point rounding only.
-// Any difference above this must be fixed by the user.
-const TOTAL_TOLERANCE = 0.01;
+// Hard block if diff > $5.  Warning banner (allow continue) if diff > $0.50.
+const TOTAL_TOLERANCE = 5.00;
+const WARN_THRESHOLD  = 0.50;
 const ITEM_MATH_TOLERANCE = 0.01;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -41,27 +42,36 @@ function allReceiptItems(receipt: ParsedReceipt): ReceiptItem[] {
 export function validateReceiptOCR(receipt: ParsedReceipt): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
+  const cur = receipt.currency ?? "EUR";
 
   const items = allReceiptItems(receipt);
-  const receiptTotal = receipt.validation.receiptTotal;
   const computedTotal = receipt.validation.computedTotal;
-  const diff = Math.abs(computedTotal - receiptTotal);
+  const rawDiff = receipt.validation.difference ?? 0;
+  const diff = Math.abs(rawDiff);
 
-  // ── Total must match exactly ───────────────────────────────────────────────
+  // ── Total check ───────────────────────────────────────────────────────────
   if (diff > TOTAL_TOLERANCE) {
-    const sign = computedTotal - receiptTotal > 0 ? "+" : "";
+    const sign = rawDiff > 0 ? "+" : "";
     errors.push({
       severity: "critical",
       message:
-        `Items sum to ${computedTotal.toFixed(2)}€ but receipt shows ${receiptTotal.toFixed(2)}€ ` +
-        `(difference: ${sign}${(computedTotal - receiptTotal).toFixed(2)}€). ` +
+        `Item total mismatch: ${sign}${rawDiff.toFixed(2)} ${cur} ` +
+        `(items sum to ${computedTotal.toFixed(2)} ${cur}). ` +
         `You must fix this before continuing.`,
+    });
+  } else if (diff > WARN_THRESHOLD) {
+    const sign = rawDiff > 0 ? "+" : "";
+    warnings.push({
+      message:
+        `Small discrepancy: items sum to ${computedTotal.toFixed(2)} ${cur} ` +
+        `but receipt subtotal differs by ${sign}${rawDiff.toFixed(2)} ${cur}. ` +
+        `Possibly add-ons or rounding. You can continue or retry the scan.`,
     });
   }
 
   // ── Each item's math must be exact ────────────────────────────────────────
   for (const item of items) {
-    if (item.type === "combo") continue; // combo price is a package deal, skip math check
+    if (item.type === "combo") continue;
 
     if (!item.name || item.name.trim() === "") {
       errors.push({ itemId: item.id, severity: "critical", message: `Item "${item.id}" has no name` });
@@ -70,7 +80,7 @@ export function validateReceiptOCR(receipt: ParsedReceipt): ValidationResult {
       errors.push({ itemId: item.id, severity: "critical", message: `"${item.name}" has invalid quantity: ${item.quantity}` });
     }
     if (item.unitPrice <= 0) {
-      errors.push({ itemId: item.id, severity: "critical", message: `"${item.name}" has invalid unit price: ${item.unitPrice.toFixed(2)}€` });
+      errors.push({ itemId: item.id, severity: "critical", message: `"${item.name}" has invalid unit price: ${item.unitPrice.toFixed(2)} ${cur}` });
     }
 
     const expected = Math.round(item.quantity * item.unitPrice * 100) / 100;
@@ -97,14 +107,18 @@ export function validateReceiptOCR(receipt: ParsedReceipt): ValidationResult {
         warnings.push({
           message:
             `"${group[0].name}" appears with ${prices.size} different unit prices: ` +
-            `${Array.from(prices).map((p) => p.toFixed(2) + "€").join(", ")} — verify which applies to each person`,
+            `${Array.from(prices).map((p) => `${p.toFixed(2)} ${cur}`).join(", ")} — verify which applies to each person`,
         });
       }
     }
   }
 
+  // isWarning only when there are no hard errors and the total diff is in the warning range
+  const isWarning = errors.length === 0 && diff > WARN_THRESHOLD && diff <= TOTAL_TOLERANCE;
+
   return {
     isValid: errors.length === 0,
+    isWarning,
     errors,
     warnings,
     totalDifference: diff,
@@ -124,23 +138,34 @@ export interface EditableItem {
 
 export function validateEditableItems(
   items: EditableItem[],
-  receiptTotal: number
+  subtotalTarget: number,
+  currency: string = "EUR"
 ): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
+  const cur = currency;
 
   const computedTotal =
     Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100;
-  const diff = Math.abs(computedTotal - receiptTotal);
+  const rawDiff = computedTotal - subtotalTarget;
+  const diff = Math.abs(rawDiff);
 
-  // ── Total must match exactly ───────────────────────────────────────────────
+  // ── Total check ───────────────────────────────────────────────────────────
   if (diff > TOTAL_TOLERANCE) {
-    const sign = computedTotal - receiptTotal > 0 ? "+" : "";
+    const sign = rawDiff > 0 ? "+" : "";
     errors.push({
       severity: "critical",
       message:
-        `Items sum to ${computedTotal.toFixed(2)}€ but receipt shows ${receiptTotal.toFixed(2)}€ ` +
-        `(${sign}${(computedTotal - receiptTotal).toFixed(2)}€)`,
+        `Items sum to ${computedTotal.toFixed(2)} ${cur} but expected ${subtotalTarget.toFixed(2)} ${cur} ` +
+        `(${sign}${rawDiff.toFixed(2)} ${cur})`,
+    });
+  } else if (diff > WARN_THRESHOLD) {
+    const sign = rawDiff > 0 ? "+" : "";
+    warnings.push({
+      message:
+        `Small discrepancy: items sum to ${computedTotal.toFixed(2)} ${cur} ` +
+        `vs expected ${subtotalTarget.toFixed(2)} ${cur} (${sign}${rawDiff.toFixed(2)} ${cur}). ` +
+        `May be add-ons or rounding.`,
     });
   }
 
@@ -179,14 +204,17 @@ export function validateEditableItems(
       const prices = new Set(group.map((i) => i.unitPrice));
       if (prices.size > 1) {
         warnings.push({
-          message: `"${group[0].name}" has ${prices.size} different prices: ${Array.from(prices).map((p) => p.toFixed(2) + "€").join(", ")}`,
+          message: `"${group[0].name}" has ${prices.size} different prices: ${Array.from(prices).map((p) => `${p.toFixed(2)} ${cur}`).join(", ")}`,
         });
       }
     }
   }
 
+  const isWarning = errors.length === 0 && diff > WARN_THRESHOLD && diff <= TOTAL_TOLERANCE;
+
   return {
     isValid: errors.length === 0,
+    isWarning,
     errors,
     warnings,
     totalDifference: diff,

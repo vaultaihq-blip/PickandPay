@@ -1,15 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Alert, Linking, Platform } from "react-native";
 
-const BILLS_CLOSED_KEY = "@splitmate:billsClosedCount";
-const LAST_PROMPT_KEY = "@splitmate:lastReviewPromptDate";
+const BILLS_CLOSED_KEY = "@pickandpay:billsClosedCount";
+const LAST_PROMPT_KEY = "@pickandpay:lastReviewPromptDate";
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 
 const IOS_URL =
   "https://apps.apple.com/app/pickandpay/id123456789?action=write-review";
 const ANDROID_URL =
-  "https://play.google.com/store/apps/details?id=com.pickandpay";
+  "https://play.google.com/store/apps/details?id=com.pickandpay.app";
 
 async function openStore() {
   try {

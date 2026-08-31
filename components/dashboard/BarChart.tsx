@@ -1,11 +1,5 @@
-import React, { useEffect } from "react";
+import React, { memo } from "react";
 import { View, Text, StyleSheet, useColorScheme } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  Easing,
-} from "react-native-reanimated";
 import { SessionParticipant, SplitResult } from "@/types";
 import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/utils/formatter";
@@ -25,24 +19,11 @@ interface BarProps {
   tipAmount: number;
 }
 
-function Bar({ participant, currency, ratio, itemsAmount, tipAmount }: BarProps) {
+const Bar = memo(function Bar({ participant, currency, ratio, itemsAmount, tipAmount }: BarProps) {
   const isDark = useColorScheme() === "dark";
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
   const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
-  const widthPct = useSharedValue(0);
-
-  useEffect(() => {
-    widthPct.value = withTiming(ratio * 100, {
-      duration: 600,
-      easing: Easing.out(Easing.exp),
-    });
-  }, [ratio, widthPct]);
-
-  // Reanimated v2 supports animating 'width' via its own worklet engine
-  // (distinct from the old Animated module which does not support layout props)
-  const animStyle = useAnimatedStyle(() => ({
-    width: `${widthPct.value}%` as any,
-  }));
+  const barColor = participant.profile.color ?? "#6366F1";
 
   const curr = currency as "EUR" | "USD" | "CAD" | "GBP";
   const total = itemsAmount + tipAmount;
@@ -56,7 +37,6 @@ function Bar({ participant, currency, ratio, itemsAmount, tipAmount }: BarProps)
 
   return (
     <View style={styles.barBlock}>
-      {/* Label row: avatar + name left, breakdown right */}
       <View style={styles.labelRow}>
         <Avatar
           name={participant.profile.name}
@@ -72,25 +52,17 @@ function Bar({ participant, currency, ratio, itemsAmount, tipAmount }: BarProps)
           {amountLabel}
         </Text>
       </View>
-      {/* Stacked bar */}
       <View style={styles.barTrack}>
-        <Animated.View style={[styles.barFill, animStyle]}>
-          <View
-            style={[
-              styles.barSegment,
-              { flex: itemsFlex, backgroundColor: "#3B82F6" },
-            ]}
-          />
+        <View style={[styles.barFill, { width: `${Math.max(4, Math.round(ratio * 100))}%` }]}>
+          <View style={[styles.barSegment, { flex: itemsFlex, backgroundColor: barColor }]} />
           {tipFlex > 0 && (
-            <View
-              style={[styles.barSegment, styles.barSegmentTip, { flex: tipFlex }]}
-            />
+            <View style={[styles.barSegment, styles.barSegmentTip, { flex: tipFlex }]} />
           )}
-        </Animated.View>
+        </View>
       </View>
     </View>
   );
-}
+});
 
 export function BarChart({ participants, currency, splitResults }: BarChartProps) {
   const isDark = useColorScheme() === "dark";
@@ -111,7 +83,7 @@ export function BarChart({ participants, currency, splitResults }: BarChartProps
         <Text style={[styles.title, { color: mutedColor }]}>AMOUNTS OWED</Text>
         {hasTip && (
           <View style={styles.legend}>
-            <View style={[styles.legendDot, { backgroundColor: "#3B82F6" }]} />
+            <View style={[styles.legendDot, { backgroundColor: sorted[0]?.profile.color ?? "#6366F1" }]} />
             <Text style={[styles.legendText, { color: mutedColor }]}>Items</Text>
             <View style={[styles.legendDot, { backgroundColor: Colors.success }]} />
             <Text style={[styles.legendText, { color: mutedColor }]}>Tip</Text>

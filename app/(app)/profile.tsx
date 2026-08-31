@@ -1,133 +1,166 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   Pressable,
   StyleSheet,
   Alert,
+  Modal,
   ScrollView,
   TextInput,
   Share,
-  Platform,
+  TouchableOpacity,
+  Linking,
 } from 'react-native';
+import { BottomNavBar } from '@/components/ui/BottomNavBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/lib/supabase';
 import { Avatar } from '@/components/ui/Avatar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuthStore } from '@/store/authStore';
+import { useI18nStore } from '@/store/i18nStore';
+import { supabase, deleteAccount } from '@/lib/supabase';
+import { LANGUAGE_META, Language } from '@/constants/translations';
+
+const THEME = {
+  bg: '#0A0A0F',
+  card: '#1A1B26',
+  border: '#252A32',
+  text: '#FFFFFF',
+  muted: '#8B8FA3',
+  primary: '#5B68F4',
+  danger: '#EF4444',
+};
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const { profile, user, loadProfile } = useAuthStore();
+  const { language, setLanguage, t } = useI18nStore();
   const [loading, setLoading] = useState(true);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [showLangModal, setShowLangModal] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
 
-  // Reload profile whenever screen comes into focus (e.g. returning from avatar-picker)
   useFocusEffect(
     useCallback(() => {
-      loadProfile();
-    }, [])
+      if (user?.id) loadProfile(user.id).finally(() => setLoading(false));
+      else setLoading(false);
+    }, [user?.id])
   );
 
-  async function loadProfile() {
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-
-      if (!authUser) {
-        setLoading(false);
-        return;
-      }
-
-      setUser(authUser);
-
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-
-      if (profileData) {
-        setProfile(profileData);
-        setName(profileData.name || '');
-        setPhone(profileData.phone || '');
-      }
-
-      setLoading(false);
-    } catch (error) {
-      console.error('[profile] Error:', error);
-      setLoading(false);
-    }
-  }
+  useFocusEffect(
+    useCallback(() => {
+      setName(profile?.name ?? '');
+      setPhone(profile?.phone ?? '');
+    }, [profile?.name, profile?.phone])
+  );
 
   async function handleSaveProfile() {
+    if (!user?.id) return;
     try {
       const { error } = await supabase
         .from('profiles')
         .update({ name, phone })
         .eq('id', user.id);
-
       if (error) throw error;
-
-      Alert.alert('Saved', 'Profile updated successfully.');
-      loadProfile();
+      await loadProfile(user.id);
+      setIsEditing(false);
+      Alert.alert(t('profile_saved'), t('profile_saved_msg'));
     } catch {
-      Alert.alert('Error', 'Could not update profile');
+      Alert.alert(t('error'), t('profile_error'));
     }
   }
 
   async function shareApp() {
-    const appLink =
-      Platform.OS === 'ios'
-        ? 'https://apps.apple.com/app/pickandpay/id123456789'
-        : 'https://play.google.com/store/apps/details?id=com.pickandpay';
-
+    const referralLink = user?.id
+      ? `pickandpay://join?ref=${user.id}`
+      : 'https://play.google.com/store/apps/details?id=com.pickandpay.app';
     await Share.share({
-      message: `Check out Pick&Pay - The easiest way for groups to split bills fairly and avoid awkward conversations. Join now and get 3 free bills to split.\n\n${appLink}`,
-      title: 'Try Pick&Pay',
+      message: `Join me on Pick&Pay and split bills effortlessly!\n\nUse my link to get free credits when you sign up:\n${referralLink}`,
+      title: 'Join Pick&Pay',
     });
   }
 
-  async function shareReferralLink() {
-    const appLink =
-      Platform.OS === 'ios'
-        ? 'https://apps.apple.com/app/pickandpay/id123456789'
-        : 'https://play.google.com/store/apps/details?id=com.pickandpay';
-
-    const referralLink = `${appLink}?ref=${user.id}`;
-
-    await Share.share({
-      message: `Check out Pick&Pay - The easiest way for groups to split bills fairly and avoid awkward conversations. Join now and get 3 free bills to split.\n\n${referralLink}`,
-      title: 'Invite Friends to Pick&Pay',
-    });
+  function handleLogout() {
+    Alert.alert(t('profile_logout'), t('profile_logout_confirm'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('profile_logout'),
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await AsyncStorage.clear();
+            await supabase.auth.signOut();
+            router.replace('/(auth)/welcome');
+          } catch {
+            Alert.alert(t('error'), t('profile_logout_error'));
+          }
+        },
+      },
+    ]);
   }
 
-  async function handleLogout() {
-    try {
-      await AsyncStorage.clear();
-      await supabase.auth.signOut();
-      router.replace('/(auth)/welcome');
-    } catch {
-      Alert.alert('Error', 'Could not log out');
-    }
+  function handleDeleteAccount() {
+    Alert.alert(
+      'Eliminar Conta',
+      'Tens a certeza? Esta ação é permanente e irá apagar todos os teus dados, sessões e créditos.',
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: 'Continuar',
+          onPress: () => {
+            Alert.alert(
+              'Confirmação Final',
+              'Todos os teus dados serão apagados definitivamente. Não é possível recuperar a conta.',
+              [
+                { text: t('cancel'), style: 'cancel' },
+                {
+                  text: 'Eliminar',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setDeletingAccount(true);
+                    try {
+                      const { error } = await deleteAccount();
+                      if (error) throw error;
+                      await supabase.auth.signOut();
+                      router.replace('/(auth)/welcome');
+                    } catch {
+                      Alert.alert(
+                        'Erro',
+                        'Erro ao eliminar conta. Tenta novamente ou contacta vault.ai.hq@gmail.com'
+                      );
+                    } finally {
+                      setDeletingAccount(false);
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
   }
+
+  function handleLanguage() {
+    setShowLangModal(true);
+  }
+
+  const langLabel = LANGUAGE_META[language]?.label ?? 'English';
+  const displayName = profile?.name || user?.email?.split('@')[0] || 'User';
+  const displayEmail = user?.email ?? '';
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeContainer}>
+      <SafeAreaView style={styles.safe}>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.navHeader}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color="#000" />
-          </Pressable>
-          <Text style={styles.navTitle}>Profile</Text>
-          <View style={{ width: 40 }} />
-        </View>
         <View style={styles.centered}>
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={styles.mutedText}>{t('loading')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -135,19 +168,12 @@ export default function ProfileScreen() {
 
   if (!user) {
     return (
-      <SafeAreaView style={styles.safeContainer}>
+      <SafeAreaView style={styles.safe}>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.navHeader}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color="#000" />
-          </Pressable>
-          <Text style={styles.navTitle}>Profile</Text>
-          <View style={{ width: 40 }} />
-        </View>
         <View style={styles.centered}>
-          <Text style={styles.errorText}>Not signed in</Text>
-          <Pressable onPress={() => router.replace('/(auth)/welcome')} style={styles.button}>
-            <Text style={styles.buttonText}>Go to Login</Text>
+          <Text style={styles.dangerText}>{t('profile_not_signed')}</Text>
+          <Pressable style={styles.primaryBtn} onPress={() => router.replace('/(auth)/welcome')}>
+            <Text style={styles.primaryBtnText}>{t('profile_go_login')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -155,371 +181,410 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeContainer}>
+    <SafeAreaView style={styles.safe}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Custom header with back button */}
-      <View style={styles.navHeader}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={24} color="#000" />
-        </Pressable>
-        <Text style={styles.navTitle}>Profile</Text>
-        <View style={{ width: 40 }} />
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>{t('profile_title')}</Text>
+        <TouchableOpacity onPress={() => router.push('/onboarding')} hitSlop={8}>
+          <Ionicons name="settings-outline" size={24} color={THEME.text} />
+        </TouchableOpacity>
       </View>
 
-    <ScrollView style={styles.container}>
-      {/* Avatar Section */}
-      <View style={styles.avatarSection}>
-        <Pressable
-          onPress={() => router.push('/(app)/avatar-picker')}
-          style={styles.avatarContainer}
-        >
-          <Avatar
-            name={profile?.name || user.email}
-            avatarIcon={profile?.avatar_icon}
-            avatarUrl={profile?.avatar_url}
-            color={profile?.color}
-            size={112}
-          />
-          <View style={styles.editBadge}>
-            <Text style={styles.editIcon}>✏️</Text>
-          </View>
-        </Pressable>
-        <Text style={styles.chooseText}>Choose Profile Picture</Text>
-      </View>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* User section */}
+        <View style={styles.userSection}>
+          <TouchableOpacity
+            onPress={() => router.push('/(app)/avatar-picker')}
+            activeOpacity={0.85}
+          >
+            <Avatar
+              name={profile?.name || user.email}
+              avatarIcon={profile?.avatarIcon}
+              avatarUrl={profile?.avatarUrl}
+              color={profile?.color}
+              size={96}
+            />
+          </TouchableOpacity>
+          <Text style={styles.userName}>{displayName}</Text>
+          <Text style={styles.userEmail}>{displayEmail}</Text>
 
-      {/* Name (editable) */}
-      <View style={styles.section}>
-        <Text style={styles.label}>Name</Text>
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="Your name"
-          placeholderTextColor="#999"
-          style={styles.input}
-        />
-      </View>
-
-      {/* Email (read-only) */}
-      <View style={styles.section}>
-        <Text style={styles.label}>📧 Email (for reminders)</Text>
-        <Text style={styles.value}>{user.email}</Text>
-        <Text style={styles.hint}>(from your account)</Text>
-      </View>
-
-      {/* Phone (editable) */}
-      <View style={styles.section}>
-        <Text style={styles.label}>📱 Phone (optional)</Text>
-        <TextInput
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="+351 912 345 678"
-          placeholderTextColor="#999"
-          keyboardType="phone-pad"
-          style={styles.input}
-        />
-        <Text style={styles.hint}>Used for WhatsApp reminders</Text>
-        <Pressable onPress={handleSaveProfile} style={styles.saveButton}>
-          <Text style={styles.saveButtonText}>Save Changes</Text>
-        </Pressable>
-      </View>
-
-      {/* Credits Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>📊 Your Credits</Text>
-        <View style={styles.creditsCard}>
-          <View style={styles.creditsRow}>
-            <Text style={styles.creditsLabel}>Free trial:</Text>
-            <Text style={styles.creditsValue}>3 bills ✓ used</Text>
-          </View>
-          <View style={styles.creditsRow}>
-            <Text style={styles.creditsLabel}>Purchased:</Text>
-            <Text style={styles.creditsValue}>0 bills</Text>
-          </View>
-          <View style={styles.creditsRow}>
-            <Text style={styles.creditsLabel}>Referral bonus:</Text>
-            <Text style={styles.creditsValue}>{profile?.referral_count || 0} bills</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.creditsRow}>
-            <Text style={styles.creditsTotalLabel}>Total remaining:</Text>
-            <Text style={styles.creditsTotalValue}>
-              {profile?.bill_credits || 0} bills 🎉
-            </Text>
-          </View>
+          {!isEditing ? (
+            <TouchableOpacity
+              style={styles.editBtn}
+              onPress={() => setIsEditing(true)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.editBtnText}>{t('profile_edit_btn')}</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.editForm}>
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                placeholder={t('profile_name')}
+                placeholderTextColor={THEME.muted}
+              />
+              <TextInput
+                style={styles.input}
+                value={phone}
+                onChangeText={setPhone}
+                placeholder={t('profile_phone')}
+                placeholderTextColor={THEME.muted}
+                keyboardType="phone-pad"
+              />
+              <View style={styles.editActions}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => setIsEditing(false)}
+                >
+                  <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtn} onPress={handleSaveProfile}>
+                  <Text style={styles.saveBtnText}>{t('save')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
 
-        <Pressable onPress={() => router.push('/(app)/paywall')} style={styles.buyButton}>
-          <Text style={styles.buyButtonText}>Buy More Credits</Text>
-        </Pressable>
-      </View>
+        {/* Credits card */}
+        <TouchableOpacity
+          style={styles.creditsCard}
+          onPress={() => router.push('/(app)/pricing')}
+          activeOpacity={0.85}
+        >
+          <Image source={require('@/assets/images/token.png')} style={styles.tokenIcon} />
+          <View style={styles.creditsInfo}>
+            <Text style={styles.creditsLabel}>{t('profile_bill_credits_label')}</Text>
+            <Text style={styles.creditsCount}>{profile?.billCredits ?? 0} {t('profile_credits_available')}</Text>
+          </View>
+          <View style={styles.getMoreBtn}>
+            <Text style={styles.getMoreBtnText}>{t('profile_get_more')}</Text>
+          </View>
+        </TouchableOpacity>
 
-      {/* Referrals */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>👥 Invite Friends &amp; Earn Credits</Text>
-        <Text style={styles.referralText}>
-          Invite friends and you both get +1 free bill!{'\n'}(Max 5 referrals)
-        </Text>
-        <Pressable onPress={shareReferralLink} style={styles.referralButton}>
-          <Text style={styles.referralButtonText}>
-            👥 Invite Friends (+1 bill per friend, up to 5 referrals)
-          </Text>
-        </Pressable>
-        {(profile?.referral_count ?? 0) >= 5 && (
-          <Text style={styles.discountText}>
-            🎁 You've unlocked 20% discount on your next pack!
-          </Text>
-        )}
-      </View>
+        {/* Settings list */}
+        <View style={styles.card}>
+          <SettingsRow
+            icon="globe-outline"
+            label={t('profile_language')}
+            value={langLabel}
+            onPress={handleLanguage}
+          />
+          <Separator />
+          <SettingsRow
+            icon="wallet-outline"
+            label={t('profile_buy_credits')}
+            onPress={() => router.push('/(app)/pricing')}
+          />
+          <Separator />
+          <SettingsRow
+            icon="play-circle-outline"
+            label={t('home_how_it_works')}
+            badge={t('profile_app_tour')}
+            onPress={() => router.push('/onboarding')}
+          />
+          <Separator />
+          <SettingsRow
+            icon="help-circle-outline"
+            label={t('profile_help_center')}
+            onPress={() =>
+              Alert.alert(t('profile_help_center'), 'support@pickandpay.app')
+            }
+          />
+          <Separator />
+          <SettingsRow
+            icon="person-add-outline"
+            label={t('profile_invite_friends_short')}
+            badge={t('profile_earn_free')}
+            onPress={shareApp}
+          />
+          <Separator />
+          <SettingsRow
+            icon="information-circle-outline"
+            label={t('profile_about')}
+            onPress={() =>
+              Alert.alert(
+                t('profile_about'),
+                'Version 1.0.0\nSplit bills fair. Pay only what you consumed.'
+              )
+            }
+          />
+          <Separator />
+          <SettingsRow
+            icon="shield-checkmark-outline"
+            label="Privacy Policy"
+            onPress={() => Linking.openURL('https://vaultaihq.org/privacy')}
+          />
+          <Separator />
+          <SettingsRow
+            icon="document-text-outline"
+            label="Terms of Service"
+            onPress={() => Linking.openURL('https://vaultaihq.org/terms')}
+          />
+        </View>
 
-      {/* Actions */}
-      <View style={styles.section}>
-        <Pressable onPress={shareApp} style={styles.actionButton}>
-          <Text style={styles.actionButtonText}>📱 Share Pick&amp;Pay</Text>
-        </Pressable>
+        {/* Logout + Delete Account */}
+        <View style={[styles.card, styles.logoutCard]}>
+          <TouchableOpacity
+            style={styles.logoutRow}
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={22} color={THEME.danger} />
+            <Text style={styles.logoutText}>{t('profile_logout')}</Text>
+          </TouchableOpacity>
+          <View style={styles.separator} />
+          <TouchableOpacity
+            style={styles.logoutRow}
+            onPress={handleDeleteAccount}
+            activeOpacity={0.7}
+            disabled={deletingAccount}
+          >
+            <Ionicons name="trash-outline" size={22} color={THEME.danger} />
+            <Text style={[styles.logoutText, { opacity: deletingAccount ? 0.5 : 1 }]}>
+              {deletingAccount ? 'A eliminar...' : 'Eliminar Conta'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-        <Pressable onPress={() => router.push('/onboarding')} style={styles.actionButton}>
-          <Text style={styles.actionButtonText}>📖 View Tutorial</Text>
-        </Pressable>
-      </View>
+        <View style={{ height: 100 }} />
+      </ScrollView>
 
-      {/* Logout */}
-      <Pressable onPress={handleLogout} style={styles.logoutButton}>
-        <Text style={styles.logoutText}>Log Out</Text>
-      </Pressable>
+      <BottomNavBar activeTab="profile" />
 
-      <View style={{ height: 40 }} />
-    </ScrollView>
+      {/* Language picker modal */}
+      <Modal
+        visible={showLangModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLangModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.langOverlay}
+          activeOpacity={1}
+          onPress={() => setShowLangModal(false)}
+        />
+        <View style={styles.langSheet}>
+          <Text style={styles.langTitle}>{t('profile_choose_language')}</Text>
+          {(Object.keys(LANGUAGE_META) as Language[]).map((lang) => (
+            <TouchableOpacity
+              key={lang}
+              style={[styles.langOption, language === lang && styles.langOptionActive]}
+              onPress={() => { setLanguage(lang); setShowLangModal(false); }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.langFlag}>{LANGUAGE_META[lang].flag}</Text>
+              <Text style={styles.langLabel}>{LANGUAGE_META[lang].label}</Text>
+              {language === lang && (
+                <Ionicons name="checkmark-circle" size={22} color={THEME.primary} />
+              )}
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity style={styles.langCancel} onPress={() => setShowLangModal(false)}>
+            <Text style={styles.langCancelText}>{t('cancel')}</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
+function SettingsRow({
+  icon,
+  label,
+  value,
+  badge,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  value?: string;
+  badge?: string;
+  onPress?: () => void;
+}) {
+  return (
+    <TouchableOpacity style={styles.settingsRow} onPress={onPress} activeOpacity={0.7}>
+      <Ionicons name={icon as any} size={20} color={THEME.muted} />
+      <Text style={styles.settingsLabel}>{label}</Text>
+      <View style={styles.settingsRight}>
+        {badge && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{badge}</Text>
+          </View>
+        )}
+        {value && <Text style={styles.settingsValue}>{value}</Text>}
+        <Ionicons name="chevron-forward" size={16} color={THEME.muted} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function Separator() {
+  return <View style={styles.separator} />;
+}
+
 const styles = StyleSheet.create({
-  safeContainer: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  navHeader: {
+  safe: { flex: 1, backgroundColor: THEME.bg },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  mutedText: { color: THEME.muted, fontSize: 16 },
+  dangerText: { color: THEME.danger, fontSize: 18, marginBottom: 20 },
+
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E0E0E0',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
   },
-  navTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#000',
+  headerTitle: { fontSize: 22, fontWeight: '700', color: THEME.text },
+
+  scroll: { paddingHorizontal: 16, paddingTop: 4, gap: 16 },
+
+  userSection: { alignItems: 'center', paddingVertical: 24, gap: 6 },
+  userName: { fontSize: 20, fontWeight: '700', color: THEME.text, marginTop: 10 },
+  userEmail: { fontSize: 14, color: THEME.muted },
+
+  editBtn: {
+    backgroundColor: THEME.primary,
+    paddingVertical: 11,
+    paddingHorizontal: 36,
+    borderRadius: 10,
+    marginTop: 10,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+  editBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+
+  editForm: { width: '100%', gap: 10, marginTop: 12 },
+  input: {
+    backgroundColor: THEME.card,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 10,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: THEME.text,
   },
-  centered: {
+  editActions: { flexDirection: 'row', gap: 10 },
+  cancelBtn: {
     flex: 1,
+    backgroundColor: THEME.card,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
   },
-  loadingText: {
-    color: '#666',
-    fontSize: 16,
+  cancelBtnText: { color: THEME.muted, fontSize: 15, fontWeight: '600' },
+  saveBtn: {
+    flex: 1,
+    backgroundColor: THEME.primary,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
   },
-  errorText: {
-    color: '#EF4444',
-    fontSize: 18,
-    marginBottom: 24,
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+
+  card: {
+    backgroundColor: THEME.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    overflow: 'hidden',
   },
-  button: {
-    backgroundColor: '#3B82F6',
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    gap: 14,
+  },
+  settingsLabel: { flex: 1, fontSize: 15, color: THEME.text, fontWeight: '500' },
+  settingsRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  settingsValue: { fontSize: 14, color: THEME.muted },
+  badge: {
+    backgroundColor: 'rgba(91,104,244,0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  badgeText: { fontSize: 11, color: THEME.primary, fontWeight: '600' },
+  separator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: THEME.border,
+    marginLeft: 50,
+  },
+
+  logoutCard: {},
+  logoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    gap: 14,
+  },
+  logoutText: { fontSize: 15, color: THEME.danger, fontWeight: '600' },
+
+  primaryBtn: {
+    backgroundColor: THEME.primary,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 8,
+    borderRadius: 10,
   },
-  buttonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  avatarSection: {
-    alignItems: 'center',
-    paddingVertical: 32,
-  },
-  avatarContainer: {
-    position: 'relative',
-  },
-  editBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: '#3B82F6',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editIcon: {
-    fontSize: 16,
-  },
-  chooseText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#666',
-  },
-  section: {
+  primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+
+  // ── Language modal ────────────────────────────────────────────────────────────
+  langOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  langSheet: {
+    backgroundColor: THEME.card,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     paddingHorizontal: 20,
-    marginBottom: 24,
+    paddingTop: 20,
+    paddingBottom: 36,
+    gap: 6,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 12,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-  },
-  value: {
-    fontSize: 16,
-    color: '#000',
-  },
-  hint: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 4,
-  },
-  input: {
-    backgroundColor: '#F5F5F5',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#000',
-    marginBottom: 8,
-  },
-  saveButton: {
-    backgroundColor: '#3B82F6',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  saveButtonText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  creditsCard: {
-    backgroundColor: '#F9F9F9',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  creditsRow: {
+  langTitle: { fontSize: 16, fontWeight: '700', color: THEME.text, marginBottom: 8 },
+  langOption: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  creditsLabel: {
-    fontSize: 14,
-    color: '#666',
-  },
-  creditsValue: {
-    fontSize: 14,
-    color: '#000',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E0E0E0',
-    marginVertical: 12,
-  },
-  creditsTotalLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-  },
-  creditsTotalValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#3B82F6',
-  },
-  buyButton: {
-    backgroundColor: '#3B82F6',
-    padding: 14,
-    borderRadius: 8,
     alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
   },
-  buyButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  referralText: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  referralButton: {
-    backgroundColor: '#F0F4FF',
+  langOptionActive: { backgroundColor: THEME.primary + '22' },
+  langFlag: { fontSize: 24 },
+  langLabel: { flex: 1, fontSize: 16, color: THEME.text, fontWeight: '500' },
+  langCancel: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
+  langCancelText: { color: THEME.muted, fontSize: 15, fontWeight: '600' },
+
+  creditsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.card,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#3B82F6',
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
+    borderColor: THEME.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
   },
-  referralButtonText: {
-    color: '#3B82F6',
-    fontSize: 14,
-    fontWeight: '600',
+  tokenIcon: { width: 40, height: 40, resizeMode: 'contain' },
+  creditsInfo: { flex: 1 },
+  creditsLabel: { fontSize: 13, color: THEME.muted, fontWeight: '600', marginBottom: 2 },
+  creditsCount: { fontSize: 20, fontWeight: '800', color: '#F9FAFB' },
+  getMoreBtn: {
+    backgroundColor: THEME.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
-  discountText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#10B981',
-    textAlign: 'center',
-  },
-  actionButton: {
-    backgroundColor: '#F5F5F5',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  actionButtonText: {
-    color: '#000',
-    fontSize: 16,
-  },
-  logoutButton: {
-    marginHorizontal: 20,
-    marginTop: 8,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#EF4444',
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  logoutText: {
-    color: '#EF4444',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  getMoreBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+﻿import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -13,9 +13,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
+  BackHandler,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
+import { router, Stack, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
@@ -26,9 +28,12 @@ import { GlobalCostsSection } from "@/components/receipt/GlobalCosts";
 import { TipSelector } from "@/components/receipt/TipSelector";
 import { Card } from "@/components/ui/Card";
 import { formatCurrency } from "@/utils/formatter";
-import { supabase } from "@/lib/supabase";
-import { Session, ReceiptItem, ItemCategory, Currency, MenuGroup } from "@/types";
+import { supabase, saveOCRCorrection } from "@/lib/supabase";
+import { Session, ReceiptItem, ItemCategory, Currency, MenuGroup, ParsedReceipt } from "@/types";
 import { generateItemId } from "@/utils/parser";
+import { useI18nStore } from "@/store/i18nStore";
+import { TranslationKey } from "@/constants/translations";
+import { isOfflineSessionId } from "@/constants/dev";
 
 const ORDERED_CATEGORIES: ItemCategory[] = [
   "starters",
@@ -38,12 +43,12 @@ const ORDERED_CATEGORIES: ItemCategory[] = [
   "others",
 ];
 
-const CATEGORY_LABELS: Record<ItemCategory, string> = {
-  starters: "Starters",
-  mains: "Mains",
-  drinks: "Drinks",
-  desserts: "Desserts",
-  others: "Others",
+const CATEGORY_LABEL_KEYS: Record<ItemCategory, TranslationKey> = {
+  starters: "lobby_cat_starters",
+  mains: "lobby_cat_mains",
+  drinks: "lobby_cat_drinks",
+  desserts: "lobby_cat_desserts",
+  others: "lobby_cat_others",
 };
 
 const isGroupingSuggestion = (item: ReceiptItem) =>
@@ -52,6 +57,9 @@ const isGroupingSuggestion = (item: ReceiptItem) =>
 export default function ReviewScreen() {
   const isDark = useColorScheme() === "dark";
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { fromLobby } = useLocalSearchParams<{ fromLobby?: string }>();
+  const isFromLobby = fromLobby === "true";
   const {
     receipt,
     rawOcrText,
@@ -64,9 +72,12 @@ export default function ReviewScreen() {
     addItem,
     removeItem,
     updateItem,
+    clearReceipt,
   } = useReceiptStore();
-  const { setSession, currentSession } = useSessionStore();
+  const { setSession, currentSession, clearSession } = useSessionStore();
   const { profile, user } = useAuthStore();
+  const { t, language } = useI18nStore();
+  void language;
 
   const [creating, setCreating] = useState(false);
   const [imageModalVisible, setImageModalVisible] = useState(false);
@@ -75,6 +86,9 @@ export default function ReviewScreen() {
   const [showMenuModal, setShowMenuModal] = useState(
     () => receipt?.needsMenuConfirmation ?? false
   );
+  const [verifyModalVisible, setVerifyModalVisible] = useState(false);
+  const sumMismatchAlertShownRef = useRef(false);
+  const originalReceiptRef = useRef<ParsedReceipt | null>(null);
 
   // Add-item modal state
   const [addItemModal, setAddItemModal] = useState(false);
@@ -86,6 +100,7 @@ export default function ReviewScreen() {
   // Edit-item modal state
   const [editItem, setEditItem] = useState<ReceiptItem | null>(null);
   const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState<ItemCategory>("mains");
   const [editQty, setEditQty] = useState("1");
   const [editUnitPrice, setEditUnitPrice] = useState("");
   const [editTotalPrice, setEditTotalPrice] = useState("");
@@ -96,6 +111,58 @@ export default function ReviewScreen() {
       console.log(`[review] Loaded receipt: ${receipt.restaurant} (${itemCount} items)`);
     }
   }, [receipt?.restaurant]);
+
+  // Snapshot the original OCR output once on mount — used later to diff corrections.
+  useEffect(() => {
+    if (receipt && !originalReceiptRef.current) {
+      originalReceiptRef.current = JSON.parse(JSON.stringify(receipt)) as ParsedReceipt;
+    }
+  }, [receipt]);
+
+  const handleBack = useCallback(() => {
+    if (isFromLobby) {
+      router.back();
+      return;
+    }
+    Alert.alert(
+      "Cancelar scan?",
+      "Voltar atrás irá cancelar o scan atual. Terás de digitalizar novamente.",
+      [
+        { text: "Continuar", style: "cancel" },
+        {
+          text: "Cancelar scan",
+          style: "destructive",
+          onPress: async () => {
+            if (
+              currentSession &&
+              !currentSession.id.startsWith("session_") &&
+              !currentSession.id.startsWith("dev_session_")
+            ) {
+              try {
+                await supabase
+                  .from("sessions")
+                  .update({ status: "closed" })
+                  .eq("id", currentSession.id);
+              } catch {}
+            }
+            clearReceipt();
+            clearSession();
+            router.replace("/(app)");
+          },
+        },
+      ]
+    );
+  }, [clearReceipt, clearSession, currentSession, isFromLobby]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+        handleBack();
+        return true;
+      });
+      return () => sub.remove();
+    }, [handleBack])
+  );
 
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
   const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
@@ -146,6 +213,39 @@ export default function ReviewScreen() {
       });
   }, [receipt, allItems]);
 
+  const ocrSecondPass = receipt?.ocr_passes === 2;
+
+  const itemWarnings = useMemo(
+    () =>
+      allItems
+        .filter(
+          (item) =>
+            item.warnings &&
+            item.warnings.length > 0 &&
+            !item.warnings.every((w) => w.toLowerCase().includes("consider grouping"))
+        )
+        .flatMap((item) =>
+          (item.warnings ?? [])
+            .filter((w) => !w.toLowerCase().includes("consider grouping"))
+            .map((w) => `${item.name}: ${w}`)
+        ),
+    [allItems]
+  );
+
+  const sumMismatch = useMemo(() => {
+    if (!receipt?.printed_total || receipt.printed_total <= 0) return false;
+    const costsTotal = receipt.globalCosts.reduce((s, c) => s + c.amount, 0);
+    return Math.abs(subtotal + costsTotal - receipt.printed_total) > 0.50;
+  }, [receipt, subtotal]);
+
+  useEffect(() => {
+    if (sumMismatchAlertShownRef.current) return;
+    if (receipt?.ocr_passes === 2 && sumMismatch) {
+      sumMismatchAlertShownRef.current = true;
+      Alert.alert(t("review_sum_mismatch_title"), t("review_sum_mismatch_msg"), [{ text: t("ok") }]);
+    }
+  }, [sumMismatch]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const groupingCandidates = useMemo(
     () => (receipt ? ORDERED_CATEGORIES.flatMap((c) => receipt.categories[c].filter(isGroupingSuggestion)) : []),
     [receipt]
@@ -168,6 +268,7 @@ export default function ReviewScreen() {
     (item: ReceiptItem) => {
       setEditItem(item);
       setEditName(item.name);
+      setEditCategory(item.category);
       setEditQty(String(item.quantity));
       setEditUnitPrice(String(item.unitPrice));
       setEditTotalPrice(String(item.totalPrice));
@@ -180,12 +281,25 @@ export default function ReviewScreen() {
     const qty = Math.max(1, parseInt(editQty) || 1);
     const unitPrice = Math.max(0, parseFloat(editUnitPrice.replace(",", ".")) || 0);
     const totalPrice = Math.max(0, parseFloat(editTotalPrice.replace(",", ".")) || unitPrice * qty);
-    updateItem(editItem.category, editItem.id, {
-      name: editName.trim() || editItem.name,
-      quantity: qty,
-      unitPrice,
-      totalPrice: Math.round(totalPrice * 100) / 100,
-    });
+    const finalTotal = Math.round(totalPrice * 100) / 100;
+    if (editCategory !== editItem.category) {
+      removeItem(editItem.id);
+      addItem(editCategory, {
+        ...editItem,
+        name: editName.trim() || editItem.name,
+        category: editCategory,
+        quantity: qty,
+        unitPrice,
+        totalPrice: finalTotal,
+      });
+    } else {
+      updateItem(editItem.category, editItem.id, {
+        name: editName.trim() || editItem.name,
+        quantity: qty,
+        unitPrice,
+        totalPrice: finalTotal,
+      });
+    }
     setEditItem(null);
   };
 
@@ -211,11 +325,11 @@ export default function ReviewScreen() {
     const qty = Math.max(1, parseInt(newItemQty) || 1);
     const price = parseFloat(newItemPrice.replace(",", ".")) || 0;
     if (!newItemName.trim()) {
-      Alert.alert("Missing name", "Please enter an item name.");
+      Alert.alert(t("review_missing_name"), t("review_missing_name_msg"));
       return;
     }
     if (price <= 0) {
-      Alert.alert("Missing price", "Please enter a price greater than 0.");
+      Alert.alert(t("review_missing_price"), t("review_missing_price_msg"));
       return;
     }
     const item: ReceiptItem = {
@@ -238,16 +352,34 @@ export default function ReviewScreen() {
   const handleConfirm = async () => {
     if (!receipt) return;
     if (allItems.length === 0) {
-      Alert.alert(
-        "No items",
-        "Add at least one item before creating a session.",
-        [{ text: "OK" }]
-      );
+      Alert.alert(t("review_no_items_alert"), t("review_no_items_alert_msg"), [{ text: t("ok") }]);
       return;
     }
     if (!profile) {
-      Alert.alert("Profile required", "Set up your profile before creating a session.");
+      Alert.alert(t("review_profile_required"), t("review_profile_required_msg"));
       router.push("/(auth)/profile-setup");
+      return;
+    }
+
+    // Returning from lobby to edit receipt — update existing session and go back
+    if (isFromLobby && currentSession) {
+      setCreating(true);
+      try {
+        const sessionId = currentSession.id;
+        if (!isOfflineSessionId(sessionId)) {
+          await supabase
+            .from("sessions")
+            .update({ receipt_data: receipt })
+            .eq("id", sessionId);
+        }
+        setSession({ ...currentSession, receipt });
+        router.back();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        Alert.alert(t("review_failed_create"), msg || t("error_connection"));
+      } finally {
+        setCreating(false);
+      }
       return;
     }
 
@@ -263,7 +395,7 @@ export default function ReviewScreen() {
 
       if (isPreExistingSession && existingSession) {
         sessionId = existingSession.id;
-        if (user && !sessionId.startsWith("session_")) {
+        if (user && !isOfflineSessionId(sessionId)) {
           const { error } = await supabase
             .from("sessions")
             .update({ receipt_data: receipt, status: "draft" })
@@ -276,7 +408,7 @@ export default function ReviewScreen() {
           .insert({
             host_id: user.id,
             receipt_data: receipt,
-            status: "waiting_participants",
+            status: "draft",
           })
           .select("id")
           .single();
@@ -318,19 +450,74 @@ export default function ReviewScreen() {
             ],
       };
       setSession(session);
-      // Pre-existing live session: go back to session screen so it can broadcast
-      // receipt_ready, then auto-redirect host to their item selection.
-      // New/guest sessions go directly to the session screen (no one is waiting).
-      const isLiveSession = isPreExistingSession && !sessionId.startsWith("session_");
-      router.push(
-        isLiveSession
-          ? `/(app)/session/${sessionId}?redirectToSelection=1`
-          : `/(app)/session/${sessionId}`
-      );
+
+      // Fire-and-forget: log OCR corrections for future fine-tuning
+      const original = originalReceiptRef.current;
+      if (original && user) {
+        void (async () => {
+          try {
+            const origItems = Object.values(original.categories).flat();
+            const currItems = Object.values(receipt.categories).flat();
+            const origMap = new Map(origItems.map((i) => [i.id, i]));
+            const currMap = new Map(currItems.map((i) => [i.id, i]));
+
+            const correctedItems: Array<{ item_id: string; field: string; before: unknown; after: unknown }> = [];
+            const correctionTypes = new Set<string>();
+
+            for (const [id, orig] of origMap) {
+              const curr = currMap.get(id);
+              if (!curr) {
+                correctedItems.push({ item_id: id, field: "item", before: orig.name, after: null });
+                correctionTypes.add("item_missing");
+              } else {
+                if (Math.abs(orig.totalPrice - curr.totalPrice) > 0.01) {
+                  correctedItems.push({ item_id: id, field: "totalPrice", before: orig.totalPrice, after: curr.totalPrice });
+                  correctionTypes.add("price_wrong");
+                }
+                if (orig.quantity !== curr.quantity) {
+                  correctedItems.push({ item_id: id, field: "quantity", before: orig.quantity, after: curr.quantity });
+                  correctionTypes.add("qty_wrong");
+                }
+                if (orig.name !== curr.name) {
+                  correctedItems.push({ item_id: id, field: "name", before: orig.name, after: curr.name });
+                  correctionTypes.add("item_name_typo");
+                }
+              }
+            }
+            for (const [id, curr] of currMap) {
+              if (!origMap.has(id)) {
+                correctedItems.push({ item_id: id, field: "item", before: null, after: curr.name });
+                correctionTypes.add("item_added");
+              }
+            }
+
+            if (correctedItems.length > 0) {
+              await saveOCRCorrection({
+                sessionId: sessionId ?? null,
+                userId: user.id,
+                receiptImagePath: rawImageUri ?? null,
+                originalOcrJson: original,
+                userCorrectedJson: receipt,
+                correctedItems,
+                correctionType: [...correctionTypes],
+                ocrPasses: receipt.ocr_passes ?? 1,
+              });
+            }
+          } catch {
+            // Silently swallow — never impact user flow
+          }
+        })();
+      }
+
+      router.replace(`/(app)/session-lobby/${sessionId}`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error("[review] handleConfirm failed:", msg);
-      Alert.alert("Failed to create session", msg || "Please check your connection and try again.");
+      console.error("[review] handleConfirm failed:", err);
+      const pgErr = err as { message?: string; code?: string; details?: string; hint?: string } | null;
+      if (pgErr?.code) {
+        console.error("[review] Supabase error code:", pgErr.code, "| details:", pgErr.details, "| hint:", pgErr.hint);
+      }
+      const msg = err instanceof Error ? err.message : pgErr?.message ?? JSON.stringify(err);
+      Alert.alert(t("review_failed_create"), msg || t("error_connection"));
     } finally {
       setCreating(false);
     }
@@ -341,11 +528,11 @@ export default function ReviewScreen() {
       <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
         <View style={styles.emptyContainer}>
           <Text style={[styles.emptyText, { color: mutedColor }]}>
-            No receipt loaded.
+            {t("review_no_receipt")}
           </Text>
           <TouchableOpacity onPress={() => router.replace("/(app)/scan")}>
             <Text style={{ color: Colors.primary, marginTop: 12, fontSize: 16 }}>
-              ← Back to scan
+              {t("review_back_to_scan")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -355,9 +542,10 @@ export default function ReviewScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+      <Stack.Screen options={{ gestureEnabled: false }} />
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color={textColor} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -365,7 +553,7 @@ export default function ReviewScreen() {
             style={[styles.restaurantInput, { color: textColor }]}
             value={receipt.restaurant}
             onChangeText={setRestaurantName}
-            placeholder="Restaurant name"
+            placeholder={t("review_restaurant_ph")}
             placeholderTextColor={mutedColor}
             returnKeyType="done"
           />
@@ -373,13 +561,25 @@ export default function ReviewScreen() {
             {receipt.currency}
           </Text>
         </View>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity
+          onPress={() => setVerifyModalVisible(true)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name="calculator-outline"
+            size={22}
+            color={ocrSecondPass || sumMismatch || itemWarnings.length > 0 ? "#F59E0B" : mutedColor}
+          />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: 16 + Math.max(insets.bottom, 16) },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         {/* Validation error banner */}
@@ -387,7 +587,7 @@ export default function ReviewScreen() {
           <View style={[styles.validationBanner, { backgroundColor: "#F59E0B15", borderColor: "#F59E0B" }]}>
             <Ionicons name="warning-outline" size={16} color="#F59E0B" />
             <Text style={[styles.validationBannerText, { color: "#F59E0B" }]}>
-              {mathErrorItemIds.size} item{mathErrorItemIds.size > 1 ? "s" : ""} have math errors. Look for ⚠️ icons and tap to fix.
+              {mathErrorItemIds.size} {mathErrorItemIds.size !== 1 ? t("session_items") : t("session_item")} {t("review_math_errors_suffix")}
             </Text>
           </View>
         )}
@@ -398,12 +598,44 @@ export default function ReviewScreen() {
             <Ionicons name="information-circle-outline" size={16} color="#3B82F6" />
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={[styles.validationBannerText, { color: "#3B82F6" }]}>
-                Some items have unit price ≠ total (likely promotions or menus):
+                {t("review_promo_note")}
               </Text>
               {priceDiscrepancies.slice(0, 3).map((d, i) => (
                 <Text key={i} style={[styles.discrepancyLine, { color: "#3B82F6" }]}>• {d}</Text>
               ))}
             </View>
+          </View>
+        )}
+
+        {/* OCR second-pass banner */}
+        {ocrSecondPass && (
+          <View style={[styles.validationBanner, { backgroundColor: "#F59E0B15", borderColor: "#F59E0B" }]}>
+            <Ionicons name="warning-outline" size={16} color="#F59E0B" />
+            <Text style={[styles.validationBannerText, { color: "#F59E0B" }]}>
+              {t("review_second_pass_banner")}
+            </Text>
+          </View>
+        )}
+
+        {/* Item-level warnings from OCR */}
+        {itemWarnings.length > 0 && (
+          <View style={[styles.validationBanner, { backgroundColor: "#F59E0B15", borderColor: "#F59E0B" }]}>
+            <Ionicons name="warning-outline" size={16} color="#F59E0B" />
+            <View style={{ flex: 1, gap: 3 }}>
+              {itemWarnings.slice(0, 4).map((w, i) => (
+                <Text key={i} style={[styles.discrepancyLine, { color: "#F59E0B" }]}>⚠️ {w}</Text>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Sum mismatch disclaimer (non-blocking) */}
+        {sumMismatch && (
+          <View style={[styles.validationBanner, { backgroundColor: "#EF444415", borderColor: "#EF4444" }]}>
+            <Ionicons name="alert-circle-outline" size={16} color="#EF4444" />
+            <Text style={[styles.validationBannerText, { color: "#EF4444" }]}>
+              {t("review_sum_mismatch_banner")}
+            </Text>
           </View>
         )}
 
@@ -416,7 +648,7 @@ export default function ReviewScreen() {
               activeOpacity={0.7}
             >
               <Text style={[styles.ocrPanelTitle, { color: mutedColor }]}>
-                📄 Raw OCR Text
+                {t("review_raw_ocr")}
               </Text>
               <Ionicons
                 name={ocrExpanded ? "chevron-up" : "chevron-down"}
@@ -438,7 +670,7 @@ export default function ReviewScreen() {
             <View style={styles.groupingBannerLeft}>
               <Ionicons name="git-merge-outline" size={15} color={Colors.warning} />
               <Text style={styles.groupingBannerText}>
-                {groupingCandidates.length} item{groupingCandidates.length > 1 ? "s" : ""} suggested for grouping
+                {groupingCandidates.length} {groupingCandidates.length !== 1 ? t("session_items") : t("session_item")} {t("review_grouping_suffix")}
               </Text>
             </View>
             {groupingChecked.size >= 2 && (
@@ -451,7 +683,7 @@ export default function ReviewScreen() {
               >
                 <Ionicons name="git-merge-outline" size={13} color="#fff" />
                 <Text style={styles.groupSelectedBtnText}>
-                  Group ({groupingChecked.size})
+                  {t("review_group_btn")} ({groupingChecked.size})
                 </Text>
               </TouchableOpacity>
             )}
@@ -465,10 +697,10 @@ export default function ReviewScreen() {
             <View style={styles.emptyItemsState}>
               <Ionicons name="receipt-outline" size={40} color={mutedColor} />
               <Text style={[styles.emptyItemsTitle, { color: textColor }]}>
-                No items yet
+                {t("review_empty_receipt")}
               </Text>
               <Text style={[styles.emptyItemsSub, { color: mutedColor }]}>
-                Tap "+ Add Item" below to enter items from your receipt
+                {t("review_empty_receipt_sub")}
               </Text>
             </View>
           )}
@@ -497,7 +729,7 @@ export default function ReviewScreen() {
           >
             <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
             <Text style={[styles.addItemBtnText, { color: Colors.primary }]}>
-              Add Item
+              {t("review_add_item")}
             </Text>
           </TouchableOpacity>
 
@@ -534,7 +766,7 @@ export default function ReviewScreen() {
             <Image source={{ uri: rawImageUri }} style={styles.photoThumb} resizeMode="cover" />
             <View style={styles.photoOverlay}>
               <Ionicons name="expand-outline" size={20} color="#fff" />
-              <Text style={styles.photoOverlayText}>View Original Receipt Photo</Text>
+              <Text style={styles.photoOverlayText}>{t("review_view_photo")}</Text>
             </View>
           </TouchableOpacity>
         )}
@@ -544,14 +776,23 @@ export default function ReviewScreen() {
           <View style={[styles.hintBar, { backgroundColor: Colors.primary + "15", borderColor: Colors.primary }]}>
             <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
             <Text style={[styles.hintText, { color: Colors.primary }]}>
-              Tap "Add Item" to enter receipt items
+              {t("review_hint_add_item")}
             </Text>
           </View>
         )}
       </ScrollView>
 
       {/* Footer */}
-      <View style={[styles.footer, { backgroundColor: bgColor, borderColor }]}>
+      <View
+        style={[
+          styles.footer,
+          {
+            backgroundColor: bgColor,
+            borderColor,
+            paddingBottom: 20 + Math.max(insets.bottom, 16),
+          },
+        ]}
+      >
         {(() => {
           const tipAmount = receipt.selectedTip ?? 0;
           const baseTotal = computedTotal - tipAmount;
@@ -561,14 +802,14 @@ export default function ReviewScreen() {
           return tipAmount > 0 ? (
             <>
               <View style={styles.totalRow}>
-                <Text style={[styles.totalLabel, { color: mutedColor }]}>Subtotal</Text>
+                <Text style={[styles.totalLabel, { color: mutedColor }]}>{t("review_subtotal")}</Text>
                 <Text style={[styles.totalAmountSm, { color: mutedColor }]}>
                   {formatCurrency(baseTotal, receipt.currency)}
                 </Text>
               </View>
               <View style={styles.totalRow}>
                 <Text style={[styles.totalLabel, { color: mutedColor }]}>
-                  Tip {tipPct > 0 ? `(${tipPct}%)` : ""}
+                  {t("review_tip")} {tipPct > 0 ? `(${tipPct}%)` : ""}
                 </Text>
                 <Text style={[styles.tipLineAmt, { color: Colors.success }]}>
                   +{formatCurrency(tipAmount, receipt.currency)}
@@ -576,7 +817,7 @@ export default function ReviewScreen() {
               </View>
               <View style={[styles.footerDivider, { backgroundColor: borderColor }]} />
               <View style={styles.totalRow}>
-                <Text style={[styles.totalLabel, { color: textColor, fontWeight: "700" }]}>Total</Text>
+                <Text style={[styles.totalLabel, { color: textColor, fontWeight: "700" }]}>{t("review_total")}</Text>
                 <Text style={[styles.totalAmount, { color: textColor }]}>
                   {formatCurrency(computedTotal, receipt.currency)}
                 </Text>
@@ -584,7 +825,7 @@ export default function ReviewScreen() {
             </>
           ) : (
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: mutedColor }]}>Total</Text>
+              <Text style={[styles.totalLabel, { color: mutedColor }]}>{t("review_total")}</Text>
               <Text style={[styles.totalAmount, { color: textColor }]}>
                 {formatCurrency(computedTotal, receipt.currency)}
               </Text>
@@ -600,7 +841,7 @@ export default function ReviewScreen() {
           disabled={creating}
         >
           <Text style={styles.confirmBtnText}>
-            {creating ? "Creating session..." : "Confirm Receipt →"}
+            {creating ? t("review_creating_session") : t("review_confirm_btn")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -623,28 +864,57 @@ export default function ReviewScreen() {
           />
           <View style={[styles.modalCard, { backgroundColor: cardColor }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Edit Item</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>{t("review_edit_item")}</Text>
               <TouchableOpacity onPress={() => setEditItem(null)}>
                 <Ionicons name="close" size={24} color={mutedColor} />
               </TouchableOpacity>
             </View>
 
             {/* Name */}
-            <Text style={[styles.fieldLabel, { color: mutedColor }]}>Item name</Text>
+            <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_name")}</Text>
             <TextInput
               style={[styles.fieldInput, { color: textColor, borderColor, backgroundColor: bgColor }]}
               value={editName}
               onChangeText={setEditName}
-              placeholder="Item name"
+              placeholder={t("review_field_name")}
               placeholderTextColor={mutedColor}
               autoFocus
               returnKeyType="next"
             />
 
+            {/* Category */}
+            <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_category")}</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryRow}
+            >
+              {ORDERED_CATEGORIES.map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[
+                    styles.categoryChip,
+                    { borderColor },
+                    editCategory === cat && styles.categoryChipActive,
+                  ]}
+                  onPress={() => setEditCategory(cat)}
+                >
+                  <Text
+                    style={[
+                      styles.categoryChipText,
+                      { color: editCategory === cat ? Colors.primary : mutedColor },
+                    ]}
+                  >
+                    {t(CATEGORY_LABEL_KEYS[cat])}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
             {/* Qty + Unit Price row */}
             <View style={styles.qtyPriceRow}>
               <View style={styles.qtyBlock}>
-                <Text style={[styles.fieldLabel, { color: mutedColor }]}>Qty</Text>
+                <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_qty")}</Text>
                 <View style={styles.qtyControl}>
                   <TouchableOpacity
                     style={[styles.qtyBtn, { borderColor }]}
@@ -669,7 +939,7 @@ export default function ReviewScreen() {
               </View>
 
               <View style={styles.priceBlock}>
-                <Text style={[styles.fieldLabel, { color: mutedColor }]}>Unit price</Text>
+                <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_unit_price")}</Text>
                 <TextInput
                   style={[styles.fieldInput, { color: textColor, borderColor, backgroundColor: bgColor }]}
                   value={editUnitPrice}
@@ -689,7 +959,7 @@ export default function ReviewScreen() {
             </View>
 
             {/* Total price */}
-            <Text style={[styles.fieldLabel, { color: mutedColor }]}>Total price</Text>
+            <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_total")}</Text>
             <TextInput
               style={[styles.fieldInput, { color: textColor, borderColor, backgroundColor: bgColor }]}
               value={editTotalPrice}
@@ -705,18 +975,18 @@ export default function ReviewScreen() {
                 style={[styles.modalCancelBtn, { borderColor }]}
                 onPress={() => setEditItem(null)}
               >
-                <Text style={[styles.modalCancelText, { color: mutedColor }]}>Cancel</Text>
+                <Text style={[styles.modalCancelText, { color: mutedColor }]}>{t("cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleSaveEdit}>
                 <Ionicons name="checkmark" size={18} color="#fff" />
-                <Text style={styles.modalConfirmText}>Save</Text>
+                <Text style={styles.modalConfirmText}>{t("save")}</Text>
               </TouchableOpacity>
             </View>
 
             {/* Delete */}
             <TouchableOpacity style={styles.editDeleteBtn} onPress={handleDeleteFromEdit}>
               <Ionicons name="trash-outline" size={16} color="#FF3B30" />
-              <Text style={styles.editDeleteText}>Delete Item</Text>
+              <Text style={styles.editDeleteText}>{t("review_delete_item")}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -734,14 +1004,14 @@ export default function ReviewScreen() {
           <View style={[styles.modalCard, { backgroundColor: cardColor }]}>
             <View style={styles.modalHeader}>
               <Text style={{ fontSize: 20 }}>🍔</Text>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Menu Items Detected</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>{t("review_menu_title")}</Text>
               <TouchableOpacity onPress={() => setShowMenuModal(false)}>
                 <Ionicons name="close" size={24} color={mutedColor} />
               </TouchableOpacity>
             </View>
 
             <Text style={[styles.menuModalSub, { color: mutedColor }]}>
-              We found items that appear to be menu components (€0.00 totals). How should we handle them?
+              {t("review_menu_body")}
             </Text>
 
             {/* Preview groups */}
@@ -781,7 +1051,7 @@ export default function ReviewScreen() {
                   setShowMenuModal(false);
                 }}
               >
-                <Text style={styles.menuActionText}>Group as Menu</Text>
+                <Text style={styles.menuActionText}>{t("review_menu_group")}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -803,7 +1073,7 @@ export default function ReviewScreen() {
                   setShowMenuModal(false);
                 }}
               >
-                <Text style={styles.menuActionText}>Keep Separate</Text>
+                <Text style={styles.menuActionText}>{t("review_menu_separate")}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -814,7 +1084,7 @@ export default function ReviewScreen() {
                   setShowMenuModal(false);
                 }}
               >
-                <Text style={styles.menuActionText}>Remove €0 Items</Text>
+                <Text style={styles.menuActionText}>{t("review_menu_remove")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -839,26 +1109,26 @@ export default function ReviewScreen() {
           />
           <View style={[styles.modalCard, { backgroundColor: cardColor }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Add Item</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>{t("review_add_item")}</Text>
               <TouchableOpacity onPress={() => setAddItemModal(false)}>
                 <Ionicons name="close" size={24} color={mutedColor} />
               </TouchableOpacity>
             </View>
 
             {/* Name */}
-            <Text style={[styles.fieldLabel, { color: mutedColor }]}>Item name</Text>
+            <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_name")}</Text>
             <TextInput
               style={[styles.fieldInput, { color: textColor, borderColor, backgroundColor: bgColor }]}
               value={newItemName}
               onChangeText={setNewItemName}
-              placeholder="e.g. Burger, Wine, Salad"
+              placeholder={t("review_item_example")}
               placeholderTextColor={mutedColor}
               autoFocus
               returnKeyType="next"
             />
 
             {/* Category */}
-            <Text style={[styles.fieldLabel, { color: mutedColor }]}>Category</Text>
+            <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_category")}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -880,7 +1150,7 @@ export default function ReviewScreen() {
                       { color: newItemCategory === cat ? Colors.primary : mutedColor },
                     ]}
                   >
-                    {CATEGORY_LABELS[cat]}
+                    {t(CATEGORY_LABEL_KEYS[cat])}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -889,7 +1159,7 @@ export default function ReviewScreen() {
             {/* Qty + Price row */}
             <View style={styles.qtyPriceRow}>
               <View style={styles.qtyBlock}>
-                <Text style={[styles.fieldLabel, { color: mutedColor }]}>Qty</Text>
+                <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_qty")}</Text>
                 <View style={styles.qtyControl}>
                   <TouchableOpacity
                     style={[styles.qtyBtn, { borderColor }]}
@@ -915,7 +1185,7 @@ export default function ReviewScreen() {
 
               <View style={styles.priceBlock}>
                 <Text style={[styles.fieldLabel, { color: mutedColor }]}>
-                  Price per item
+                  {t("review_field_price_per_item")}
                 </Text>
                 <TextInput
                   style={[styles.fieldInput, { color: textColor, borderColor, backgroundColor: bgColor }]}
@@ -932,7 +1202,7 @@ export default function ReviewScreen() {
             {/* Total preview */}
             {newItemPrice !== "" && parseFloat(newItemPrice.replace(",", ".")) > 0 && (
               <Text style={[styles.totalPreview, { color: mutedColor }]}>
-                Total:{" "}
+                {t("review_total")}:{" "}
                 {formatCurrency(
                   Math.round(
                     parseFloat(newItemPrice.replace(",", ".")) *
@@ -950,7 +1220,7 @@ export default function ReviewScreen() {
                 onPress={() => setAddItemModal(false)}
               >
                 <Text style={[styles.modalCancelText, { color: mutedColor }]}>
-                  Cancel
+                  {t("cancel")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -958,11 +1228,84 @@ export default function ReviewScreen() {
                 onPress={handleAddItem}
               >
                 <Ionicons name="add" size={18} color="#fff" />
-                <Text style={styles.modalConfirmText}>Add Item</Text>
+                <Text style={styles.modalConfirmText}>{t("review_add_item")}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Verify Receipt Breakdown Modal */}
+      <Modal
+        visible={verifyModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setVerifyModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setVerifyModalVisible(false)} activeOpacity={1} />
+          <View style={[styles.modalCard, { backgroundColor: cardColor, maxHeight: "80%" }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: textColor }]}>{t("review_verify_title")}</Text>
+              <TouchableOpacity onPress={() => setVerifyModalVisible(false)}>
+                <Ionicons name="close" size={24} color={mutedColor} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ flexGrow: 0 }}>
+              {allItems.map((item) => (
+                <View key={item.id} style={[styles.verifyRow, { borderColor }]}>
+                  <Text style={[styles.verifyItemName, { color: textColor }]} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={[styles.verifyItemCalc, { color: mutedColor }]}>
+                    {item.quantity > 1
+                      ? `${item.quantity} × ${formatCurrency(item.unitPrice, receipt.currency)} = `
+                      : ""}
+                    {formatCurrency(item.totalPrice, receipt.currency)}
+                  </Text>
+                </View>
+              ))}
+
+              <View style={[styles.verifyTotalRow, { borderColor }]}>
+                <Text style={[styles.verifyTotalLabel, { color: mutedColor }]}>{t("review_verify_items_sum")}</Text>
+                <Text style={[styles.verifyTotalAmt, { color: textColor }]}>{formatCurrency(subtotal, receipt.currency)}</Text>
+              </View>
+
+              {receipt.printed_total ? (
+                <>
+                  <View style={styles.verifyTotalRow}>
+                    <Text style={[styles.verifyTotalLabel, { color: mutedColor }]}>{t("review_verify_printed")}</Text>
+                    <Text style={[styles.verifyTotalAmt, { color: textColor }]}>{formatCurrency(receipt.printed_total, receipt.currency)}</Text>
+                  </View>
+                  {(() => {
+                    const costsTotal = receipt.globalCosts.reduce((s, c) => s + c.amount, 0);
+                    const diff = Math.round((subtotal + costsTotal - receipt.printed_total) * 100) / 100;
+                    const absDiff = Math.abs(diff);
+                    const matched = absDiff <= 0.50;
+                    return (
+                      <View style={[styles.verifyStatusRow, { backgroundColor: matched ? "#10B98115" : "#EF444415", borderColor: matched ? "#10B981" : "#EF4444" }]}>
+                        <Ionicons name={matched ? "checkmark-circle" : "alert-circle"} size={16} color={matched ? "#10B981" : "#EF4444"} />
+                        <View style={{ flex: 1 }}>
+                          {matched ? (
+                            <Text style={[styles.verifyStatusText, { color: "#10B981" }]}>{t("review_verify_ok")}</Text>
+                          ) : (
+                            <>
+                              <Text style={[styles.verifyStatusText, { color: "#EF4444" }]}>
+                                {t("review_verify_diff")}: {diff > 0 ? "+" : ""}{formatCurrency(diff, receipt.currency)}
+                              </Text>
+                              <Text style={[styles.discrepancyLine, { color: "#EF4444" }]}>{t("review_verify_check")}</Text>
+                            </>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })()}
+                </>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
 
       {/* Full-screen receipt photo modal */}
@@ -1024,7 +1367,7 @@ const styles = StyleSheet.create({
 
   // ── Scroll ───────────────────────────────────────────────────────────────────
   scroll: { flex: 1 },
-  scrollContent: { paddingBottom: 16 },
+  scrollContent: {},
 
   // ── Validation banner ────────────────────────────────────────────────────────
   validationBanner: {
@@ -1388,6 +1731,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+
+  // ── Verify breakdown modal ───────────────────────────────────────────────────
+  verifyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  verifyItemName: { flex: 1, fontSize: 13, fontWeight: "500" },
+  verifyItemCalc: { fontSize: 12, textAlign: "right" },
+  verifyTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  verifyTotalLabel: { fontSize: 13, fontWeight: "600" },
+  verifyTotalAmt: { fontSize: 14, fontWeight: "700" },
+  verifyStatusRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  verifyStatusText: { fontSize: 13, fontWeight: "600" },
 
   // ── Original receipt photo preview ──────────────────────────────────────────
   photoCard: {

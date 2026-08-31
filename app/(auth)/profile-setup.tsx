@@ -18,7 +18,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors, USER_COLORS, getColorForIndex } from "@/constants/colors";
 import { AVATAR_OPTIONS } from "@/constants/avatars";
 import { useAuthStore } from "@/store/authStore";
-import { upsertProfile } from "@/lib/supabase";
+import { upsertProfile, initializeUserCredits } from "@/lib/supabase";
+import { uploadAvatarToStorage } from "@/lib/avatarStorage";
 import { UserProfile } from "@/types";
 
 export default function ProfileSetupScreen() {
@@ -91,12 +92,14 @@ export default function ProfileSetupScreen() {
 
     setSaving(true);
     try {
+      const uploadedAvatarUrl =
+        avatarUri && user ? await uploadAvatarToStorage(avatarUri, user.id) : avatarUri;
       const profile = {
         id: user?.id ?? `guest_${Date.now()}`,
         name: name.trim(),
         email: user?.email,
-        avatar_url: avatarUri ?? undefined,
-        avatar_icon: selectedIcon ?? "star",
+        avatar_url: uploadedAvatarUrl ?? undefined,
+        avatar_icon: uploadedAvatarUrl ? undefined : selectedIcon ?? "star",
         color: userColor,
         provider: user?.app_metadata?.provider,
       };
@@ -104,6 +107,10 @@ export default function ProfileSetupScreen() {
       if (user) {
         await upsertProfile(profile);
       }
+
+      // Determine initial credits via server-side email reputation check
+      const creditResult = user ? await initializeUserCredits() : null;
+      const billCredits = creditResult?.freeCredits ?? 2;
 
       setProfile({
         id: profile.id,
@@ -113,14 +120,21 @@ export default function ProfileSetupScreen() {
         avatarIcon: profile.avatar_icon,
         color: profile.color,
         provider: mapProvider(profile.provider),
-        billCredits: 3,
+        billCredits,
         referralCount: 0,
         isPro: false,
       });
 
+      Alert.alert(
+        "Welcome!",
+        `You received ${billCredits} free scan${billCredits === 1 ? "" : "s"} to try Pick&Pay.`
+      );
+
       router.replace("/(app)");
     } catch (err) {
-      Alert.alert("Error", "Failed to save profile. Please try again.");
+      console.error("[profile-setup] Failed to save profile:", err);
+      const message = err instanceof Error ? err.message : "Please try again.";
+      Alert.alert("Error", `Failed to save profile. ${message}`);
     } finally {
       setSaving(false);
     }

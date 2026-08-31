@@ -10,6 +10,7 @@ web-build/
 *.key
 *.mobileprovision
 *.orig.*
+
 web-build/
 .DS_Store
 
@@ -30,3 +31,12 @@ expo-env.d.ts
 # ─── API Keys Backup ──────────────────────────────────────────────────────────
 *.env.backup
 .env.backup.*
+# --- Local inspection / temp directories
+_apk_inspect/
+.claude-flow/
+.claude/
+.mcp.json
+
+# --- Android signing keys
+*.keystore
+android/keystores/

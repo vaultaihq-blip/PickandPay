@@ -1,16 +1,16 @@
-import React, { useState, useEffect, useMemo } from "react";
+﻿import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  useColorScheme,
   Alert,
   Modal,
   Linking,
+  InteractionManager,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as MailComposer from "expo-mail-composer";
@@ -22,14 +22,20 @@ import { BarChart } from "@/components/dashboard/BarChart";
 import { BreakdownCard } from "@/components/dashboard/BreakdownCard";
 import { SummaryShare } from "@/components/dashboard/SummaryShare";
 import { CentRoulette } from "@/components/roulette/CentRoulette";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
+import { Avatar } from "@/components/ui/Avatar";
 import { formatCurrency } from "@/utils/formatter";
 import { Colors as C } from "@/constants/colors";
 import { supabase } from "@/lib/supabase";
 import { CentAdjustment, SessionParticipant, PaymentReminder } from "@/types";
 import { sendPushNotification } from "@/lib/notifications";
 import { toCents, fromCents } from "@/utils/validator";
+import { useI18nStore } from "@/store/i18nStore";
+
+const BG = "#0B0D10";
+const CARD = "#15181D";
+const BORDER = "#252A32";
+const TEXT = "#F8FAFC";
+const MUTED = "#6B7280";
 
 type CentMethod = "creator" | "highest" | "roulette" | null;
 
@@ -42,49 +48,52 @@ export default function DashboardScreen() {
   }>();
   const fromLobby = source === "lobby";
   const isReadOnly = readOnly === "true";
-  const isDark = useColorScheme() === "dark";
+  const insets = useSafeAreaInsets();
+
   const {
-    currentSession,
-    markPaid,
-    markViewingPaid,
-    setStatus,
-    setCentAdjustment,
-    splitResults: storeSplitResults,
-    addReminder,
-    clearSession,
-    addCompletedSession,
-    viewingSession,
-    viewingSplitResults,
-    setViewingSession,
+    currentSession, markPaid, markViewingPaid, markCoveredBy, setStatus, setCentAdjustment,
+    splitResults: storeSplitResults, addReminder, clearSession, addCompletedSession,
+    viewingSession, viewingSplitResults, setViewingSession,
   } = useSessionStore();
   const { profile } = useAuthStore();
+  const { t, language } = useI18nStore();
+  void language;
 
   const [rouletteVisible, setRouletteVisible] = useState(false);
   const [centMethod, setCentMethod] = useState<CentMethod>(null);
   const [closing, setClosing] = useState(false);
   const [remindTarget, setRemindTarget] = useState<SessionParticipant | null>(null);
-  const [viewSplit, setViewSplit] = useState(viewSplitParam === "true");
-  // Track which breakdown cards are expanded — lifted from BreakdownCard so re-renders don't reset state
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [actionSheetP, setActionSheetP] = useState<SessionParticipant | null>(null);
+  const [viewItemsForUser, setViewItemsForUser] = useState<string | null>(null);
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const [renderBreakdown, setRenderBreakdown] = useState(false);
+  const [contentReady, setContentReady] = useState(false);
 
-  const textColor = isDark ? C.textPrimaryDark : C.textPrimaryLight;
-  const mutedColor = isDark ? C.textMutedDark : C.textMutedLight;
-  const bgColor = isDark ? C.bgDark : C.bgLight;
-  const borderColor = isDark ? C.cardBorderDark : C.cardBorderLight;
-
-  // Para modo readOnly (histórico), usar viewingSession sem tocar na sessão activa
   const session = isReadOnly ? (viewingSession ?? currentSession) : currentSession;
   const splitResults = isReadOnly ? viewingSplitResults : storeSplitResults;
   const receipt = session?.receipt;
   const isCreator = session?.creatorId === profile?.id;
 
-  // ── Limpeza do viewingSession ao sair do modo readOnly ───────────────────
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => setContentReady(true), 250);
+    });
+    return () => { task.cancel(); clearTimeout(timer); };
+  }, []);
+
   useEffect(() => {
     if (!isReadOnly) return;
     return () => { setViewingSession(null); };
   }, [isReadOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Sorted participants: current user first, then by amount desc ──────────
+  useEffect(() => {
+    if (viewSplitParam === "true" && profile?.id) {
+      setViewItemsForUser(profile.id);
+    }
+  }, [viewSplitParam, profile?.id]);
+
   const sortedParticipants = useMemo(() => {
     if (!session) return [];
     return [...session.participants].sort((a, b) => {
@@ -94,249 +103,191 @@ export default function DashboardScreen() {
     });
   }, [session?.participants, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Popup "bill closed" for non-host participants ──────────────────────────
-  useEffect(() => {
-    if (!session || session.id.startsWith("session_") || isCreator || isReadOnly) return;
+  const headerDate = useMemo(() => {
+    if (receipt?.date) {
+      try {
+        return new Date(receipt.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+      } catch {}
+    }
+    return new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  }, [receipt?.date]);
 
-    const ch = supabase
-      .channel(`session-closed:${session.id}:${Date.now()}`)
-      .on("postgres_changes", {
-        event: "UPDATE",
-        schema: "public",
-        table: "sessions",
-        filter: `id=eq.${session.id}`,
-      }, (payload) => {
-        const newStatus = payload.new?.status as string | undefined;
-        if (newStatus === "closed") {
-          Alert.alert(
-            "Bill Closed",
-            "The host has closed this bill.",
-            [
-              {
-                text: "Stay on Payments",
-                style: "cancel",
-              },
-              {
-                text: "Go Home",
-                onPress: () => {
-                  addCompletedSession({ ...session, status: "closed" } as typeof session);
-                  clearSession();
-                  router.replace("/(app)");
-                },
-              },
-            ]
-          );
-        }
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(ch); };
-  }, [session?.id, isCreator, isReadOnly]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── ReadOnly: fetch latest paid status from Supabase on open ─────────────
+  // One-time paid-status fetch for readonly view
   useEffect(() => {
     if (!isReadOnly || !session) return;
     if (session.id.startsWith("session_") || session.id.startsWith("dev_session_")) return;
-    const fetchPaid = async () => {
-      const { data } = await supabase
-        .from("session_participants")
-        .select("user_id, paid")
-        .eq("session_id", session.id);
+    supabase.from("session_participants").select("user_id, paid").eq("session_id", session.id).then(({ data }) => {
       if (!data) return;
       for (const row of data) {
         if (row.paid !== undefined) markViewingPaid(row.user_id as string, row.paid as boolean);
       }
-    };
-    fetchPaid();
+    });
   }, [isReadOnly, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── ReadOnly: realtime paid sync (host can mark paid in history view) ─────
+  // All realtime subscriptions in one delayed batch — avoids concurrent channel setup during navigation animation
   useEffect(() => {
-    if (!isReadOnly || !isCreator || !session) return;
-    if (session.id.startsWith("session_") || session.id.startsWith("dev_session_")) return;
-    const ch = supabase
-      .channel(`dashboard-paid-readonly:${session.id}:${Date.now()}`)
-      .on("postgres_changes", {
-        event: "UPDATE",
-        schema: "public",
-        table: "session_participants",
-        filter: `session_id=eq.${session.id}`,
-      }, (payload) => {
-        const uid = payload.new?.user_id as string | undefined;
-        const paidVal = payload.new?.paid as boolean | undefined;
-        if (!uid || paidVal === undefined) return;
-        markViewingPaid(uid, paidVal);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [isReadOnly, isCreator, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!session) return;
+    const isOffline = session.id.startsWith("session_") || session.id.startsWith("dev_session_");
+    if (isOffline) return;
 
-  // ── Realtime: sync paid status to/from all devices ────────────────────────
-  useEffect(() => {
-    if (!session || session.id.startsWith("session_") || isReadOnly) return;
+    const channels: ReturnType<typeof supabase.channel>[] = [];
+    let timer: ReturnType<typeof setTimeout>;
 
-    const ch = supabase
-      .channel(`dashboard-paid:${session.id}:${Date.now()}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "session_participants",
-          filter: `session_id=eq.${session.id}`,
-        },
-        (payload) => {
-          const uid = payload.new?.user_id as string | undefined;
-          const paidVal = payload.new?.paid as boolean | undefined;
-          if (!uid || paidVal === undefined) return;
-          markPaid(uid, paidVal);
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        if (!isReadOnly && !isCreator) {
+          channels.push(
+            supabase
+              .channel(`session-closed:${session.id}:${Date.now()}`)
+              .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions", filter: `id=eq.${session.id}` }, (payload) => {
+                if ((payload.new?.status as string | undefined) === "closed") {
+                  Alert.alert(t("dashboard_bill_closed"), t("dashboard_bill_closed_msg"), [
+                    { text: t("dashboard_stay_payments"), style: "cancel" },
+                    { text: t("dashboard_go_home_btn"), onPress: () => { addCompletedSession({ ...session, status: "closed" } as typeof session); clearSession(); router.replace("/(app)"); } },
+                  ]);
+                }
+              })
+              .subscribe()
+          );
         }
-      )
-      .subscribe();
 
-    return () => { supabase.removeChannel(ch); };
-  }, [session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+        if (isReadOnly && isCreator) {
+          channels.push(
+            supabase
+              .channel(`dashboard-paid-ro:${session.id}:${Date.now()}`)
+              .on("postgres_changes", { event: "UPDATE", schema: "public", table: "session_participants", filter: `session_id=eq.${session.id}` }, (payload) => {
+                const uid = payload.new?.user_id as string | undefined;
+                const paidVal = payload.new?.paid as boolean | undefined;
+                if (uid && paidVal !== undefined) markViewingPaid(uid, paidVal);
+              })
+              .subscribe()
+          );
+        }
 
-  // ── Bottom-up totals using cent arithmetic ────────────────────────────────
-  const itemsSubtotalCents = receipt
-    ? Object.values(receipt.categories).flat().reduce((s, i) => s + toCents(i.totalPrice), 0)
-    : 0;
-  const globalCostsCents = receipt
-    ? receipt.globalCosts.reduce((s, c) => s + toCents(c.amount), 0)
-    : 0;
+        if (!isReadOnly) {
+          channels.push(
+            supabase
+              .channel(`dashboard-paid:${session.id}:${Date.now()}`)
+              .on("postgres_changes", { event: "UPDATE", schema: "public", table: "session_participants", filter: `session_id=eq.${session.id}` }, (payload) => {
+                const uid = payload.new?.user_id as string | undefined;
+                const paidVal = payload.new?.paid as boolean | undefined;
+                const coveredBy = payload.new?.covered_by_user_id as string | null | undefined;
+                if (uid) {
+                  if (paidVal !== undefined) markPaid(uid, paidVal);
+                  if (coveredBy !== undefined) markCoveredBy(uid, coveredBy);
+                }
+              })
+              .subscribe()
+          );
+        }
+      }, 500);
+    });
+
+    return () => { task.cancel(); clearTimeout(timer); for (const ch of channels) supabase.removeChannel(ch); };
+  }, [session?.id, isCreator, isReadOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cent arithmetic
+  const itemsSubtotalCents = receipt ? Object.values(receipt.categories).flat().reduce((s, i) => s + toCents(i.totalPrice), 0) : 0;
+  const globalCostsCents = receipt ? receipt.globalCosts.reduce((s, c) => s + toCents(c.amount), 0) : 0;
   const tipCents = (() => {
     if (!receipt || !session) return 0;
-    if (receipt.tipMode === "individual") {
-      return session.participants.reduce((s, p) => s + toCents(p.tipContribution ?? 0), 0);
-    }
+    if (receipt.tipMode === "individual") return session.participants.reduce((s, p) => s + toCents(p.tipContribution ?? 0), 0);
     return toCents(receipt.selectedTip ?? 0);
   })();
   const displayTotalCents = itemsSubtotalCents + globalCostsCents + tipCents;
-
   const itemsSubtotal = fromCents(itemsSubtotalCents);
   const globalCostsTotal = fromCents(globalCostsCents);
   const tipTotal = fromCents(tipCents);
   const displayTotal = fromCents(displayTotalCents);
 
-  const computedTotalCents = session
-    ? session.participants.reduce((s, p) => s + toCents(p.totalOwed), 0)
-    : 0;
-
+  const computedTotalCents = session ? session.participants.reduce((s, p) => s + toCents(p.totalOwed), 0) : 0;
   const centDiffCents = displayTotalCents - computedTotalCents;
   const centDiff = fromCents(centDiffCents);
   const hasCentDiff = Math.abs(centDiff) >= 0.01 && Math.abs(centDiff) <= 0.10;
 
-  // ── Expand toggle for breakdown cards ─────────────────────────────────────
   const toggleExpand = (userId: string) => {
     setExpandedCards((prev) => {
       const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
+      if (next.has(userId)) next.delete(userId); else next.add(userId);
       return next;
     });
   };
 
-  // ── Mark paid — host only; in readOnly mode only unpaid→paid allowed ───────
   const handleMarkPaid = async (userId: string, paid: boolean) => {
+    if (!isCreator) return;
     if (isReadOnly) {
-      if (!paid) return; // can't unmark paid in history view
+      if (!paid) return;
       markViewingPaid(userId, true);
     } else {
       markPaid(userId, paid);
     }
     const isOffline = session?.id.startsWith("session_") || session?.id.startsWith("dev_session_");
     if (session && !isOffline) {
-      await supabase
-        .from("session_participants")
-        .update({ paid })
-        .eq("session_id", session.id)
-        .eq("user_id", userId);
+      await supabase.from("session_participants").update({ paid }).eq("session_id", session.id).eq("user_id", userId);
     }
   };
 
-  // ── Cent adjustment ───────────────────────────────────────────────────────
-  const handleCentAssign = (method: "creator" | "highest", userId?: string) => {
-    if (!session) return;
-    let assignedTo = userId ?? profile?.id ?? "";
-    if (method === "creator") {
-      assignedTo = session.creatorId;
-    } else if (method === "highest") {
-      let max = 0;
-      for (const p of session.participants) {
-        if (p.totalOwed > max) { max = p.totalOwed; assignedTo = p.userId; }
-      }
+  const handleMarkCoveredBy = async (targetUserId: string, coveredByUserId: string | null) => {
+    const isOffline = session?.id.startsWith("session_") || session?.id.startsWith("dev_session_");
+    markCoveredBy(targetUserId, coveredByUserId);
+    if (session && !isOffline) {
+      await supabase
+        .from("session_participants")
+        .update({ covered_by_user_id: coveredByUserId })
+        .eq("session_id", session.id)
+        .eq("user_id", targetUserId);
     }
-    const adjustment: CentAdjustment = { amount: centDiff, assignedTo, method };
-    setCentAdjustment(adjustment);
+  };
+
+  const handleCentAssign = (method: "creator" | "highest") => {
+    if (!session) return;
+    let assignedTo = profile?.id ?? "";
+    if (method === "creator") assignedTo = session.creatorId;
+    else { let max = 0; for (const p of session.participants) { if (p.totalOwed > max) { max = p.totalOwed; assignedTo = p.userId; } } }
+    setCentAdjustment({ amount: centDiff, assignedTo, method } as CentAdjustment);
     setCentMethod(method);
   };
 
   const handleRouletteAccept = (userId: string) => {
-    const adjustment: CentAdjustment = { amount: centDiff, assignedTo: userId, method: "roulette" };
-    setCentAdjustment(adjustment);
+    setCentAdjustment({ amount: centDiff, assignedTo: userId, method: "roulette" } as CentAdjustment);
     setCentMethod("roulette");
     setRouletteVisible(false);
   };
 
-  // ── Close bill (host only) ────────────────────────────────────────────────
   const doClose = async () => {
     if (!session) return;
     setClosing(true);
     try {
       if (!session.id.startsWith("session_")) {
-        await supabase
-          .from("sessions")
-          .update({ status: "closed", closed_at: new Date().toISOString() })
-          .eq("id", session.id);
+        await supabase.from("sessions").update({ status: "closed", closed_at: new Date().toISOString() }).eq("id", session.id);
       }
       setStatus("closed");
       maybeShowReviewPrompt();
-      // Clear active session and navigate home — bill is in history via setStatus("closed")
       clearSession();
       router.replace("/(app)");
-    } finally {
-      setClosing(false);
-    }
+    } finally { setClosing(false); }
   };
 
   const handleCloseBill = () => {
     if (!session) return;
     const unpaid = session.participants.filter((p) => !p.paid);
-    if (unpaid.length === 0) {
-      doClose();
-      return;
-    }
-    const names = unpaid.map((p) => p.profile.name).join(", ");
-    Alert.alert(
-      "⚠️ Unpaid participants",
-      `${unpaid.length} ${unpaid.length === 1 ? "person hasn't" : "people haven't"} paid yet:\n\n${names}\n\nClose bill anyway?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Close Anyway", style: "destructive", onPress: doClose },
-      ]
-    );
+    if (unpaid.length === 0) { doClose(); return; }
+    Alert.alert("⚠️ Unpaid participants",
+      `${unpaid.length} ${unpaid.length === 1 ? "person hasn't" : "people haven't"} paid yet:\n\n${unpaid.map((p) => p.profile.name).join(", ")}\n\nClose bill anyway?`,
+      [{ text: t("cancel"), style: "cancel" }, { text: t("dashboard_close_anyway"), style: "destructive", onPress: doClose }]);
   };
 
-  // ── Non-host: close my part ───────────────────────────────────────────────
   const handleCloseMyPart = () => {
-    const sessionSnapshot = session;
-    if (!sessionSnapshot) {
-      router.replace("/(app)");
-      return;
-    }
-    try {
-      addCompletedSession(sessionSnapshot);
-    } catch (err) {
-      console.error("[dashboard] addCompletedSession error:", err);
-    }
+    const snap = session;
+    if (!snap) { router.replace("/(app)"); return; }
+    try { addCompletedSession(snap); } catch {}
+    maybeShowReviewPrompt();
     clearSession();
     router.replace("/(app)");
   };
 
-  // ── Reminders ─────────────────────────────────────────────────────────────
   const canRemind = (userId: string): boolean => {
-    const reminders = session?.reminders ?? [];
-    const last = reminders
+    const last = (session?.reminders ?? [])
       .filter((r) => r.recipientId === userId)
       .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())[0];
     if (!last) return true;
@@ -344,86 +295,93 @@ export default function DashboardScreen() {
   };
 
   const recordAndClose = (recipientId: string, method: PaymentReminder["method"]) => {
-    addReminder({
-      id: String(Date.now()),
-      recipientId,
-      sentAt: new Date().toISOString(),
-      method,
-      sentBy: profile?.id ?? "",
-    });
+    addReminder({ id: String(Date.now()), recipientId, sentAt: new Date().toISOString(), method, sentBy: profile?.id ?? "" });
     setRemindTarget(null);
   };
 
+  const isCoverageReminder = (p: SessionParticipant) => p.coveredByUserId === profile?.id;
+
+  const reminderTitle = (p: SessionParticipant) =>
+    isCoverageReminder(p) ? "Devolução pendente 💸" : "Payment Reminder";
+
+  const reminderBody = (p: SessionParticipant) =>
+    isCoverageReminder(p)
+      ? `${profile?.name} pagou a tua conta (${formatCurrency(p.totalOwed, receipt?.currency ?? "EUR")}) em ${receipt?.restaurant}. Não te esqueças de devolver!`
+      : `⏰ Don't forget to pay! You owe ${formatCurrency(p.totalOwed, receipt?.currency ?? "EUR")} for ${receipt?.restaurant}.`;
+
   const handlePushReminder = async (p: SessionParticipant) => {
     try {
-      await sendPushNotification({
-        to: p.userId,
-        title: "Payment Reminder",
-        body: `⏰ Don't forget to pay your share! You owe ${formatCurrency(p.totalOwed, receipt!.currency)} for ${receipt!.restaurant}.`,
-        data: { type: "payment_reminder", session_id: session!.id },
-      });
-      Alert.alert("Reminder Sent", `Notification sent to ${p.profile.name}.`);
+      await sendPushNotification({ to: p.userId, title: reminderTitle(p), body: reminderBody(p), data: { type: "payment_reminder", session_id: session?.id } });
+      Alert.alert("Lembrete enviado", `${p.profile.name} foi notificado.`);
       recordAndClose(p.userId, "push");
     } catch {
-      Alert.alert(
-        "Push unavailable",
-        `${p.profile.name} hasn't enabled notifications in the app. Try Email or WhatsApp instead.`,
-        [{ text: "OK" }]
-      );
+      Alert.alert("Sem notificação push", `${p.profile.name} não tem notificações ativadas. Tenta por email ou WhatsApp.`, [{ text: "OK" }]);
     }
   };
 
   const handleEmailReminder = async (p: SessionParticipant) => {
     try {
-      if (!p.profile.email) {
-        Alert.alert("No email on file", "This user has no email address saved.");
-        return;
-      }
-      const subject = `Payment Reminder: ${receipt?.restaurant}`;
-      const body = `Hi ${p.profile.name},\n\nFriendly reminder that you owe ${formatCurrency(p.totalOwed, receipt!.currency)} for ${receipt!.restaurant}.\n\nThanks!\nSent via Pick&Pay`;
+      if (!p.profile.email) { Alert.alert("Sem email", `${p.profile.name} não tem email registado.`); return; }
+      const subject = isCoverageReminder(p)
+        ? `Devolução pendente — ${receipt?.restaurant}`
+        : `Payment Reminder: ${receipt?.restaurant}`;
+      const body = isCoverageReminder(p)
+        ? `Olá ${p.profile.name},\n\n${profile?.name} pagou a tua conta (${formatCurrency(p.totalOwed, receipt?.currency ?? "EUR")}) em ${receipt?.restaurant}.\n\nNão te esqueças de devolver!\n\nEnviado via Pick&Pay`
+        : `Hi ${p.profile.name},\n\nFriendly reminder: you owe ${formatCurrency(p.totalOwed, receipt?.currency ?? "EUR")} for ${receipt?.restaurant}.\n\nThanks!\nSent via Pick&Pay`;
       const available = await MailComposer.isAvailableAsync();
-      if (available) {
-        await MailComposer.composeAsync({ recipients: [p.profile.email], subject, body });
-      } else {
+      if (available) { await MailComposer.composeAsync({ recipients: [p.profile.email], subject, body }); }
+      else {
         const mailto = `mailto:${p.profile.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        const canOpen = await Linking.canOpenURL(mailto);
-        if (!canOpen) {
-          Alert.alert("Email unavailable", "No email app is configured on this device.");
-          return;
-        }
+        if (!(await Linking.canOpenURL(mailto))) { Alert.alert("Email indisponível", "Nenhuma app de email configurada."); return; }
         await Linking.openURL(mailto);
       }
       recordAndClose(p.userId, "email");
-    } catch (err) {
-      console.error("[Reminder] Email error:", err);
-      Alert.alert("Failed to send", "Could not open the email composer.");
-    }
+    } catch { Alert.alert("Erro", "Não foi possível abrir o compositor de email."); }
   };
 
   const handleWhatsAppReminder = async (p: SessionParticipant) => {
     try {
-      const msg = encodeURIComponent(
-        `Hi ${p.profile.name}, friendly reminder: you owe ${formatCurrency(p.totalOwed, receipt!.currency)} for ${receipt!.restaurant}. Thanks!`
-      );
-      const url = `whatsapp://send?text=${msg}`;
-      const canOpen = await Linking.canOpenURL(url);
-      if (!canOpen) {
-        Alert.alert("WhatsApp not installed", "Install WhatsApp to send reminders this way.");
-        return;
-      }
+      const text = isCoverageReminder(p)
+        ? `Olá ${p.profile.name}! ${profile?.name} pagou a tua conta (${formatCurrency(p.totalOwed, receipt?.currency ?? "EUR")}) em ${receipt?.restaurant}. Não te esqueças de devolver! 🤝`
+        : `Hi ${p.profile.name}, friendly reminder: you owe ${formatCurrency(p.totalOwed, receipt?.currency ?? "EUR")} for ${receipt?.restaurant}. Thanks!`;
+      const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
+      if (!(await Linking.canOpenURL(url))) { Alert.alert("WhatsApp não instalado", "Instala o WhatsApp para enviar lembretes."); return; }
       await Linking.openURL(url);
       recordAndClose(p.userId, "whatsapp");
-    } catch (err) {
-      console.error("[Reminder] WhatsApp error:", err);
-      Alert.alert("Failed", "Could not open WhatsApp.");
-    }
+    } catch { Alert.alert("Erro", "Não foi possível abrir o WhatsApp."); }
   };
+
+  const handlePersonCardTap = (p: SessionParticipant) => {
+    setActionSheetP(p);
+  };
+
+  const handleBack = () => {
+    if (fromLobby) { router.replace("/(app)"); return; }
+    router.back();
+  };
+
+  const itemToUsers = useMemo(() => {
+    const map = new Map<string, SessionParticipant[]>();
+    if (!splitResults || !session) return map;
+    for (const p of session.participants) {
+      const result = splitResults.get(p.userId);
+      if (!result) continue;
+      for (const entry of result.itemBreakdown) {
+        if (!map.has(entry.itemId)) map.set(entry.itemId, []);
+        map.get(entry.itemId)!.push(p);
+      }
+    }
+    return map;
+  }, [splitResults, session]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const viewItemsParticipant = viewItemsForUser ? sortedParticipants.find((p) => p.userId === viewItemsForUser) : null;
+  const viewItemsSplitResult = viewItemsForUser ? splitResults?.get(viewItemsForUser) : null;
 
   if (!session || !receipt) {
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+      <SafeAreaView style={styles.safe}>
         <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyText, { color: mutedColor }]}>Session not found.</Text>
+          <Text style={styles.emptyText}>Session not found.</Text>
           <TouchableOpacity onPress={() => router.replace("/(app)")}>
             <Text style={{ color: C.primary, marginTop: 12, fontSize: 16 }}>Go home</Text>
           </TouchableOpacity>
@@ -433,75 +391,30 @@ export default function DashboardScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+    <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() =>
-            viewSplit
-              ? setViewSplit(false)
-              : fromLobby
-              ? router.replace("/(app)")
-              : router.back()
-          }
-        >
-          <Ionicons name="arrow-back" size={24} color={textColor} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.restaurantName, { color: textColor }]} numberOfLines={1}>
-            Payments
-          </Text>
-          <View style={styles.headerBadges}>
-            <Text style={[styles.headerSub, { color: mutedColor }]} numberOfLines={1}>
-              {receipt.restaurant}
-            </Text>
-            {isReadOnly && (
-              <View style={styles.readOnlyBadge}>
-                <Ionicons name="eye-outline" size={11} color={mutedColor} />
-                <Text style={[styles.readOnlyText, { color: mutedColor }]}>Read-only</Text>
-              </View>
-            )}
-          </View>
-        </View>
-        <View style={{ width: 24 }} />
+        <Text style={styles.headerTitle} numberOfLines={1}>Payment Screen</Text>
+        <Text style={styles.headerDate} numberOfLines={1}>{receipt.restaurant} · {headerDate}{isReadOnly ? " · View only" : ""}</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-        {/* Bar chart */}
-        <Card style={styles.chartCard} padding={0}>
-          <BarChart
-            participants={session.participants}
-            currency={receipt.currency}
-            splitResults={splitResults}
-          />
-        </Card>
-
-        {/* Totals summary */}
-        <Card style={styles.summaryCard}>
-          <View style={styles.summaryRow}>
-            <Text style={[styles.summaryLabel, { color: mutedColor }]}>Items subtotal</Text>
-            <Text style={[styles.summaryValue, { color: textColor }]}>
-              {formatCurrency(itemsSubtotal, receipt.currency)}
-            </Text>
+        {/* Total Bill Card */}
+        <View style={styles.totalCard}>
+          <Text style={styles.totalCardLabel}>Total bill</Text>
+          <Text style={styles.totalCardAmount}>{formatCurrency(displayTotal, receipt.currency)}</Text>
+          <View style={styles.totalDivider} />
+          <View style={styles.totalRow}>
+            <Text style={styles.totalRowLabel}>Service</Text>
+            <Text style={[styles.totalRowValue, globalCostsTotal === 0 && { color: MUTED }]}>{formatCurrency(globalCostsTotal, receipt.currency)}</Text>
           </View>
-          <View style={styles.summaryRow}>
-            <Text style={[styles.summaryLabel, { color: mutedColor }]}>Global costs</Text>
-            <Text style={[styles.summaryValue, { color: globalCostsTotal > 0 ? textColor : mutedColor }]}>
-              {formatCurrency(globalCostsTotal, receipt.currency)}
-            </Text>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalRowLabel}>Tip</Text>
+            <Text style={[styles.totalRowValue, tipTotal === 0 ? { color: MUTED } : { color: C.success }]}>{formatCurrency(tipTotal, receipt.currency)}</Text>
           </View>
-          <View style={styles.summaryRow}>
-            <Text style={[styles.summaryLabel, { color: mutedColor }]}>Tip</Text>
-            <Text style={[styles.summaryValue, { color: tipTotal > 0 ? textColor : mutedColor }]}>
-              {formatCurrency(tipTotal, receipt.currency)}
-            </Text>
-          </View>
-          <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
-          <View style={styles.summaryRow}>
-            <Text style={[styles.summaryTotal, { color: textColor }]}>Grand Total</Text>
-            <Text style={[styles.summaryTotalValue, { color: C.primary }]}>
-              {formatCurrency(displayTotal, receipt.currency)}
-            </Text>
+          <View style={[styles.totalRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER, paddingTop: 8, marginTop: 2 }]}>
+            <Text style={[styles.totalRowLabel, { color: TEXT, fontWeight: "700" }]}>Total</Text>
+            <Text style={[styles.totalRowValue, { color: TEXT, fontWeight: "800", fontSize: 16 }]}>{formatCurrency(displayTotal, receipt.currency)}</Text>
           </View>
 
           {hasCentDiff && !centMethod && (
@@ -509,32 +422,19 @@ export default function DashboardScreen() {
               <View style={[styles.centAlert, { borderColor: C.warning }]}>
                 <Ionicons name="warning-outline" size={16} color={C.warning} />
                 <Text style={[styles.centAlertText, { color: C.warning }]}>
-                  {formatCurrency(Math.abs(centDiff), receipt.currency)} rounding difference
+                  {formatCurrency(Math.abs(centDiff), receipt.currency)} {t("dashboard_rounding_diff")}
                 </Text>
               </View>
-              <Text style={[styles.centHelperText, { color: mutedColor }]}>
-                Someone needs to cover the rounding difference
-              </Text>
+              <Text style={styles.centHelperText}>{t("dashboard_someone_needs")}</Text>
               <View style={styles.centActions}>
-                <TouchableOpacity
-                  style={[styles.centBtn, { borderColor }]}
-                  onPress={() => handleCentAssign("creator")}
-                >
-                  <Text style={[styles.centBtnText, { color: textColor }]}>Assign to host</Text>
+                <TouchableOpacity style={styles.centBtn} onPress={() => handleCentAssign("creator")}>
+                  <Text style={styles.centBtnText}>{t("dashboard_assign_host")}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.centBtn, { borderColor }]}
-                  onPress={() => handleCentAssign("highest")}
-                >
-                  <Text style={[styles.centBtnText, { color: textColor }]}>Highest amount</Text>
+                <TouchableOpacity style={styles.centBtn} onPress={() => handleCentAssign("highest")}>
+                  <Text style={styles.centBtnText}>{t("dashboard_highest_amount")}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.centBtn, styles.rouletteBtn]}
-                  onPress={() => setRouletteVisible(true)}
-                >
-                  <Text style={styles.rouletteBtnText}>
-                    🎲 Spin to see who pays the {formatCurrency(Math.abs(centDiff), receipt.currency)} adjustment
-                  </Text>
+                <TouchableOpacity style={[styles.centBtn, styles.rouletteBtn]} onPress={() => setRouletteVisible(true)}>
+                  <Text style={styles.rouletteBtnText}>{t("dashboard_spin_text")} {formatCurrency(Math.abs(centDiff), receipt.currency)} {t("dashboard_spin_adjustment")}</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -543,157 +443,365 @@ export default function DashboardScreen() {
             <View style={[styles.centResolved, { backgroundColor: C.success + "22" }]}>
               <Ionicons name="checkmark-circle" size={14} color={C.success} />
               <Text style={[styles.centResolvedText, { color: C.success }]}>
-                {formatCurrency(Math.abs(centDiff), receipt.currency)} assigned to{" "}
-                {session.participants.find(
-                  (p) => p.userId === session.centAdjustment?.assignedTo
-                )?.profile.name ?? "unknown"}
+                {formatCurrency(Math.abs(centDiff), receipt.currency)} {t("dashboard_assigned_to")}{" "}
+                {session.participants.find((p) => p.userId === session.centAdjustment?.assignedTo)?.profile.name ?? "unknown"}
               </Text>
             </View>
           )}
-        </Card>
+        </View>
 
-        {/* Per-participant breakdown cards — current user first, then by amount */}
-        <Text style={[styles.sectionTitle, { color: mutedColor }]}>PAYMENT STATUS</Text>
-        {sortedParticipants.map((p) => {
-          const isCurrentUser = p.userId === profile?.id;
-          // Enrich current user's card with latest auth profile data (avatar, icon)
-          const enrichedParticipant =
-            isCurrentUser && profile
-              ? {
-                  ...p,
-                  profile: {
-                    ...p.profile,
-                    avatarUrl: profile.avatarUrl ?? p.profile.avatarUrl,
-                    avatarIcon: profile.avatarIcon ?? p.profile.avatarIcon,
-                  },
-                }
-              : p;
-
-          return (
-            <View key={p.userId}>
-              <BreakdownCard
-                participant={enrichedParticipant}
-                splitResult={splitResults?.get(p.userId)}
-                currency={receipt.currency}
-                isCreator={p.userId === session.creatorId}
-                isCurrentUser={isCurrentUser}
-                canMarkPaid={isCreator && !isReadOnly}
-                onMarkPaid={(paid) => handleMarkPaid(p.userId, paid)}
-                tipMode={receipt.tipMode ?? "equal"}
-                expanded={expandedCards.has(p.userId)}
-                onToggleExpand={() => toggleExpand(p.userId)}
-              />
-              {!p.paid && !isReadOnly && (
-                <View style={[styles.remindRow, { borderColor }]}>
-                  <View style={styles.pendingBadge}>
-                    <Text style={styles.pendingBadgeText}>⚠️ Payment Pending</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.remindBtn, !canRemind(p.userId) && styles.remindBtnDisabled]}
-                    onPress={() => setRemindTarget(p)}
-                    disabled={!canRemind(p.userId)}
-                  >
-                    <Ionicons name="notifications-outline" size={14} color="#fff" />
-                    <Text style={styles.remindBtnText}>
-                      {canRemind(p.userId) ? "Remind" : "Reminded"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          );
-        })}
-
-        {/* Share summary */}
-        <SummaryShare session={session} splitResults={splitResults} />
-
-        {/* Bottom action buttons */}
-        {viewSplit ? (
-          <TouchableOpacity style={styles.backToSummaryBtn} onPress={() => setViewSplit(false)}>
-            <Ionicons name="arrow-back" size={18} color={C.primary} />
-            <Text style={styles.backToSummaryText}>Back to Summary</Text>
-          </TouchableOpacity>
-        ) : isReadOnly ? (
-          <TouchableOpacity style={styles.backToSummaryBtn} onPress={() => router.replace("/(app)")}>
-            <Ionicons name="home-outline" size={18} color={C.primary} />
-            <Text style={styles.backToSummaryText}>Back to Home Screen</Text>
-          </TouchableOpacity>
-        ) : isCreator ? (
-          <TouchableOpacity
-            style={[styles.closeBtn, closing && { opacity: 0.6 }]}
-            onPress={handleCloseBill}
-            disabled={closing}
-          >
-            <Ionicons name="lock-closed-outline" size={20} color="#fff" />
-            <Text style={styles.closeBtnText}>
-              {closing ? "Closing..." : "Close Bill"}
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={styles.doneBtn} onPress={handleCloseMyPart}>
-            <Ionicons name="checkmark-done-outline" size={20} color="#fff" />
-            <Text style={styles.closeBtnText}>Done — Close My Part</Text>
-          </TouchableOpacity>
+        {/* Amounts owed — bar chart */}
+        {contentReady && (
+        <View style={styles.chartCard}>
+          <BarChart participants={session.participants} currency={receipt.currency} splitResults={splitResults} />
+        </View>
         )}
+
+        {/* Participant cards grid */}
+        <View>
+          <Text style={styles.sectionLabel}>PARTICIPANTS</Text>
+          <View style={styles.personGrid}>
+            {sortedParticipants.map((p) => {
+              const personColor = p.profile.color ?? C.primary;
+              const isCurrentUser = p.userId === profile?.id;
+              const enriched = isCurrentUser && profile
+                ? { ...p, profile: { ...p.profile, avatarUrl: profile.avatarUrl ?? p.profile.avatarUrl, avatarIcon: profile.avatarIcon ?? p.profile.avatarIcon } }
+                : p;
+              return (
+                <TouchableOpacity
+                  key={p.userId}
+                  style={[styles.personCard, { borderColor: BORDER }]}
+                  onPress={() => handlePersonCardTap(enriched)}
+                  activeOpacity={0.75}
+                >
+                  {p.userId === session.creatorId && (
+                    <View style={styles.hostBadge}><Text style={styles.hostBadgeText}>Host</Text></View>
+                  )}
+                  <View style={styles.personCardContent}>
+                    <Avatar name={enriched.profile.name} avatarIcon={enriched.profile.avatarIcon} avatarUrl={enriched.profile.avatarUrl} color={enriched.profile.color} size={48} />
+                    <Text style={styles.personCardName} numberOfLines={1}>{enriched.profile.name}</Text>
+                    <Text style={[styles.personCardAmount, { color: personColor }]}>
+                      {formatCurrency(p.totalOwed, receipt.currency)}
+                    </Text>
+                    <View style={[styles.paidBadge, { backgroundColor: p.paid ? C.success + "22" : "#F59E0B22" }]}>
+                      <Ionicons name={p.paid ? "checkmark-circle" : "time-outline"} size={12} color={p.paid ? C.success : "#F59E0B"} />
+                      <Text style={[styles.paidBadgeText, { color: p.paid ? C.success : "#F59E0B" }]}>
+                        {p.paid ? "Paid" : "Pending"}
+                      </Text>
+                    </View>
+                    {p.coveredByUserId && (
+                      <View style={[styles.paidBadge, { backgroundColor: "#6366F122", marginTop: -4 }]}>
+                        <Text style={[styles.paidBadgeText, { color: C.primary }]}>
+                          🤝 {session.participants.find((x) => x.userId === p.coveredByUserId)?.profile.name ?? ""}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Bill Split Breakdown — dropdown accordion */}
+        <View style={styles.breakdownAccordion}>
+          <TouchableOpacity
+            style={styles.breakdownAccordionHeader}
+            onPress={() => {
+              const next = !showBreakdown;
+              setShowBreakdown(next);
+              if (next) {
+                requestAnimationFrame(() => setRenderBreakdown(true));
+              } else {
+                setRenderBreakdown(false);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="receipt-outline" size={16} color={MUTED} />
+            <Text style={styles.breakdownAccordionTitle}>Bill Split Breakdown</Text>
+            <Ionicons name={showBreakdown ? "chevron-up" : "chevron-down"} size={16} color={MUTED} />
+          </TouchableOpacity>
+          {renderBreakdown && (
+            <View style={styles.receiptBreakdown}>
+              {(["starters", "mains", "drinks", "desserts", "others"] as const).map((cat) => {
+                const catItems = receipt.categories[cat];
+                if (!catItems || catItems.length === 0) return null;
+                return (
+                  <View key={cat}>
+                    <Text style={styles.breakdownCatLabel}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</Text>
+                    {catItems.map((item) => {
+                      const users = itemToUsers.get(item.id) ?? [];
+                      return (
+                        <View key={item.id} style={styles.breakdownItemRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.breakdownItemName} numberOfLines={1}>
+                              {item.quantity > 1 ? `${item.quantity}× ` : ""}{item.name}
+                            </Text>
+                            <Text style={styles.breakdownItemPrice}>
+                              {formatCurrency(item.unitPrice, receipt.currency)}
+                            </Text>
+                          </View>
+                          <View style={styles.breakdownUserCluster}>
+                            {users.length === 0 ? (
+                              <Text style={styles.breakdownUnassigned}>—</Text>
+                            ) : (
+                              <>
+                                {users.slice(0, 4).map((u, i) => (
+                                  <View key={u.userId} style={[styles.breakdownAvatarWrap, { marginLeft: i > 0 ? -8 : 0, zIndex: 10 - i }]}>
+                                    <Avatar name={u.profile.name} avatarIcon={u.profile.avatarIcon} avatarUrl={u.profile.avatarUrl} color={u.profile.color} size={26} />
+                                  </View>
+                                ))}
+                                {users.length > 4 && (
+                                  <View style={[styles.breakdownAvatarOverflow, { marginLeft: -8 }]}>
+                                    <Text style={styles.breakdownOverflowText}>+{users.length - 4}</Text>
+                                  </View>
+                                )}
+                              </>
+                            )}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
+        <SummaryShare session={session} splitResults={splitResults} />
+        <View style={{ height: 120 }} />
       </ScrollView>
 
+      {/* Fixed bottom action bar */}
+      <View style={[styles.actionBar, { paddingBottom: insets.bottom + 14 }]}>
+        {isReadOnly ? (
+          <TouchableOpacity style={[styles.closeBillBtn, { flex: 1 }]} onPress={() => router.replace("/(app)")}>
+            <Ionicons name="home-outline" size={18} color="#fff" />
+            <Text style={styles.closeBillText}>Go home</Text>
+          </TouchableOpacity>
+        ) : isCreator ? (
+          <TouchableOpacity style={[styles.closeBillBtn, { flex: 1 }, closing && { opacity: 0.6 }]} onPress={handleCloseBill} disabled={closing}>
+            <Ionicons name="lock-closed-outline" size={18} color="#fff" />
+            <Text style={styles.closeBillText}>{closing ? "Closing…" : "Close bill"}</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={[styles.closeBillBtn, { flex: 1 }]} onPress={handleCloseMyPart}>
+            <Ionicons name="checkmark-done-outline" size={18} color="#fff" />
+            <Text style={styles.closeBillText}>Done</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Action sheet — tap em participante */}
+      <Modal visible={!!actionSheetP} transparent animationType="slide" onRequestClose={() => setActionSheetP(null)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setActionSheetP(null)} />
+        <View style={[styles.actionSheet, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.sheetHandle} />
+          {actionSheetP && (
+            <>
+              <View style={styles.actionSheetHeader}>
+                <Avatar
+                  name={actionSheetP.profile.name}
+                  avatarIcon={actionSheetP.profile.avatarIcon}
+                  avatarUrl={actionSheetP.profile.avatarUrl}
+                  color={actionSheetP.profile.color}
+                  size={36}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.actionSheetName}>{actionSheetP.profile.name}</Text>
+                  <Text style={[styles.actionSheetAmount, { color: actionSheetP.profile.color ?? C.primary }]}>
+                    {formatCurrency(actionSheetP.totalOwed, receipt.currency)}
+                  </Text>
+                </View>
+                <View style={[styles.paidBadge, { backgroundColor: actionSheetP.paid ? C.success + "22" : "#F59E0B22" }]}>
+                  <Text style={{ color: actionSheetP.paid ? C.success : "#F59E0B", fontSize: 12, fontWeight: "700" }}>
+                    {actionSheetP.paid ? "Pago" : "Pendente"}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.actionSheetBtn}
+                onPress={() => { setViewItemsForUser(actionSheetP.userId); setActionSheetP(null); }}
+              >
+                <Ionicons name="list-outline" size={20} color={TEXT} />
+                <Text style={styles.actionSheetBtnText}>Ver seleção</Text>
+              </TouchableOpacity>
+
+              {/* Opção: cobrir pagamento de outro utilizador */}
+              {!isReadOnly && actionSheetP.userId !== profile?.id && !actionSheetP.paid && (
+                (() => {
+                  const iAmCovering = actionSheetP.coveredByUserId === profile?.id;
+                  const isCoveredByOther = !!actionSheetP.coveredByUserId && !iAmCovering;
+                  if (isCoveredByOther) return null;
+                  return (
+                    <TouchableOpacity
+                      style={styles.actionSheetBtn}
+                      onPress={async () => {
+                        const newCoverer = iAmCovering ? null : (profile?.id ?? null);
+                        await handleMarkCoveredBy(actionSheetP.userId, newCoverer);
+                        setActionSheetP(null);
+                      }}
+                    >
+                      <Text style={{ fontSize: 20 }}>🤝</Text>
+                      <Text style={[styles.actionSheetBtnText, { color: iAmCovering ? "#F59E0B" : C.primary }]}>
+                        {iAmCovering ? "Cancelar cobertura" : "Cobri o pagamento deste"}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })()
+              )}
+
+              {/* Lembrar reembolso: disponível sempre para o coverer (mesmo pago, mesmo em readonly) */}
+              {actionSheetP.coveredByUserId === profile?.id && (
+                <TouchableOpacity
+                  style={styles.actionSheetBtn}
+                  onPress={() => { setRemindTarget(actionSheetP); setActionSheetP(null); }}
+                >
+                  <Ionicons name="notifications-outline" size={20} color={TEXT} />
+                  <Text style={styles.actionSheetBtnText}>Lembrar pagamento 🔔</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Já me devolveu: limpa a cobertura */}
+              {!isReadOnly && actionSheetP.coveredByUserId === profile?.id && (
+                <TouchableOpacity
+                  style={styles.actionSheetBtn}
+                  onPress={async () => { await handleMarkCoveredBy(actionSheetP.userId, null); setActionSheetP(null); }}
+                >
+                  <Text style={{ fontSize: 18 }}>✅</Text>
+                  <Text style={[styles.actionSheetBtnText, { color: C.success }]}>Já me devolveu o valor</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Host: marcar como pago */}
+              {isCreator && !isReadOnly && (
+                <TouchableOpacity
+                  style={styles.actionSheetBtn}
+                  onPress={() => { handleMarkPaid(actionSheetP.userId, !actionSheetP.paid); setActionSheetP(null); }}
+                >
+                  <Ionicons
+                    name={actionSheetP.paid ? "close-circle-outline" : "checkmark-circle"}
+                    size={20}
+                    color={actionSheetP.paid ? "#F59E0B" : C.success}
+                  />
+                  <Text style={[styles.actionSheetBtnText, { color: actionSheetP.paid ? "#F59E0B" : C.success }]}>
+                    {actionSheetP.paid ? "Marcar como pendente" : "Marcar como pago"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+      </Modal>
+
+      {/* Items view modal */}
+      <Modal visible={!!viewItemsForUser} transparent animationType="slide" onRequestClose={() => setViewItemsForUser(null)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setViewItemsForUser(null)} />
+        <View style={[styles.itemsSheet, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.sheetHandle} />
+          {viewItemsParticipant && (
+            <>
+              <View style={styles.itemsSheetHeader}>
+                <Avatar name={viewItemsParticipant.profile.name} avatarIcon={viewItemsParticipant.profile.avatarIcon} avatarUrl={viewItemsParticipant.profile.avatarUrl} color={viewItemsParticipant.profile.color} size={40} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemsSheetName}>{viewItemsParticipant.profile.name}</Text>
+                  <Text style={[styles.itemsSheetAmount, { color: viewItemsParticipant.profile.color ?? C.primary }]}>
+                    {formatCurrency(viewItemsParticipant.totalOwed, receipt.currency)}
+                  </Text>
+                </View>
+                <View style={[styles.itemsSheetStatusBadge, { backgroundColor: viewItemsParticipant.paid ? C.success + "22" : "#F59E0B22" }]}>
+                  <Text style={{ color: viewItemsParticipant.paid ? C.success : "#F59E0B", fontSize: 12, fontWeight: "700" }}>
+                    {viewItemsParticipant.paid ? "Paid" : "Pending"}
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={styles.itemsSheetLabel}>ITEMS CHOSEN</Text>
+              <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+                {(viewItemsSplitResult?.itemBreakdown.length ?? 0) > 0 ? (
+                  viewItemsSplitResult!.itemBreakdown.map((entry) => (
+                    <View key={entry.itemId} style={styles.itemRow}>
+                      <Text style={styles.itemRowName} numberOfLines={2}>{entry.itemName}</Text>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text style={[styles.itemRowAmount, { color: viewItemsParticipant.profile.color ?? C.primary }]}>
+                          {formatCurrency(entry.amount, receipt.currency)}
+                        </Text>
+                        {entry.splitCount > 1 && (
+                          <Text style={styles.itemRowSplit}>÷{entry.splitCount} of {formatCurrency(entry.itemTotal, receipt.currency)}</Text>
+                        )}
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.itemRowEmpty}>No individual items — bill split equally</Text>
+                )}
+                {(viewItemsSplitResult?.globalCostsShare ?? 0) > 0 && (
+                  <View style={styles.itemRow}>
+                    <Text style={styles.itemRowName}>Tax & fees share</Text>
+                    <Text style={[styles.itemRowAmount, { color: MUTED }]}>+{formatCurrency(viewItemsSplitResult!.globalCostsShare, receipt.currency)}</Text>
+                  </View>
+                )}
+                {(viewItemsSplitResult?.tipShare ?? 0) > 0 && (
+                  <View style={styles.itemRow}>
+                    <Text style={styles.itemRowName}>Tip share</Text>
+                    <Text style={[styles.itemRowAmount, { color: C.success }]}>+{formatCurrency(viewItemsSplitResult!.tipShare, receipt.currency)}</Text>
+                  </View>
+                )}
+              </ScrollView>
+
+              <View style={styles.itemsSheetFooter}>
+                {isCreator && !isReadOnly && !viewItemsParticipant.paid && canRemind(viewItemsParticipant.userId) && (
+                  <TouchableOpacity
+                    style={[styles.remindSheetBtn, { flex: 1 }]}
+                    onPress={() => { setRemindTarget(viewItemsParticipant); setViewItemsForUser(null); }}
+                  >
+                    <Ionicons name="notifications-outline" size={16} color="#fff" />
+                    <Text style={styles.remindSheetBtnText}>Remind</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={[styles.closeBillBtn, { flex: 1 }]} onPress={() => setViewItemsForUser(null)}>
+                  <Text style={styles.closeBillText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </Modal>
+
       {/* Reminder modal */}
-      <Modal
-        visible={!!remindTarget}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setRemindTarget(null)}
-      >
-        <TouchableOpacity
-          style={styles.reminderOverlay}
-          activeOpacity={1}
-          onPress={() => setRemindTarget(null)}
-        />
-        <View style={[styles.reminderSheet, { backgroundColor: isDark ? C.cardDark : C.cardLight }]}>
-          <View style={[styles.reminderHandle, { backgroundColor: borderColor }]} />
-          <Text style={[styles.reminderTitle, { color: textColor }]}>
-            Send payment reminder to {remindTarget?.profile.name}?
+      <Modal visible={!!remindTarget} transparent animationType="slide" onRequestClose={() => setRemindTarget(null)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setRemindTarget(null)} />
+        <View style={[styles.reminderSheet, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.reminderTitle}>
+            {remindTarget && isCoverageReminder(remindTarget)
+              ? `Lembrar ${remindTarget.profile.name} de te devolver?`
+              : `Send reminder to ${remindTarget?.profile.name}?`}
           </Text>
-          <Text style={[styles.reminderMeta, { color: mutedColor }]}>
-            {remindTarget && formatCurrency(remindTarget.totalOwed, receipt.currency)} owed for{" "}
-            {receipt.restaurant}
+          <Text style={styles.reminderMeta}>
+            {remindTarget && formatCurrency(remindTarget.totalOwed, receipt.currency)}
+            {remindTarget && isCoverageReminder(remindTarget)
+              ? ` — pagaste tu por ${receipt.restaurant}`
+              : ` owed for ${receipt.restaurant}`}
           </Text>
-          <Text style={[styles.reminderSendVia, { color: mutedColor }]}>Send via:</Text>
-
-          <TouchableOpacity
-            style={[styles.reminderOption, { borderColor }]}
-            onPress={() => remindTarget && handlePushReminder(remindTarget)}
-          >
-            <Text style={styles.reminderOptionIcon}>📱</Text>
-            <Text style={[styles.reminderOptionText, { color: textColor }]}>Push Notification</Text>
+          <Text style={styles.reminderSendVia}>Send via:</Text>
+          <TouchableOpacity style={styles.reminderOption} onPress={() => remindTarget && handlePushReminder(remindTarget)}>
+            <Text style={styles.reminderOptionIcon}>📱</Text><Text style={styles.reminderOptionText}>Push Notification</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.reminderOption, { borderColor }]}
-            onPress={() => remindTarget && handleEmailReminder(remindTarget)}
-          >
-            <Text style={styles.reminderOptionIcon}>📧</Text>
-            <Text style={[styles.reminderOptionText, { color: textColor }]}>Email</Text>
+          <TouchableOpacity style={styles.reminderOption} onPress={() => remindTarget && handleEmailReminder(remindTarget)}>
+            <Text style={styles.reminderOptionIcon}>📧</Text><Text style={styles.reminderOptionText}>Email</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.reminderOption, { borderColor }]}
-            onPress={() => remindTarget && handleWhatsAppReminder(remindTarget)}
-          >
-            <Text style={styles.reminderOptionIcon}>💬</Text>
-            <Text style={[styles.reminderOptionText, { color: textColor }]}>WhatsApp</Text>
+          <TouchableOpacity style={styles.reminderOption} onPress={() => remindTarget && handleWhatsAppReminder(remindTarget)}>
+            <Text style={styles.reminderOptionIcon}>💬</Text><Text style={styles.reminderOptionText}>WhatsApp</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.reminderCancel, { borderColor }]}
-            onPress={() => setRemindTarget(null)}
-          >
-            <Text style={[styles.reminderCancelText, { color: mutedColor }]}>Cancel</Text>
+          <TouchableOpacity style={styles.reminderCancel} onPress={() => setRemindTarget(null)}>
+            <Text style={styles.reminderCancelText}>Cancel</Text>
           </TouchableOpacity>
         </View>
       </Modal>
 
-      {/* Cent roulette modal */}
       <CentRoulette
         visible={rouletteVisible}
         participants={session.participants}
@@ -707,209 +815,165 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: "center",
-    gap: 2,
-  },
-  restaurantName: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  headerSub: {
-    fontSize: 12,
-  },
-  scroll: {
-    paddingHorizontal: 16,
-    paddingBottom: 40,
-    gap: 12,
-  },
-  chartCard: { overflow: "hidden" },
-  summaryCard: { gap: 10 },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  summaryLabel: { fontSize: 14 },
-  summaryValue: { fontSize: 14, fontWeight: "600" },
-  summaryDivider: { height: StyleSheet.hairlineWidth, marginVertical: 4 },
-  summaryTotal: { fontSize: 16, fontWeight: "700" },
-  summaryTotalValue: { fontSize: 22, fontWeight: "800" },
+  safe: { flex: 1, backgroundColor: BG },
 
-  centAlert: {
+  header: { alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 2 },
+  headerTitle: { fontSize: 17, fontWeight: "700", color: TEXT },
+  headerDate: { fontSize: 12, color: MUTED },
+
+  scroll: { paddingHorizontal: 16, paddingBottom: 20, gap: 14 },
+
+  // Total bill card
+  totalCard: { backgroundColor: CARD, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: BORDER, padding: 20, gap: 10 },
+  totalCardLabel: { fontSize: 12, fontWeight: "600", color: MUTED, letterSpacing: 0.6, textTransform: "uppercase", textAlign: "center" },
+  totalCardAmount: { fontSize: 40, fontWeight: "800", color: TEXT, letterSpacing: -1, textAlign: "center" },
+  totalDivider: { height: StyleSheet.hairlineWidth, backgroundColor: BORDER, marginVertical: 2 },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  totalRowLabel: { fontSize: 14, color: MUTED },
+  totalRowValue: { fontSize: 14, fontWeight: "600", color: TEXT },
+
+  // Bar chart
+  chartCard: { backgroundColor: CARD, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: BORDER, overflow: "hidden" },
+
+  // Section label
+  sectionLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 0.8, color: MUTED, marginBottom: 10 },
+
+  // Person grid
+  personGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  personCard: {
+    width: "47%",
+    backgroundColor: CARD,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    overflow: "hidden",
+    position: "relative",
+    minHeight: 140,
+  },
+  personCardContent: {
+    padding: 14,
+    alignItems: "center",
+    gap: 7,
+    flex: 1,
+  },
+  personCardOverlay: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: "rgba(11,13,16,0.90)",
+    borderRadius: 13,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    padding: 10,
+  },
+  overlayActionBtn: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
-    padding: 10,
+    paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    marginTop: 4,
+    borderColor: BORDER,
+    backgroundColor: CARD,
   },
+  overlayActionText: { fontSize: 12, fontWeight: "600", color: TEXT },
+  hostBadge: { position: "absolute", top: 8, right: 8, backgroundColor: C.primary + "33", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  hostBadgeText: { color: C.primary, fontSize: 10, fontWeight: "700" },
+  personCardName: { fontSize: 14, fontWeight: "600", color: TEXT, textAlign: "center" },
+  personCardAmount: { fontSize: 20, fontWeight: "800" },
+  paidBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  paidBadgeText: { fontSize: 11, fontWeight: "700" },
+
+  // Receipt breakdown (flat view)
+  breakdownAccordion: { marginHorizontal: 16, marginBottom: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: BORDER, overflow: "hidden", backgroundColor: CARD },
+  breakdownAccordionHeader: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 14 },
+  breakdownAccordionTitle: { flex: 1, fontSize: 14, fontWeight: "600", color: TEXT },
+  receiptBreakdown: { paddingVertical: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: BORDER },
+  breakdownCatLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.6, color: MUTED, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4, textTransform: "uppercase" },
+  breakdownItemRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER, gap: 8 },
+  breakdownItemName: { fontSize: 13, fontWeight: "500", color: TEXT },
+  breakdownItemPrice: { fontSize: 11, color: MUTED, marginTop: 2 },
+  breakdownUserCluster: { flexDirection: "row", alignItems: "center", minWidth: 26 },
+  breakdownAvatarWrap: { borderRadius: 13, borderWidth: 1.5, borderColor: CARD },
+  breakdownAvatarOverflow: { width: 26, height: 26, borderRadius: 13, backgroundColor: "#374151", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: CARD },
+  breakdownOverflowText: { color: "#fff", fontSize: 9, fontWeight: "700" },
+  breakdownUnassigned: { fontSize: 13, color: MUTED },
+
+  // Action bar
+  actionBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    backgroundColor: CARD,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: BORDER,
+  },
+  closeBillBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: C.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  closeBillText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)" },
+  sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: BORDER, alignSelf: "center", marginBottom: 8 },
+
+  itemsSheet: { backgroundColor: CARD, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 14, gap: 12 },
+  itemsSheetHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
+  itemsSheetName: { fontSize: 16, fontWeight: "700", color: TEXT },
+  itemsSheetAmount: { fontSize: 14, fontWeight: "600", marginTop: 2 },
+  itemsSheetStatusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  itemsSheetLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 0.8, color: MUTED },
+  itemRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
+  itemRowName: { flex: 1, fontSize: 14, color: TEXT, fontWeight: "500", marginRight: 10 },
+  itemRowAmount: { fontSize: 14, fontWeight: "700" },
+  itemRowSplit: { fontSize: 11, color: MUTED, marginTop: 2 },
+  itemRowEmpty: { fontSize: 14, color: MUTED, textAlign: "center", paddingVertical: 24 },
+  itemsSheetFooter: { flexDirection: "row", gap: 10, marginTop: 4 },
+  remindSheetBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12 },
+  remindSheetBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+
+  reminderSheet: { backgroundColor: CARD, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 14, gap: 8 },
+  reminderTitle: { fontSize: 16, fontWeight: "700", color: TEXT },
+  reminderMeta: { fontSize: 13, color: MUTED, marginBottom: 4 },
+  reminderSendVia: { fontSize: 11, fontWeight: "700", letterSpacing: 0.5, textTransform: "uppercase", color: MUTED },
+  reminderOption: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: BORDER },
+  reminderOptionIcon: { fontSize: 20 },
+  reminderOptionText: { fontSize: 15, fontWeight: "600", color: TEXT },
+  reminderCancel: { alignItems: "center", paddingVertical: 14, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: BORDER, marginTop: 4 },
+  reminderCancelText: { fontSize: 15, fontWeight: "600", color: MUTED },
+
+  // Action sheet
+  actionSheet: { backgroundColor: CARD, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 14, gap: 12 },
+  actionSheetHeader: { flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
+  actionSheetName: { fontSize: 16, fontWeight: "700", color: TEXT },
+  actionSheetAmount: { fontSize: 14, fontWeight: "600", marginTop: 2 },
+  actionSheetBtn: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: BORDER },
+  actionSheetBtnText: { fontSize: 15, fontWeight: "600", color: TEXT },
+
+  // Cent adjustment
+  centAlert: { flexDirection: "row", alignItems: "center", gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, marginTop: 4 },
   centAlertText: { fontSize: 13, fontWeight: "500" },
-  centHelperText: { fontSize: 12, fontStyle: "italic", marginTop: -4 },
+  centHelperText: { fontSize: 12, fontStyle: "italic", color: MUTED },
   centActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  centBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  centBtnText: { fontSize: 12, fontWeight: "600" },
+  centBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: BORDER },
+  centBtnText: { fontSize: 12, fontWeight: "600", color: TEXT },
   rouletteBtn: { backgroundColor: Colors.primary + "22", borderColor: Colors.primary },
   rouletteBtnText: { color: Colors.primary, fontSize: 12, fontWeight: "700" },
-  centResolved: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    padding: 8,
-    borderRadius: 8,
-  },
+  centResolved: { flexDirection: "row", alignItems: "center", gap: 6, padding: 8, borderRadius: 8 },
   centResolvedText: { fontSize: 12, fontWeight: "500" },
 
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    paddingHorizontal: 4,
-  },
-
-  closeBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.success,
-    paddingVertical: 18,
-    borderRadius: 14,
-    gap: 10,
-    marginTop: 4,
-  },
-  doneBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.primary,
-    paddingVertical: 18,
-    borderRadius: 14,
-    gap: 10,
-    marginTop: 4,
-  },
-  closeBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-
   emptyContainer: { flex: 1, alignItems: "center", justifyContent: "center" },
-  emptyText: { fontSize: 16 },
-
-  backToSummaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 16,
-    marginTop: 4,
-  },
-  backToSummaryText: { color: Colors.primary, fontSize: 16, fontWeight: "700" },
-
-  // ── Header badges ──────────────────────────────────────────────────────────
-  headerBadges: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  readOnlyBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: "rgba(128,128,128,0.12)",
-  },
-  readOnlyText: { fontSize: 10, fontWeight: "600" },
-
-  // ── Remind row ─────────────────────────────────────────────────────────────
-  remindRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    marginTop: -1,
-  },
-  pendingBadge: {
-    backgroundColor: "rgba(245,158,11,0.15)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  pendingBadgeText: { fontSize: 12, fontWeight: "600", color: "#F59E0B" },
-  remindBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-  },
-  remindBtnDisabled: { opacity: 0.4 },
-  remindBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
-
-  // ── Reminder modal ─────────────────────────────────────────────────────────
-  reminderOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
-  reminderSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 40,
-    gap: 8,
-  },
-  reminderHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: 10,
-  },
-  reminderTitle: { fontSize: 16, fontWeight: "700" },
-  reminderMeta: { fontSize: 13, marginBottom: 4 },
-  reminderSendVia: {
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  reminderOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  reminderOptionIcon: { fontSize: 20 },
-  reminderOptionText: { fontSize: 15, fontWeight: "600" },
-  reminderCancel: {
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    marginTop: 4,
-  },
-  reminderCancelText: { fontSize: 15, fontWeight: "600" },
+  emptyText: { fontSize: 16, color: MUTED },
 });

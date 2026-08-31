@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import Svg, { Circle } from "react-native-svg";
 import { useSessionStore } from "@/store/sessionStore";
 import { Colors } from "@/constants/colors";
+import { useI18nStore } from "@/store/i18nStore";
 
 const SIZE = 140;
 const STROKE = 10;
@@ -13,6 +14,8 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 export default function LoadingScreen() {
   const [progress, setProgress] = useState(0);
   const { currentSession } = useSessionStore();
+  const { t, language } = useI18nStore();
+  void language;
 
   useEffect(() => {
     const sessionId = currentSession?.id;
@@ -69,8 +72,8 @@ export default function LoadingScreen() {
         </View>
       </View>
 
-      <Text style={styles.title}>Pick&Pay</Text>
-      <Text style={styles.text}>Working on your group bill...</Text>
+      <Text style={styles.title}>Pick<Text style={{ color: Colors.primary }}>&</Text>Pay</Text>
+      <Text style={styles.text}>{t("loading_group_bill")}</Text>
     </View>
   );
 }
@@ -78,7 +81,7 @@ export default function LoadingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.bgDark,
+    backgroundColor: "#0A0A0F",
     alignItems: "center",
     justifyContent: "center",
     gap: 16,

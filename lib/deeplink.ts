@@ -59,6 +59,8 @@ async function handleAuthCallback(url: string): Promise<boolean> {
     if (url.includes("type=recovery")) {
       router.replace("/(auth)/reset-password");
     }
+    // Email confirmation (type=email or type=signup) — SIGNED_IN fires automatically,
+    // _layout.tsx listener handles navigation to /(app)
   } catch (error) {
     console.error(
       "[DeepLink] Auth callback failed:",

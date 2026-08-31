@@ -21,22 +21,26 @@ import { Card } from "@/components/ui/Card";
 import { formatCurrency } from "@/utils/formatter";
 import { supabase } from "@/lib/supabase";
 import type { TipMode } from "@/types";
+import { useI18nStore } from "@/store/i18nStore";
+import { TranslationKey } from "@/constants/translations";
 
 const QUICK_TIP_PCTS = [0, 10, 15, 20] as const;
 const ORDERED_CATS = ["starters", "mains", "drinks", "desserts", "others"] as const;
-const CAT_LABELS: Record<string, string> = {
-  starters: "Starters",
-  mains: "Mains",
-  drinks: "Drinks",
-  desserts: "Desserts",
-  others: "Others",
+const CAT_LABEL_KEYS: Record<string, TranslationKey> = {
+  starters: "lobby_cat_starters",
+  mains: "lobby_cat_mains",
+  drinks: "lobby_cat_drinks",
+  desserts: "lobby_cat_desserts",
+  others: "lobby_cat_others",
 };
 
 export default function ReviewAcceptScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const isDark = useColorScheme() === "dark";
   const { currentSession, recalculateSplit } = useSessionStore();
-  const { profile, deductCredit, isGuest } = useAuthStore();
+  const { profile, deductCredit } = useAuthStore();
+  const { t, language } = useI18nStore();
+  void language;
 
   const session = currentSession;
   const receipt = session?.receipt;
@@ -66,7 +70,7 @@ export default function ReviewAcceptScreen() {
   const allAccepted =
     participants.length > 0 && participants.every((p) => !!acceptances[p.userId]);
 
-  const isOfflineSession = !sessionId || String(sessionId).startsWith("session_") || isGuest;
+  const isOfflineSession = !sessionId || String(sessionId).startsWith("session_");
 
   const handleForceAcceptAll = () => {
     recalculateSplit();
@@ -199,7 +203,7 @@ export default function ReviewAcceptScreen() {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
         <View style={styles.empty}>
-          <Text style={[styles.emptyText, { color: mutedColor }]}>No session data found.</Text>
+          <Text style={[styles.emptyText, { color: mutedColor }]}>{t("review_no_session")}</Text>
         </View>
       </SafeAreaView>
     );
@@ -217,7 +221,7 @@ export default function ReviewAcceptScreen() {
         >
           <Ionicons name="arrow-back" size={24} color={textColor} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: textColor }]}>Review Bill</Text>
+        <Text style={[styles.headerTitle, { color: textColor }]}>{t("review_title")}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -243,7 +247,7 @@ export default function ReviewAcceptScreen() {
             return (
               <View key={cat}>
                 <Text style={[styles.catLabel, { color: mutedColor }]}>
-                  {CAT_LABELS[cat].toUpperCase()}
+                  {t(CAT_LABEL_KEYS[cat]).toUpperCase()}
                 </Text>
                 {items.map((item) => (
                   <View key={item.id} style={[styles.itemRow, { borderColor }]}>
@@ -261,7 +265,7 @@ export default function ReviewAcceptScreen() {
           })}
 
           <View style={[styles.subtotalRow, { borderColor }]}>
-            <Text style={[styles.subtotalLabel, { color: mutedColor }]}>Subtotal</Text>
+            <Text style={[styles.subtotalLabel, { color: mutedColor }]}>{t("review_subtotal")}</Text>
             <Text style={[styles.subtotalAmount, { color: mutedColor }]}>
               {formatCurrency(subtotal, curr)}
             </Text>
@@ -271,7 +275,7 @@ export default function ReviewAcceptScreen() {
         {/* ── Tip selector ────────────────────────────────────────────────── */}
         <Card style={styles.card} padding={0}>
           <View style={styles.tipHeader}>
-            <Text style={[styles.sectionLabel, { color: mutedColor }]}>TIP</Text>
+            <Text style={[styles.sectionLabel, { color: mutedColor }]}>{t("review_tip_section")}</Text>
             <TouchableOpacity
               style={[styles.modeToggle, { borderColor }]}
               onPress={handleTipModeToggle}
@@ -289,7 +293,7 @@ export default function ReviewAcceptScreen() {
                     { color: tipMode === "equal" ? "#fff" : mutedColor },
                   ]}
                 >
-                  Equal
+                  {t("review_equal")}
                 </Text>
               </View>
               <View
@@ -304,7 +308,7 @@ export default function ReviewAcceptScreen() {
                     { color: tipMode === "individual" ? "#fff" : mutedColor },
                   ]}
                 >
-                  Individual
+                  {t("review_individual")}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -331,7 +335,7 @@ export default function ReviewAcceptScreen() {
                       { color: isSelected ? accentColor : textColor },
                     ]}
                   >
-                    {pct === 0 ? "No Tip" : `${pct}%`}
+                    {pct === 0 ? t("review_no_tip") : `${pct}%`}
                   </Text>
                   {pct > 0 && (
                     <Text
@@ -353,7 +357,7 @@ export default function ReviewAcceptScreen() {
 
           <View style={[styles.totalRow, { borderColor }]}>
             <Text style={[styles.totalLabel, { color: textColor, fontWeight: "700" }]}>
-              Total {tipPct > 0 ? `(+${tipPct}% tip)` : ""}
+              {t("review_total")} {tipPct > 0 ? `(+${tipPct}% ${t("review_tip_pct_suffix")})` : ""}
             </Text>
             <Text style={[styles.totalAmount, { color: Colors.primary }]}>
               {formatCurrency(totalWithTip, curr)}
@@ -364,7 +368,7 @@ export default function ReviewAcceptScreen() {
         {/* ── Acceptance tracker ──────────────────────────────────────────── */}
         <Card style={styles.card} padding={0}>
           <Text style={[styles.sectionLabel, { color: mutedColor, paddingHorizontal: 16, paddingTop: 14 }]}>
-            ACCEPTANCE STATUS ({Object.values(acceptances).filter(Boolean).length}/{participants.length})
+            {t("review_acceptance_status")} ({Object.values(acceptances).filter(Boolean).length}/{participants.length})
           </Text>
           {participants.map((p, idx) => {
             const accepted = !!acceptances[p.userId];
@@ -384,18 +388,18 @@ export default function ReviewAcceptScreen() {
                       {p.profile.name}
                     </Text>
                     {p.userId === session.creatorId && (
-                      <Text style={[styles.hostLabel, { color: mutedColor }]}>Host</Text>
+                      <Text style={[styles.hostLabel, { color: mutedColor }]}>{t("session_host_badge")}</Text>
                     )}
                   </View>
                   {accepted ? (
                     <View style={styles.acceptedBadge}>
                       <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-                      <Text style={styles.acceptedBadgeText}>Accepted</Text>
+                      <Text style={styles.acceptedBadgeText}>{t("review_accepted")}</Text>
                     </View>
                   ) : (
                     <View style={[styles.waitingBadge, { borderColor }]}>
                       <Ionicons name="time-outline" size={14} color={mutedColor} />
-                      <Text style={[styles.waitingBadgeText, { color: mutedColor }]}>Waiting</Text>
+                      <Text style={[styles.waitingBadgeText, { color: mutedColor }]}>{t("review_waiting_badge")}</Text>
                     </View>
                   )}
                 </View>
@@ -415,13 +419,13 @@ export default function ReviewAcceptScreen() {
             activeOpacity={0.85}
           >
             <Ionicons name="checkmark-circle-outline" size={22} color="#fff" />
-            <Text style={styles.acceptBtnText}>Accept Bill</Text>
+            <Text style={styles.acceptBtnText}>{t("review_accept")}</Text>
           </TouchableOpacity>
         ) : (
           <View style={[styles.acceptedBox, { borderColor: "#10B981" }]}>
             <Ionicons name="checkmark-circle" size={20} color="#10B981" />
             <Text style={styles.acceptedBoxText}>
-              You've accepted · waiting for others
+              {t("review_accepted_waiting")}
             </Text>
           </View>
         )}
@@ -451,7 +455,7 @@ export default function ReviewAcceptScreen() {
         >
           <Ionicons name="refresh-outline" size={16} color={mutedColor} />
           <Text style={[styles.resetBtnText, { color: mutedColor }]}>
-            Reset Acceptances
+            {t("review_reset")}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -461,10 +465,10 @@ export default function ReviewAcceptScreen() {
         <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
           <View style={[styles.modalCard, { backgroundColor: cardColor }]}>
             <Text style={[styles.modalTitle, { color: textColor }]}>
-              Everyone's in! 🎉
+              {t("review_everyones_in")}
             </Text>
             <Text style={[styles.modalSub, { color: mutedColor }]}>
-              Proceeding to item selection in…
+              {t("review_proceeding")}
             </Text>
 
             <Animated.View
@@ -475,7 +479,7 @@ export default function ReviewAcceptScreen() {
 
             {/* Credit deduction list */}
             <Text style={[styles.creditListTitle, { color: mutedColor }]}>
-              Credits used this split:
+              {t("review_credits_used")}
             </Text>
             <View style={[styles.creditList, { borderColor }]}>
               {participants.map((p, idx) => {
@@ -498,7 +502,7 @@ export default function ReviewAcceptScreen() {
                       </Text>
                       {p.profile.isPro ? (
                         <View style={styles.proBadge}>
-                          <Text style={styles.proBadgeText}>Pro ✦ free</Text>
+                          <Text style={styles.proBadgeText}>{t("review_pro_free")}</Text>
                         </View>
                       ) : (
                         <View style={styles.deductBadge}>
@@ -519,7 +523,7 @@ export default function ReviewAcceptScreen() {
               style={[styles.cancelBtn, { borderColor }]}
               onPress={handleReset}
             >
-              <Text style={[styles.cancelBtnText, { color: mutedColor }]}>Cancel</Text>
+              <Text style={[styles.cancelBtnText, { color: mutedColor }]}>{t("cancel")}</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>

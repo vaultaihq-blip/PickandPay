@@ -48,7 +48,7 @@ export default function ImageEditorScreen() {
   const bgColor = isDark ? Colors.bgDark : Colors.bgLight;
 
   const { setReceipt, setRawImageUri, setProcessing } = useReceiptStore();
-  const { profile, deductCredit } = useAuthStore();
+  const { profile, deductCredit, isEmailVerified } = useAuthStore();
 
   // ── Crop PanResponder helpers ────────────────────────────────────────────────
 
@@ -99,6 +99,16 @@ export default function ImageEditorScreen() {
   // ── Analysis ─────────────────────────────────────────────────────────────────
 
   const handleAnalyze = useCallback(async () => {
+    // Gate 1: email must be verified for email/password accounts
+    if (!isEmailVerified()) {
+      Alert.alert(
+        "Verify Your Email",
+        "Check your inbox and click the confirmation link before using credits.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+    // Gate 2: must have credits
     if (!profile?.isPro && (profile?.billCredits ?? 0) <= 0) {
       Alert.alert(
         "No Credits Left",

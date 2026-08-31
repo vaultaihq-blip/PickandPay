@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import { SessionParticipant, SplitResult, TipMode } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/utils/formatter";
+import { useI18nStore } from "@/store/i18nStore";
 
 type Currency = "EUR" | "USD" | "CAD" | "GBP";
 
@@ -41,6 +42,8 @@ export function BreakdownCard({
   onToggleExpand,
 }: BreakdownCardProps) {
   const { profile, totalOwed, paid } = participant;
+  const { t, language } = useI18nStore();
+  void language;
 
   const isDark = useColorScheme() === "dark";
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
@@ -217,8 +220,8 @@ export function BreakdownCard({
             style={[
               styles.paidBtn,
               paid
-                ? { backgroundColor: Colors.success + "22", borderColor: Colors.success + "88", borderWidth: 1 }
-                : { backgroundColor: "#FEE2E2", borderColor: "#EF4444", borderWidth: 1 },
+                ? { backgroundColor: Colors.success, borderColor: Colors.success, borderWidth: 1 }
+                : { backgroundColor: "#EF4444", borderColor: "#EF4444", borderWidth: 1 },
             ]}
             onPress={() => onMarkPaid(!paid)}
             activeOpacity={0.8}
@@ -226,10 +229,12 @@ export function BreakdownCard({
             <Ionicons
               name={paid ? "checkmark-circle" : "close-circle"}
               size={18}
-              color={paid ? Colors.success : "#EF4444"}
+              color="#fff"
             />
-            <Text style={[styles.paidBtnText, { color: paid ? Colors.success : "#EF4444" }]}>
-              {paid ? "Paid" : "Unpaid"}
+            <Text style={[styles.paidBtnText, { color: "#fff" }]}>
+              {paid
+                ? `${t("breakdown_paid")} / ${t("breakdown_unpaid")}`
+                : `${t("breakdown_unpaid")} / ${t("breakdown_paid")}`}
             </Text>
           </TouchableOpacity>
         ) : (
@@ -247,7 +252,7 @@ export function BreakdownCard({
               color={paid ? Colors.success : Colors.primary}
             />
             <Text style={[styles.paidBtnText, { color: paid ? Colors.success : Colors.primary }]}>
-              {paid ? "Paid" : "Pending"}
+              {paid ? t("breakdown_paid") : t("breakdown_pending")}
             </Text>
           </View>
         )}

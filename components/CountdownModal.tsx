@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { View, Text, Modal, StyleSheet, TouchableOpacity, useColorScheme } from "react-native";
+﻿import React, { useEffect } from "react";
+import { View, Text, Modal, StyleSheet, TouchableOpacity, Image } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -11,25 +11,32 @@ import Animated, {
 import { SessionParticipant } from "@/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Colors } from "@/constants/colors";
+import { useI18nStore } from "@/store/i18nStore";
+
+const coinImg = require("@/assets/images/token.png");
+
+const CARD = "#15181D";
+const BORDER = "#252A32";
+const TEXT = "#F8FAFC";
+const MUTED = "#6B7280";
 
 interface CountdownModalProps {
   visible: boolean;
   countdown: number | null;
   participants: SessionParticipant[];
-  currency?: string; // kept for API compatibility, not displayed (privacy)
+  currency?: string;
   onCancel?: () => void;
 }
 
-function LoadingBar({ index }: { index: number }) {
-  const progress = useSharedValue(0.1);
+function LoadingBar({ index, color }: { index: number; color: string }) {
+  const progress = useSharedValue(0.12);
 
   useEffect(() => {
-    // Stagger each bar so they animate independently
-    const delay = index * 150;
+    const stagger = index * 140;
     progress.value = withRepeat(
       withSequence(
-        withTiming(1, { duration: 1500 + delay, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0.1, { duration: 1500 + delay, easing: Easing.inOut(Easing.ease) })
+        withTiming(1, { duration: 1100 + stagger, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0.12, { duration: 1100 + stagger, easing: Easing.inOut(Easing.ease) })
       ),
       -1,
       false
@@ -37,12 +44,12 @@ function LoadingBar({ index }: { index: number }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const animStyle = useAnimatedStyle(() => ({
-    width: `${progress.value * 100}%`,
+    width: `${progress.value * 100}%` as any,
   }));
 
   return (
-    <View style={styles.loadingTrack}>
-      <Animated.View style={[styles.loadingFill, animStyle]} />
+    <View style={styles.barTrack}>
+      <Animated.View style={[styles.barFill, animStyle, { backgroundColor: color }]} />
     </View>
   );
 }
@@ -53,72 +60,66 @@ export function CountdownModal({
   participants,
   onCancel,
 }: CountdownModalProps) {
-  const isDark = useColorScheme() === "dark";
-  const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
-  const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
-  const cardColor = isDark ? Colors.cardDark : Colors.cardLight;
-
-  const showCreditDeduction = countdown !== null && countdown <= 2;
+  const { t, language } = useI18nStore();
+  void language;
+  const showCreditDeduction = countdown !== null && countdown <= 1;
 
   if (!visible || countdown === null) return null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <View style={styles.overlay}>
-        <View style={[styles.card, { backgroundColor: cardColor }]}>
-          <Text style={[styles.title, { color: textColor }]}>Calculating Your Split</Text>
-          <Text style={[styles.subtitle, { color: mutedColor }]}>
-            Processing everyone's selections...
-          </Text>
+        <View style={styles.card}>
+          <Text style={styles.title}>{t("countdown_title")}</Text>
+          <Text style={styles.subtitle}>{t("countdown_subtitle")}</Text>
 
-          {/* Countdown */}
+          {/* Countdown number */}
           <View style={styles.timerWrap}>
             <Text style={[styles.timerNum, { color: Colors.primary }]}>{countdown}</Text>
-            <Text style={[styles.timerLabel, { color: mutedColor }]}>seconds</Text>
+            <Text style={styles.timerLabel}>{t("countdown_seconds")}</Text>
           </View>
 
-          {/* Participants */}
+          {/* Participants with colored loading bars */}
           <View style={styles.participants}>
-            {participants.map((p, index) => (
-              <View key={p.userId} style={styles.participantRow}>
-                <Avatar
-                  name={p.profile.name}
-                  avatarIcon={p.profile.avatarIcon}
-                  avatarUrl={p.profile.avatarUrl}
-                  color={p.profile.color}
-                  size={40}
-                />
-                <View style={styles.participantInfo}>
-                  <View style={styles.nameRow}>
-                    <Text style={[styles.participantName, { color: textColor }]} numberOfLines={1}>
-                      {p.profile.name}
-                    </Text>
-                    {showCreditDeduction && (
-                      <Text style={styles.creditDeduct}>-1 🪙</Text>
-                    )}
+            {participants.map((p, index) => {
+              const barColor = p.profile.color ?? Colors.primary;
+              return (
+                <View key={p.userId} style={styles.participantRow}>
+                  <Avatar
+                    name={p.profile.name}
+                    avatarIcon={p.profile.avatarIcon}
+                    avatarUrl={p.profile.avatarUrl}
+                    color={p.profile.color}
+                    size={36}
+                  />
+                  <View style={styles.participantInfo}>
+                    <View style={styles.nameRow}>
+                      <Text style={styles.participantName} numberOfLines={1}>
+                        {p.profile.name}
+                      </Text>
+                      {showCreditDeduction && (
+                        <View style={styles.creditDeductRow}>
+                          <Text style={styles.creditDeduct}>-1</Text>
+                          <Image source={coinImg} style={styles.coinSmall} />
+                        </View>
+                      )}
+                    </View>
+                    <LoadingBar index={index} color={barColor} />
                   </View>
-                  <View style={styles.creditsRow}>
-                    <Text style={[styles.creditsText, { color: mutedColor }]}>
-                      {p.profile.billCredits} credit{p.profile.billCredits !== 1 ? "s" : ""}
-                    </Text>
-                  </View>
-                  <LoadingBar index={index} />
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
 
-          <Text style={[styles.footer, { color: mutedColor }]}>
-            💳 1 bill credit will be deducted from your account
-          </Text>
+          {/* Footer */}
+          <View style={styles.footerRow}>
+            <Image source={coinImg} style={styles.coinFooter} />
+            <Text style={styles.footer}>{t("countdown_credit_deducted")}</Text>
+          </View>
 
           {onCancel && (
-            <TouchableOpacity
-              style={[styles.cancelBtn, { borderColor: mutedColor + "55" }]}
-              onPress={onCancel}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.cancelBtnText, { color: mutedColor }]}>Cancel Countdown</Text>
+            <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} activeOpacity={0.8}>
+              <Text style={styles.cancelBtnText}>{t("countdown_cancel")}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -130,7 +131,7 @@ export function CountdownModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.82)",
+    backgroundColor: "rgba(0,0,0,0.88)",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
@@ -138,23 +139,24 @@ const styles = StyleSheet.create({
   card: {
     width: "100%",
     borderRadius: 24,
+    backgroundColor: CARD,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: BORDER,
     padding: 24,
-    gap: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 16,
+    gap: 18,
   },
   title: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "800",
     textAlign: "center",
+    color: TEXT,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     textAlign: "center",
-    lineHeight: 20,
-    marginTop: -8,
+    lineHeight: 19,
+    color: MUTED,
+    marginTop: -10,
   },
   timerWrap: {
     alignItems: "center",
@@ -166,8 +168,9 @@ const styles = StyleSheet.create({
     lineHeight: 76,
   },
   timerLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "500",
+    color: MUTED,
   },
   participants: {
     gap: 14,
@@ -179,57 +182,70 @@ const styles = StyleSheet.create({
   },
   participantInfo: {
     flex: 1,
-    gap: 4,
+    gap: 6,
   },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    flexWrap: "wrap",
   },
   participantName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "600",
-    flexShrink: 1,
+    color: TEXT,
+    flex: 1,
+  },
+  creditDeductRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
   },
   creditDeduct: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     color: "#EF4444",
   },
-  creditsRow: {
+  coinSmall: {
+    width: 14,
+    height: 14,
+  },
+  // Bars styled like the Payment Screen bar chart
+  barTrack: {
+    height: 36,
+    borderRadius: 8,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  barFill: {
+    height: "100%",
+    borderRadius: 8,
+  },
+  footerRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
   },
-  creditsText: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  loadingTrack: {
-    height: 5,
-    borderRadius: 3,
-    overflow: "hidden",
-    backgroundColor: "rgba(128,128,128,0.18)",
-    marginTop: 2,
-  },
-  loadingFill: {
-    height: "100%",
-    backgroundColor: Colors.primary,
-    borderRadius: 3,
+  coinFooter: {
+    width: 16,
+    height: 16,
   },
   footer: {
-    fontSize: 13,
+    fontSize: 12,
     textAlign: "center",
-    lineHeight: 18,
+    color: MUTED,
   },
   cancelBtn: {
     borderWidth: 1,
+    borderColor: BORDER,
     borderRadius: 12,
     paddingVertical: 13,
     alignItems: "center",
+    marginTop: -4,
   },
   cancelBtnText: {
     fontSize: 14,
     fontWeight: "600",
+    color: MUTED,
   },
 });

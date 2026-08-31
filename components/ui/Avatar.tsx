@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, Image, StyleSheet } from "react-native";
+import { View, Text, Image, StyleSheet, Platform } from "react-native";
 import { getAvatarEmoji } from "@/constants/avatars";
 
 interface AvatarProps {
@@ -10,7 +10,7 @@ interface AvatarProps {
   size?: number;
 }
 
-export function Avatar({
+export const Avatar = React.memo(function Avatar({
   name = "?",
   avatarIcon,
   avatarUrl,
@@ -21,10 +21,18 @@ export function Avatar({
 
   if (avatarUrl) {
     return (
-      <Image
-        source={{ uri: avatarUrl }}
-        style={[styles.avatar, { width: size, height: size, borderRadius }]}
-      />
+      <View
+        style={[
+          styles.avatar,
+          { width: size, height: size, borderRadius, borderColor: color },
+        ]}
+      >
+        <Image
+          source={{ uri: avatarUrl }}
+          style={{ width: "100%", height: "100%", borderRadius: borderRadius - 2 }}
+          fadeDuration={Platform.OS === "android" ? 0 : undefined}
+        />
+      </View>
     );
   }
 
@@ -35,7 +43,13 @@ export function Avatar({
         style={[
           styles.avatar,
           styles.emojiContainer,
-          { width: size, height: size, borderRadius, backgroundColor: color + "33" },
+          {
+            width: size,
+            height: size,
+            borderRadius,
+            backgroundColor: color + "22",
+            borderColor: color,
+          },
         ]}
       >
         <Text style={{ fontSize: size * 0.5 }}>{emoji}</Text>
@@ -57,7 +71,13 @@ export function Avatar({
       style={[
         styles.avatar,
         styles.initialsContainer,
-        { width: size, height: size, borderRadius, backgroundColor: color },
+        {
+          width: size,
+          height: size,
+          borderRadius,
+          backgroundColor: color + "22",
+          borderColor: color,
+        },
       ]}
     >
       <Text style={[styles.initials, { fontSize: size * 0.35 }]}>
@@ -65,11 +85,12 @@ export function Avatar({
       </Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   avatar: {
     overflow: "hidden",
+    borderWidth: 2.5,
   },
   emojiContainer: {
     alignItems: "center",

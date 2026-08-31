@@ -1,3 +1,6 @@
+// DEPRECATED: OCR now runs server-side via parse-receipt edge function.
+// This file is kept for reference only and will be removed in a future cleanup.
+
 // ─── Google Cloud Vision OCR ──────────────────────────────────────────────────
 // Calls DOCUMENT_TEXT_DETECTION for high-accuracy receipt text extraction.
 // Falls back gracefully — callers should handle thrown errors.
@@ -6,14 +9,13 @@ const VISION_API_URL =
   "https://vision.googleapis.com/v1/images:annotate";
 
 function getApiKey(): string {
-  const key = process.env.EXPO_PUBLIC_GOOGLE_CLOUD_API_KEY;
-  if (!key || key === "your_google_cloud_key_here") {
-    throw new Error("MISSING_GOOGLE_KEY");
-  }
-  return key;
+  throw new Error("Client-side OCR disabled. Use edge function instead.");
 }
 
 async function imageToBase64(uri: string): Promise<string> {
+  if (uri.startsWith("data:")) {
+    return uri.split(",")[1] ?? "";
+  }
   const response = await fetch(uri);
   const blob = await response.blob();
   return new Promise<string>((resolve, reject) => {
@@ -47,7 +49,7 @@ export async function extractTextWithGoogleVision(
         image: { content: base64 },
         features: [{ type: "DOCUMENT_TEXT_DETECTION", maxResults: 1 }],
         imageContext: {
-          languageHints: ["pt", "en"],
+          languageHints: ["pt", "en", "es", "fr", "zh"],
         },
       },
     ],
