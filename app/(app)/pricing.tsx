@@ -16,10 +16,10 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { getOfferings, purchasePackage, restorePurchases } from "@/lib/revenuecat";
+import type { PurchasesPackage } from "react-native-purchases";
 import { useAuthStore } from "@/store/authStore";
 import { BottomNavBar } from "@/components/ui/BottomNavBar";
 
-type PurchasesPackage = unknown;
 
 type PackageDisplay = {
   id: string;
@@ -483,3 +483,4 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
+
