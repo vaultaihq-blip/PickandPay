@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
  * parse-receipt — structural receipt extraction.
@@ -15,6 +16,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
  *         -> structured payload for the client pipeline
  */
 
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const RATE_LIMIT_MAX = 20;
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 const MODEL = "gpt-4o";
 
@@ -514,6 +519,7 @@ function jsonResponse(body: unknown, status = 200): Response {
  * copy; raw provider errors are never surfaced to end users.
  */
 type ErrorCode =
+  | "UNAUTHORIZED"
   | "MISSING_IMAGE"
   | "NOT_CONFIGURED"
   | "RATE_LIMITED"
@@ -528,6 +534,37 @@ function errorResponse(code: ErrorCode, status: number): Response {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
+  }
+
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return errorResponse("UNAUTHORIZED", 401);
+  }
+
+  const token = authHeader.slice(7);
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+  const anonClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+  const { data: { user }, error: authError } = await anonClient.auth.getUser(token);
+  if (authError || !user) {
+    return errorResponse("UNAUTHORIZED", 401);
+  }
+
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count, error: rateError } = await admin
+    .from("ocr_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .gte("created_at", oneHourAgo);
+
+  if (rateError) {
+    console.error("[parse-receipt] rate limit lookup failed:", rateError.message);
+  } else if ((count ?? 0) >= RATE_LIMIT_MAX) {
+    return errorResponse("RATE_LIMITED", 429);
+  }
+
+  const { error: insertRateError } = await admin.from("ocr_requests").insert({ user_id: user.id });
+  if (insertRateError) {
+    console.error("[parse-receipt] rate limit insert failed:", insertRateError.message);
   }
 
   const startedAt = Date.now();
@@ -662,3 +699,7 @@ serve(async (req: Request) => {
     return errorResponse("INTERNAL_ERROR", 500);
   }
 });
+
+
+
+
