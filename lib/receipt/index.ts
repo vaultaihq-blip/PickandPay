@@ -4,7 +4,7 @@
  * Pipeline order:
  *   raw model JSON
  *     -> normalizeRawReceipt   (structure + exact money, no trusted arithmetic)
- *     -> analyzeReceipt        (reconcile + diagnose)
+ *     -> evaluateReceipt       (reconcile + diagnose)
  *     -> [user corrections]    (applyEdits / applyProposal -> re-analyzed)
  *     -> toParsedReceipt       (legacy shape for existing screens)
  */

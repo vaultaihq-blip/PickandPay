@@ -1,5 +1,5 @@
 import { moneyFromMajorNumber, moneyToDecimalString } from "../money";
-import { analyzeReceipt, diagnoseReceipt } from "../diagnostics";
+import { evaluateReceipt, diagnoseReceipt } from "../diagnostics";
 import { applyProposal, applyEdits } from "../correction";
 import { normalizeRawReceipt, type RawReceiptPayload } from "../normalizer";
 import { reconcileReceipt } from "../reconciler";
@@ -9,7 +9,7 @@ import { assert, assertEqual, describe, it } from "./harness";
 // ─── Fixture helpers ──────────────────────────────────────────────────────────
 
 function build(raw: RawReceiptPayload): CanonicalReceipt {
-  return analyzeReceipt(normalizeRawReceipt(raw));
+  return evaluateReceipt(normalizeRawReceipt(raw));
 }
 
 function subtotalOf(receipt: CanonicalReceipt): string {

@@ -1,5 +1,12 @@
 import { ParsedReceipt, ReceiptItem, ItemCategory, TaxMode } from "@/types";
-import { parseReceiptImage } from "@/lib/supabase";
+import {
+  type RawReceiptPayload,
+  evaluateReceipt,
+  moneyToMajorNumber,
+  normalizeRawReceipt,
+} from "@/lib/receipt";
+import { toParsedReceipt } from "@/lib/receipt/adapter";
+import { useCanonicalReceiptStore } from "@/store/canonicalReceiptStore";
 
 // ─── Receipt Parser Utilities ──────────────────────────────────────────────────
 // These helpers are used to normalize data coming from the GPT-4o Edge Function
@@ -60,10 +67,19 @@ export function createBlankReceipt(): ParsedReceipt {
 
 // ─── Receipt Analyzer ────────────────────────────────────────────────────────
 
+interface ParseReceiptResponse {
+  schemaVersion?: number;
+  receipt?: RawReceiptPayload;
+}
+
 export async function analyzeReceipt(
   imageUri: string
 ): Promise<{ receipt: ParsedReceipt; rawText: string }> {
   console.log("📸 [parser] Starting edge function OCR:", imageUri.substring(0, 40));
+  // Dynamic import: lib/supabase.ts pulls in React Native / Expo modules at
+  // load time, which would make this file (and its pure normalizeReceipt
+  // bridge below) unloadable from a plain Node test environment.
+  const { parseReceiptImage } = await import("@/lib/supabase");
   const { data, error } = await parseReceiptImage(imageUri);
   if (error) {
     throw new Error(`OCR edge function failed: ${(error as { message?: string }).message ?? "Unknown error"}`);
@@ -71,7 +87,32 @@ export async function analyzeReceipt(
   if (!data) {
     throw new Error("OCR edge function returned no data");
   }
-  const receipt = normalizeReceipt(data as Partial<ParsedReceipt>);
+
+  const response = data as ParseReceiptResponse;
+
+  let receipt: ParsedReceipt;
+  if (response.schemaVersion === 2 && response.receipt !== undefined) {
+    // Structural v2 envelope: run it through the canonical pipeline (exact
+    // money, reconciliation, diagnostics), then bridge to the legacy shape so
+    // normalizeReceipt's tax-mode reconciliation below still applies.
+    const canonical = evaluateReceipt(normalizeRawReceipt(response.receipt));
+    const legacy = toParsedReceipt(canonical);
+
+    useCanonicalReceiptStore.getState().setReceipt(canonical);
+
+    receipt = normalizeReceipt({
+      ...legacy,
+      printed_total:
+        canonical.printedTotal !== undefined
+          ? moneyToMajorNumber(canonical.printedTotal)
+          : undefined,
+    });
+  } else {
+    // Legacy category-based payload — kept so an older deployed function
+    // keeps working while the new one rolls out.
+    receipt = normalizeReceipt(data as Partial<ParsedReceipt>);
+  }
+
   console.log("✅ [parser] OCR complete:", receipt.restaurant);
   return { receipt, rawText: "" };
 }
@@ -180,8 +221,16 @@ export function normalizeReceipt(raw: Partial<ParsedReceipt>): ParsedReceipt {
   }));
 
   const effectiveTotal = printedTotal ?? itemsSum;
+
+  // Status must compare the printed total against items + the costs that were
+  // actually kept (finalGlobalCosts), not against itemsSum alone — otherwise
+  // any receipt with real tax/service (the normal case for USD/CAD) always
+  // shows a gap equal to those charges and never reports "ok".
+  const globalCostsSum =
+    Math.round(finalGlobalCosts.reduce((s, gc) => s + (gc.amount ?? 0), 0) * 100) / 100;
+  const reconciledTotal = Math.round((itemsSum + globalCostsSum) * 100) / 100;
   const validationStatus: "ok" | "warning" | "error" =
-    Math.abs(effectiveTotal - itemsSum) > TOLERANCE ? "warning" : "ok";
+    Math.abs(effectiveTotal - reconciledTotal) > TOLERANCE ? "warning" : "ok";
 
   return {
     restaurant: raw.restaurant ?? "Unknown Restaurant",

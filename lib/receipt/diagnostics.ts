@@ -664,7 +664,7 @@ export function diagnoseReceipt(receipt: CanonicalReceipt): DiagnosisResult {
  * Reconcile and diagnose in one pass, writing both onto the receipt.
  * This is the function the app should call after every parse and every edit.
  */
-export function analyzeReceipt(receipt: CanonicalReceipt): CanonicalReceipt {
+export function evaluateReceipt(receipt: CanonicalReceipt): CanonicalReceipt {
   // Derived amounts are recomputed first: callers hand us receipts whose items
   // have just been edited, and reconciling against stale line totals would
   // report success on a receipt that no longer adds up.

@@ -37,6 +37,15 @@ function allReceiptItems(receipt: ParsedReceipt): ReceiptItem[] {
   ];
 }
 
+/**
+ * Sum of an item's paid add-ons (modifiers). Zero for items with no add-ons,
+ * and a no-op when a producer (e.g. the canonical adapter) already folds the
+ * add-on price into totalPrice and zeroes addOns[].totalPrice to signal that.
+ */
+function paidAddOnsTotal(item: { addOns?: { totalPrice: number }[] }): number {
+  return (item.addOns ?? []).reduce((s, a) => s + (a.totalPrice ?? 0), 0);
+}
+
 // ─── ParsedReceipt validator (called immediately after OCR in scan.tsx) ───────
 
 export function validateReceiptOCR(receipt: ParsedReceipt): ValidationResult {
@@ -46,7 +55,15 @@ export function validateReceiptOCR(receipt: ParsedReceipt): ValidationResult {
 
   const items = allReceiptItems(receipt);
   const computedTotal = receipt.validation.computedTotal;
-  const rawDiff = receipt.validation.difference ?? 0;
+
+  // receipt.validation.difference is items-only (printed total minus itemsSum,
+  // ignoring globalCosts) — comparing it against printed_total always shows a
+  // gap equal to tax/service for any receipt that has them (the normal case
+  // for USD/CAD). Recompute against items + globalCosts, mirroring the same
+  // fix already applied to normalizeReceipt's own validation.status.
+  const globalCostsSum = receipt.globalCosts.reduce((s, gc) => s + (gc.amount ?? 0), 0);
+  const printedTotal = receipt.validation.receiptTotal;
+  const rawDiff = Math.round((printedTotal - (computedTotal + globalCostsSum)) * 100) / 100;
   const diff = Math.abs(rawDiff);
 
   // ── Total check ───────────────────────────────────────────────────────────
@@ -83,7 +100,8 @@ export function validateReceiptOCR(receipt: ParsedReceipt): ValidationResult {
       errors.push({ itemId: item.id, severity: "critical", message: `"${item.name}" has invalid unit price: ${item.unitPrice.toFixed(2)} ${cur}` });
     }
 
-    const expected = Math.round(item.quantity * item.unitPrice * 100) / 100;
+    const addOnsSum = paidAddOnsTotal(item);
+    const expected = Math.round((item.quantity * item.unitPrice + addOnsSum) * 100) / 100;
     if (Math.abs(expected - item.totalPrice) > ITEM_MATH_TOLERANCE) {
       errors.push({
         itemId: item.id,
@@ -134,6 +152,9 @@ export interface EditableItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  /** Paid modifiers, when the caller has them available. Optional — existing
+   *  callers that don't populate this keep behaving exactly as before. */
+  addOns?: { totalPrice: number }[];
 }
 
 export function validateEditableItems(
@@ -146,7 +167,7 @@ export function validateEditableItems(
   const cur = currency;
 
   const computedTotal =
-    Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100;
+    Math.round(items.reduce((s, i) => s + i.totalPrice + paidAddOnsTotal(i), 0) * 100) / 100;
   const rawDiff = computedTotal - subtotalTarget;
   const diff = Math.abs(rawDiff);
 
@@ -182,7 +203,8 @@ export function validateEditableItems(
       errors.push({ itemId: item.id, severity: "critical", message: `"${item.name}" has no price` });
     }
 
-    const expected = Math.round(item.quantity * item.unitPrice * 100) / 100;
+    const addOnsSum = paidAddOnsTotal(item);
+    const expected = Math.round((item.quantity * item.unitPrice + addOnsSum) * 100) / 100;
     if (Math.abs(expected - item.totalPrice) > ITEM_MATH_TOLERANCE) {
       errors.push({
         itemId: item.id,

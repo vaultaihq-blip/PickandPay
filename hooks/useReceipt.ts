@@ -7,7 +7,7 @@ import { normalizeReceipt } from "@/utils/parser";
 import {
   type CanonicalReceipt,
   type RawReceiptPayload,
-  analyzeReceipt,
+  evaluateReceipt,
   normalizeRawReceipt,
   toParsedReceipt,
 } from "@/lib/receipt";
@@ -96,7 +96,7 @@ export function useReceipt() {
 
         // Structural schema (v2): reconcile and diagnose before showing anything.
         if (response.schemaVersion === 2 && response.receipt !== undefined) {
-          const canonical = analyzeReceipt(
+          const canonical = evaluateReceipt(
             normalizeRawReceipt(response.receipt)
           );
           const legacy = toParsedReceipt(canonical);
