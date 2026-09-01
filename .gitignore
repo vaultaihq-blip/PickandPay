@@ -40,3 +40,8 @@ _apk_inspect/
 # --- Android signing keys
 *.keystore
 android/keystores/
+pickandpay-ocr-0cd12f7b4f97-google-cloud.json
+
+dist2/
+
+batch_results/
