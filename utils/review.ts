@@ -6,10 +6,19 @@ const LAST_PROMPT_KEY = "@pickandpay:lastReviewPromptDate";
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 
-const IOS_URL =
-  "https://apps.apple.com/app/pickandpay/id123456789?action=write-review";
 const ANDROID_URL =
   "https://play.google.com/store/apps/details?id=com.pickandpay.app";
+
+/**
+ * The App Store listing doesn't exist yet. Returns undefined until
+ * EXPO_PUBLIC_APP_STORE_ID is set (post-approval), so callers never build a
+ * link to a store page that 404s.
+ */
+function getIosReviewUrl(): string | undefined {
+  const appStoreId = process.env.EXPO_PUBLIC_APP_STORE_ID;
+  if (!appStoreId) return undefined;
+  return `https://apps.apple.com/app/pickandpay/id${appStoreId}?action=write-review`;
+}
 
 async function openStore() {
   try {
@@ -24,7 +33,8 @@ async function openStore() {
   } catch {
     // package not installed — fall through to Linking
   }
-  const url = Platform.select({ ios: IOS_URL, default: ANDROID_URL });
+  const url = Platform.select({ ios: getIosReviewUrl(), default: ANDROID_URL });
+  if (!url) return; // iOS: no App Store ID configured yet — nothing to open
   const canOpen = await Linking.canOpenURL(url);
   if (canOpen) await Linking.openURL(url);
 }

@@ -156,7 +156,9 @@ export function generateShareSummary(
   lines.push("Sent via Pick&Pay 📱");
   lines.push("");
   lines.push("Download our app:");
-  lines.push("🍎 iOS: https://apps.apple.com/app/pickandpay/id123456789");
+  if (process.env.EXPO_PUBLIC_APP_STORE_ID) {
+    lines.push(`🍎 iOS: https://apps.apple.com/app/pickandpay/id${process.env.EXPO_PUBLIC_APP_STORE_ID}`);
+  }
   lines.push("🤖 Android: https://play.google.com/store/apps/details?id=com.pickandpay.app");
   return lines.join("\n");
 }

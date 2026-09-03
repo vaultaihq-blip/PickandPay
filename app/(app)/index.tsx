@@ -348,9 +348,11 @@ export default function HomeScreen() {
   };
 
   const handleShareApp = async () => {
+    const appStoreId = process.env.EXPO_PUBLIC_APP_STORE_ID;
+    if (Platform.OS === "ios" && !appStoreId) return; // App Store listing not live yet
     const appLink =
       Platform.OS === "ios"
-        ? "https://apps.apple.com/app/pickandpay/id123456789"
+        ? `https://apps.apple.com/app/pickandpay/id${appStoreId}`
         : "https://play.google.com/store/apps/details?id=com.pickandpay.app";
     try {
       await Share.share({
