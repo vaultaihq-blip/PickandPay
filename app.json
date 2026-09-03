@@ -4,7 +4,7 @@
     "slug": "pickandpay",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/adaptive-icon.jpg",
+    "icon": "./assets/images/icon-1024.png",
     "scheme": "pickandpay",
     "userInterfaceStyle": "dark",
     "splash": {
