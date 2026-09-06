@@ -2,17 +2,29 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * parse-receipt — structural receipt extraction.
+ * parse-receipt — two-pass receipt extraction with transcript cross-checking.
  *
  * The vision model is used strictly as a *reader* of the image. It is never
  * asked to compute totals or to judge whether the receipt is valid: all
  * arithmetic and all validation happen deterministically, here and on the
  * client, in integer minor units.
  *
+ * A single combined "read and structure" call let the model's structural
+ * judgment quietly corrupt a number while it was reading it — the model has
+ * no independent record of what it actually saw to check itself against.
+ * Splitting the read from the interpretation gives us that independent
+ * record for free, without external OCR:
+ *
  * Flow:
- *   image -> pass 1 (structural extraction)
+ *   image -> pass 1 (pure transcription, no interpretation)
+ *         -> pass 2 (structure the transcript text into items/charges/etc.)
  *         -> deterministic reconciliation
- *         -> pass 2 (targeted re-read) only when pass 1 does not reconcile
+ *         -> deterministic transcript cross-check (every asserted amount must
+ *            appear in pass 1's transcript; every transcribed amount must be
+ *            claimed by something in pass 2's output, or it's injected into
+ *            unresolvedLines) — this is the independent witness pass 1 buys us
+ *         -> pass 3 (targeted corrective re-read of the image) only when
+ *            reconciliation still fails after the cross-check
  *         -> structured payload for the client pipeline
  */
 
@@ -27,30 +39,44 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 // (https://platform.openai.com/docs/models/gpt-4o — "Snapshots let you lock
 // in a specific version of the model so that performance and behavior
 // remain consistent"). gpt-4o-2024-08-06 is the snapshot "gpt-4o" currently
-// resolves to (confirmed against OpenAI's model docs), so this pin changes
-// nothing about current behavior — it only stops it from changing silently
-// later. A newer snapshot (gpt-4o-2024-11-20) exists and may be worth
-// evaluating separately, but that's a deliberate model change, not a
-// reproducibility fix, so it's left alone here.
+// resolves to (confirmed against OpenAI's model docs). Snapshot swaps
+// (2024-11-20, 2024-05-13) were tried against the Khao Soi hallucination
+// case and made no difference — reverted here, not worth carrying.
 const MODEL = "gpt-4o-2024-08-06";
 
 // ─── Prompts ──────────────────────────────────────────────────────────────────
 //
-// Future directions considered but deliberately not pursued now (single
-// observed failure on one complex receipt does not justify the added
-// complexity yet — revisit if evidence checks in lib/receipt/evidence.ts
-// start firing more than rarely):
-//   - Splitting this into two stages (pure transcription, then structural
-//     interpretation) — deeper prompt-engineering work, needs unhurried time
-//     to test properly.
-//   - Hybrid OCR (e.g. Tesseract as a numeric witness) with multi-call
-//     voting — infrastructure complexity disproportionate to the problem
-//     observed so far.
+// Deferred (single observed failure on one complex receipt doesn't justify
+// this yet — revisit if the transcript cross-check below still lets things
+// through more than rarely):
+//   - Hybrid OCR (e.g. Tesseract as a second numeric witness) with
+//     multi-call voting — infrastructure complexity disproportionate to the
+//     problem observed so far, and pass 1's transcript already serves as an
+//     independent witness without it.
 
-const SYSTEM_PROMPT = `You read restaurant receipts from images and return structured JSON.
+const TRANSCRIPTION_SYSTEM_PROMPT = `Transcribe every line of this receipt, in order, exactly as printed.
+
+One line per array entry. Include every line, even if it has no price, even if
+it looks like a note, a modifier, a header, or unrelated text. Do not group,
+merge, skip, reorder, categorize, or interpret anything. Do not add or remove
+anything. If a line has an amount, keep the amount exactly as printed on that
+same line, in its original format — do not normalize decimal separators,
+currency symbols, or spacing.
+
+Return ONLY this JSON object. No markdown, no commentary.
+{ "lines": ["...", "...", ...] }`;
+
+const STRUCTURE_SYSTEM_PROMPT = `You turn a plain-text transcription of a restaurant receipt into structured JSON.
 
 You are a READER, not a calculator. Never compute or invent totals. Report only
-what is printed. If a value is not printed, omit the field.
+what is present in the given lines. If a value is not present, omit the field.
+
+## Input
+
+You are given the receipt's lines, already transcribed and numbered starting
+at 0 (index = position in the list). Use those exact indices for every
+sourceEvidence.lineIndex — never invent a different numbering, and never
+reference an index that wasn't given to you.
 
 ## Output shape
 
@@ -96,11 +122,13 @@ Charge { "id": string, "name": string, "amount": number,
 UnresolvedLine { "id": string, "amount": number, "text": string,
                  "lineIndex": integer, "nearestItemLineIndex": integer|null }
 
-## Reading rules
+## Rules
 
-1. LINE INDEXING. Walk the receipt body top to bottom and number every line
-   from 0. Put that index in sourceEvidence.lineIndex, and the verbatim text in
-   sourceEvidence.lineText. This is how the app points the user at a problem.
+1. LINE REFERENCES. sourceEvidence.lineIndex must be one of the indices given
+   to you. sourceEvidence.lineText must be copied EXACTLY, character for
+   character, from the line at that index — never retype, paraphrase, or
+   "correct" it, even if it looks wrong. This field is checked mechanically
+   against the original transcript, not against your judgment.
 
 2. ITEMS vs MODIFIERS. An indented or unnumbered line directly beneath an item
    line is a modifier of that item, not a new item.
@@ -132,23 +160,27 @@ UnresolvedLine { "id": string, "amount": number, "text": string,
    than dividing it yourself.
 
 6. TOTALS. Copy printedSubtotal, printedServiceCharge, printedTax, printedTip
-   and printedTotal from the receipt verbatim. Do not derive one from another.
-   Do not add them up. If the receipt shows no subtotal line, use null.
+   and printedTotal from the transcript verbatim. Do not derive one from
+   another. Do not add them up. If not present, use null.
 
 7. CHARGES. Service, tax, tip, delivery and bag fees are charges, never items.
 
-8. CURRENCY. Return an ISO code. Use location and explicit markers to
-   disambiguate: a receipt from Canada showing "$" is CAD; from the USA, USD.
-   If genuinely unclear, return your best ISO guess.
+8. CURRENCY. Return an ISO code. Use merchant name/address and explicit
+   markers to disambiguate a bare currency symbol.
 
 9. NUMBERS. Return JSON numbers, not strings, and never with thousands
-   separators. Use a dot as the decimal separator.
+   separators. Use a dot as the decimal separator, regardless of how the
+   original line printed it.
 
 10. UNCERTAINTY. Use the confidence field honestly. A low confidence on a
     correctly-flagged line is more useful than false certainty.
 
 Return ONLY the JSON object. No markdown, no commentary.`;
 
+// Naming note: this is "pass 3" in the module doc-comment's flow (transcribe
+// -> structure -> reconcile+cross-check -> corrective re-read), but keeps its
+// original "second pass" identifiers here since those names are also the
+// response's field names (secondPassTriggered, secondPassCorrections).
 const SECOND_PASS_SYSTEM_PROMPT = `You are re-examining ONE specific discrepancy on a receipt image.
 
 A first reading of this receipt did not add up. You are given the first reading,
@@ -248,7 +280,11 @@ interface RawCharge {
 }
 
 interface RawUnresolvedLine {
+  id?: unknown;
   amount?: unknown;
+  text?: unknown;
+  lineIndex?: unknown;
+  nearestItemLineIndex?: unknown;
 }
 
 interface RawPayload {
@@ -259,6 +295,183 @@ interface RawPayload {
   printedSubtotal?: unknown;
   printedTotal?: unknown;
   [key: string]: unknown;
+}
+
+// ─── Transcript-based evidence validation ─────────────────────────────────────
+//
+// Pass 1's transcript is an independent witness: pass 2 never gets to
+// "correct" it, only reference it. Any amount pass 2 asserts must actually
+// appear somewhere in the transcript, and any amount the transcript contains
+// must end up claimed by something in pass 2's output (or be surfaced as an
+// unresolved line) — nothing may vanish or be invented silently between the
+// two passes.
+
+interface TranscribedAmount {
+  value: number;
+  lineIndex: number;
+  lineText: string;
+}
+
+/**
+ * Parses a money-shaped token (e.g. "23.75", "1,234.56", "23,75", "(4.50)")
+ * into a major-unit number. Only tokens with an exact 2-digit fraction are
+ * matched by the caller's regex, so the last separator is always decimal.
+ */
+function parseMoneyToken(raw: string): number | null {
+  let text = raw.trim();
+  let negative = false;
+  if (/^\(.*\)$/.test(text)) {
+    negative = true;
+    text = text.slice(1, -1);
+  }
+  if (text.startsWith("-")) {
+    negative = true;
+    text = text.slice(1);
+  }
+  const sepIndex = Math.max(text.lastIndexOf("."), text.lastIndexOf(","));
+  if (sepIndex === -1) return null;
+  const integerPart = text.slice(0, sepIndex).replace(/[.,]/g, "");
+  const fractionPart = text.slice(sepIndex + 1);
+  if (!/^\d+$/.test(integerPart) || !/^\d{2}$/.test(fractionPart)) return null;
+  const value = Number(`${integerPart}.${fractionPart}`);
+  if (!Number.isFinite(value)) return null;
+  return negative ? -value : value;
+}
+
+// Matches a run of digits (with optional thousands separators) ending in a
+// 2-digit fraction — deliberately excludes bare integers (quantities, piece
+// counts) to keep this a money-only witness, not a generic number extractor.
+const MONEY_TOKEN_PATTERN = /-?\(?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\)?/g;
+
+function extractMoneyFromLines(lines: string[]): TranscribedAmount[] {
+  const results: TranscribedAmount[] = [];
+  lines.forEach((lineText, lineIndex) => {
+    const matches = lineText.match(MONEY_TOKEN_PATTERN);
+    if (!matches) return;
+    for (const raw of matches) {
+      const value = parseMoneyToken(raw);
+      if (value !== null) results.push({ value, lineIndex, lineText });
+    }
+  });
+  return results;
+}
+
+// Magnitude only: item-level discounts are stored as a positive amount by
+// convention (see lib/receipt/model.ts) but the printed line often shows a
+// visually negative token ("-5.00", "(5.00)") — comparing absolute values
+// sidesteps that sign-convention mismatch instead of false-flagging it.
+function centsOf(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.round(Math.abs(value) * 100);
+}
+
+interface TranscriptValidation {
+  /** Count only — never log the values/names themselves (receipt content). */
+  hallucinationCount: number;
+  addedUnresolvedCount: number;
+}
+
+/**
+ * Cross-checks every monetary value pass 2 asserted against pass 1's
+ * transcript, mutating `payload` in place:
+ *   - A value with no match in the transcript is nulled out (treated as
+ *     "unreadable", which the existing reconciliation/second-pass machinery
+ *     already knows how to react to) rather than shipped as a confident lie.
+ *   - A transcribed amount that ends up unclaimed by anything in the output
+ *     is appended to unresolvedLines, so it surfaces to the user instead of
+ *     disappearing.
+ * Matching is multiset-based (a value printed twice must be claimed twice)
+ * so a duplicate value doesn't mask one hallucinated instance of it.
+ */
+function validateAgainstTranscript(
+  payload: RawPayload,
+  transcript: TranscribedAmount[]
+): TranscriptValidation {
+  const pool = new Map<number, TranscribedAmount[]>();
+  for (const t of transcript) {
+    const c = centsOf(t.value);
+    if (c === null) continue;
+    const list = pool.get(c);
+    if (list) list.push(t);
+    else pool.set(c, [t]);
+  }
+
+  let hallucinationCount = 0;
+
+  // Non-generic and cast at each call site on purpose: RawItem/RawModifier/
+  // RawCharge have no index signature, so a generic `keyof T` helper would
+  // not type-check against them the way it does against RawPayload.
+  const claimOrNull = (obj: Record<string, unknown>, key: string): void => {
+    const value = obj[key];
+    if (typeof value !== "number") return;
+    const c = centsOf(value);
+    const list = c === null ? undefined : pool.get(c);
+    if (list && list.length > 0) {
+      list.shift();
+    } else {
+      hallucinationCount += 1;
+      obj[key] = null;
+    }
+  };
+
+  for (const item of payload.items ?? []) {
+    const itemRecord = item as unknown as Record<string, unknown>;
+    claimOrNull(itemRecord, "unitPrice");
+    claimOrNull(itemRecord, "baseLineTotal");
+    claimOrNull(itemRecord, "discount");
+    for (const modifier of item.modifiers ?? []) {
+      if (modifier.kind === "free") continue;
+      claimOrNull(modifier as unknown as Record<string, unknown>, "price");
+    }
+  }
+
+  for (const charge of payload.charges ?? []) {
+    claimOrNull(charge as unknown as Record<string, unknown>, "amount");
+  }
+
+  // Already-unresolved amounts are legitimately accounted for — they're
+  // surfaced to the user already, just not attributed to anything specific.
+  for (const line of payload.unresolvedLines ?? []) {
+    const c = centsOf(line.amount);
+    const list = c === null ? undefined : pool.get(c);
+    if (list && list.length > 0) list.shift();
+  }
+
+  for (const key of [
+    "printedSubtotal",
+    "printedServiceCharge",
+    "printedTax",
+    "printedTip",
+    "printedDiscount",
+    "printedTotal",
+  ] as const) {
+    claimOrNull(payload, key);
+  }
+
+  // Reverse check: whatever is left unclaimed in the pool was transcribed but
+  // never accounted for anywhere in pass 2's output.
+  const addedUnresolvedLines: RawUnresolvedLine[] = [];
+  for (const occurrences of pool.values()) {
+    for (const occ of occurrences) {
+      addedUnresolvedLines.push({
+        id: `evidence_${occ.lineIndex}_${addedUnresolvedLines.length}`,
+        amount: occ.value,
+        text: occ.lineText,
+        lineIndex: occ.lineIndex,
+      });
+    }
+  }
+  if (addedUnresolvedLines.length > 0) {
+    payload.unresolvedLines = [
+      ...(Array.isArray(payload.unresolvedLines) ? payload.unresolvedLines : []),
+      ...addedUnresolvedLines,
+    ];
+  }
+
+  return {
+    hallucinationCount,
+    addedUnresolvedCount: addedUnresolvedLines.length,
+  };
 }
 
 // ─── Server-side reconciliation (for logging and second-pass gating) ──────────
@@ -607,16 +820,34 @@ serve(async (req: Request) => {
       ? image
       : `data:image/jpeg;base64,${image}`;
 
-    // ── Pass 1: structural extraction ────────────────────────────────────────
-    const firstPassContent = await callOpenAI(
-      SYSTEM_PROMPT,
+    // ── Pass 1: pure transcription, no interpretation ────────────────────────
+    const transcriptionContent = await callOpenAI(
+      TRANSCRIPTION_SYSTEM_PROMPT,
+      [{ type: "image_url", image_url: { url: imageUrl, detail: "high" } }],
+      2500
+    );
+
+    let lines: string[];
+    try {
+      const parsedTranscript = JSON.parse(transcriptionContent);
+      lines = Array.isArray(parsedTranscript?.lines)
+        ? parsedTranscript.lines.filter((l: unknown): l is string => typeof l === "string")
+        : [];
+    } catch {
+      return errorResponse("UNREADABLE_RECEIPT", 422);
+    }
+    if (lines.length === 0) {
+      return errorResponse("UNREADABLE_RECEIPT", 422);
+    }
+
+    // ── Pass 2: structure the transcript text (no image) into items/charges ──
+    const numberedLines = lines.map((line, i) => `${i}: ${line}`).join("\n");
+    const structureContent = await callOpenAI(
+      STRUCTURE_SYSTEM_PROMPT,
       [
-        { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
         {
           type: "text",
-          text:
-            "Read this receipt. Report every priced line exactly once. Keep item " +
-            "names in their original language.",
+          text: `Transcribed receipt lines (index: text):\n\n${numberedLines}`,
         },
       ],
       4000
@@ -624,7 +855,7 @@ serve(async (req: Request) => {
 
     let payload: RawPayload;
     try {
-      payload = JSON.parse(firstPassContent) as RawPayload;
+      payload = JSON.parse(structureContent) as RawPayload;
     } catch {
       return errorResponse("UNREADABLE_RECEIPT", 422);
     }
@@ -633,10 +864,19 @@ serve(async (req: Request) => {
       return errorResponse("UNREADABLE_RECEIPT", 422);
     }
 
+    // ── Deterministic transcript cross-check ─────────────────────────────────
+    // Pass 1's transcript is the independent witness pass 2 is checked
+    // against: any asserted amount pass 2 can't back with a transcript line
+    // is nulled (treated as unreadable, not shipped as a confident lie), and
+    // any transcribed amount pass 2 left unclaimed is surfaced as an
+    // unresolved line instead of silently disappearing.
+    const transcribedAmounts = extractMoneyFromLines(lines);
+    const evidence = validateAgainstTranscript(payload, transcribedAmounts);
+
     // ── Deterministic reconciliation ─────────────────────────────────────────
     const reconciliation = reconcile(payload);
 
-    // ── Pass 2: targeted re-read, only when pass 1 did not reconcile ─────────
+    // ── Pass 3: targeted corrective re-read, only if still not reconciled ────
     let secondPassCorrections: SecondPassCorrection[] = [];
     let secondPassTriggered = false;
 
@@ -684,6 +924,10 @@ serve(async (req: Request) => {
             ? null
             : toMajor(reconciliation.printedTotalMinor, reconciliation.currency),
         validationStatus: reconciliation.reconciles ? "reconciled" : "needs_review",
+        transcriptLineCount: lines.length,
+        // Counts only — never the values/names themselves (receipt content).
+        evidenceHallucinationCount: evidence.hallucinationCount,
+        evidenceAddedUnresolvedCount: evidence.addedUnresolvedCount,
         secondPassTriggered,
         correctionCount: secondPassCorrections.length,
         topCorrectionType: topCorrection?.type ?? null,
