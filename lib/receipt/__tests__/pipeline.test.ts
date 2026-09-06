@@ -326,7 +326,7 @@ describe("diagnostics: item-level errors", () => {
           name: "Beer",
           quantity: 1,
           unitPrice: 9.0,
-          sourceEvidence: { lineText: "2 x Beer" },
+          sourceEvidence: { lineText: "2 x Beer  9.00" },
         },
       ],
       printedSubtotal: 18.0,
@@ -717,5 +717,67 @@ describe("reconciler: status semantics", () => {
     const diagnosis = diagnoseReceipt(receipt);
     assertEqual(diagnosis.issues.length, 0);
     assertEqual(diagnosis.inconclusive, false);
+  });
+});
+
+// ─── Evidence: value vs cited line text ────────────────────────────────────────
+
+describe("evidence: price vs cited text", () => {
+  it("raises no issue when the value matches its cited line text", () => {
+    const receipt = build({
+      currency: "CAD",
+      items: [
+        {
+          name: "Khao Soi",
+          quantity: 1,
+          unitPrice: 23.75,
+          sourceEvidence: { lineText: "Khao Soi  23.75" },
+        },
+      ],
+      printedSubtotal: 23.75,
+    });
+    assert(
+      !receipt.validation.issues.some((i) => i.type === "unverifiable_value"),
+      "expected no evidence mismatch issue"
+    );
+  });
+
+  it("flags a value that contradicts its cited line text, even when the subtotal still reconciles", () => {
+    // The scenario this guards against: a misread value can, by coincidence,
+    // still let the subtotal add up (here it trivially does, since
+    // printedSubtotal matches the wrong unitPrice) — reconciliation alone
+    // would never catch it. This check must run independently of status.
+    const receipt = build({
+      currency: "CAD",
+      items: [
+        {
+          id: "ks2",
+          name: "Khao Soi",
+          quantity: 1,
+          unitPrice: 16.75,
+          sourceEvidence: { lineText: "Khao Soi 23.75" },
+        },
+      ],
+      printedSubtotal: 16.75,
+    });
+    assertEqual(receipt.validation.status, "reconciled");
+    const issue = receipt.validation.issues.find((i) => i.type === "unverifiable_value");
+    assert(issue !== undefined, "expected an evidence mismatch issue");
+    assertEqual(issue!.confidenceLevel, "high");
+    assertEqual(issue!.itemId, "ks2");
+  });
+
+  it("raises no issue when there is no cited line text to check against", () => {
+    // Absence of evidence is not the same as a contradiction — we cannot
+    // validate what the model didn't give us, so this must stay silent.
+    const receipt = build({
+      currency: "CAD",
+      items: [{ name: "Khao Soi", quantity: 1, unitPrice: 23.75 }],
+      printedSubtotal: 23.75,
+    });
+    assert(
+      !receipt.validation.issues.some((i) => i.type === "unverifiable_value"),
+      "expected no evidence issue when sourceEvidence.lineText is absent"
+    );
   });
 });

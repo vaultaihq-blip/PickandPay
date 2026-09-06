@@ -31,6 +31,7 @@ import {
 } from "./model";
 import { recomputeTotals } from "./normalizer";
 import { chargeConsistencyDelta, reconcileReceipt } from "./reconciler";
+import { checkPriceEvidence } from "./evidence";
 
 // ─── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -675,6 +676,13 @@ export function evaluateReceipt(receipt: CanonicalReceipt): CanonicalReceipt {
       ? { issues: [] as ReceiptIssue[] }
       : diagnoseReceipt(fresh);
 
+  // Runs unconditionally, independent of reconciliation.status: an invented
+  // value can, by coincidence, still let the subtotal reconcile (e.g. two
+  // errors cancelling out), so this must not be gated behind reconciliation
+  // success/failure like the checks inside diagnoseReceipt are. Placed first
+  // so an objective text/value contradiction outranks a speculative guess.
+  const evidenceIssues = checkPriceEvidence(fresh);
+
   return {
     ...fresh,
     validation: {
@@ -683,7 +691,7 @@ export function evaluateReceipt(receipt: CanonicalReceipt): CanonicalReceipt {
       totalDelta: reconciliation.totalDelta,
       missingPrintedSubtotal: reconciliation.missingPrintedSubtotal,
       missingPrintedTotal: reconciliation.missingPrintedTotal,
-      issues: diagnosis.issues,
+      issues: [...evidenceIssues, ...diagnosis.issues],
     },
   };
 }
