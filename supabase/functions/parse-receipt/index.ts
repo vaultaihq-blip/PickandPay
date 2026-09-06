@@ -21,9 +21,31 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RATE_LIMIT_MAX = 20;
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
-const MODEL = "gpt-4o";
+// Pinned to a dated snapshot, not the "gpt-4o" alias: OpenAI documents that
+// model behavior can shift between snapshots served under the same alias,
+// and recommends pinning a specific snapshot for reproducible results
+// (https://platform.openai.com/docs/models/gpt-4o — "Snapshots let you lock
+// in a specific version of the model so that performance and behavior
+// remain consistent"). gpt-4o-2024-08-06 is the snapshot "gpt-4o" currently
+// resolves to (confirmed against OpenAI's model docs), so this pin changes
+// nothing about current behavior — it only stops it from changing silently
+// later. A newer snapshot (gpt-4o-2024-11-20) exists and may be worth
+// evaluating separately, but that's a deliberate model change, not a
+// reproducibility fix, so it's left alone here.
+const MODEL = "gpt-4o-2024-08-06";
 
 // ─── Prompts ──────────────────────────────────────────────────────────────────
+//
+// Future directions considered but deliberately not pursued now (single
+// observed failure on one complex receipt does not justify the added
+// complexity yet — revisit if evidence checks in lib/receipt/evidence.ts
+// start firing more than rarely):
+//   - Splitting this into two stages (pure transcription, then structural
+//     interpretation) — deeper prompt-engineering work, needs unhurried time
+//     to test properly.
+//   - Hybrid OCR (e.g. Tesseract as a numeric witness) with multi-call
+//     voting — infrastructure complexity disproportionate to the problem
+//     observed so far.
 
 const SYSTEM_PROMPT = `You read restaurant receipts from images and return structured JSON.
 
