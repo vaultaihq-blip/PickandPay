@@ -19,6 +19,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
+import { useCanonicalReceiptStore, visibleIssues } from "@/store/canonicalReceiptStore";
 import { validateEditableItems, EditableItem } from "@/lib/receipt-validator";
 import { ItemCategory, ParsedReceipt, ReceiptItem } from "@/types";
 import { useSessionStore } from "@/store/sessionStore";
@@ -154,6 +155,14 @@ export default function ReviewReceiptScreen() {
     () => validateEditableItems(items, subtotalTarget, currency),
     [items, subtotalTarget, currency]
   );
+
+  // Separate origin from validateEditableItems above: these come from the
+  // canonical pipeline's evidence check (lib/receipt/evidence.ts), which
+  // compares a value against the model's own cited line text — catches a
+  // different class of defect (a value that reconciles but doesn't match
+  // what was read) than the item-math/price-variant checks above.
+  const canonicalIssues = useCanonicalReceiptStore(visibleIssues);
+  const dismissCanonicalIssue = useCanonicalReceiptStore((s) => s.dismissIssue);
 
   const errorMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -329,6 +338,37 @@ export default function ReviewReceiptScreen() {
                 </Text>
                 {validation.warnings.map((w, i) => (
                   <Text key={i} style={styles.warningBannerItem}>· {w.message}</Text>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Canonical evidence issues — separate origin from the warnings above */}
+          {canonicalIssues.length > 0 && (
+            <View style={styles.evidenceBanner}>
+              <Ionicons name="search" size={15} color={Colors.primary} />
+              <View style={{ flex: 1, gap: 10 }}>
+                <Text style={styles.evidenceBannerTitle}>
+                  {t("review_receipt_possible_read_error")}
+                </Text>
+                {canonicalIssues.map((issue) => (
+                  <View key={issue.id} style={styles.evidenceIssueRow}>
+                    <Text style={styles.evidenceIssueMessage}>{issue.message}</Text>
+                    {issue.sourceLine && (
+                      <Text style={styles.evidenceIssueSourceLine}>
+                        {t("review_receipt_cited_line")} "{issue.sourceLine}"
+                      </Text>
+                    )}
+                    <TouchableOpacity
+                      style={styles.evidenceDismissBtn}
+                      onPress={() => dismissCanonicalIssue(issue.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.evidenceDismissBtnText}>
+                        {t("review_receipt_dismiss")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 ))}
               </View>
             </View>
@@ -681,6 +721,28 @@ const styles = StyleSheet.create({
   },
   warningBannerTitle: { fontSize: 12, fontWeight: "700", color: Colors.warning },
   warningBannerItem: { fontSize: 11, color: Colors.warning, lineHeight: 16 },
+
+  evidenceBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: "#EEF2FF",
+    borderWidth: 1,
+    borderColor: "#C7D2FE",
+  },
+  evidenceBannerTitle: { fontSize: 12, fontWeight: "700", color: Colors.primary },
+  evidenceIssueRow: { gap: 4 },
+  evidenceIssueMessage: { fontSize: 11, color: "#3730A3", lineHeight: 16 },
+  evidenceIssueSourceLine: { fontSize: 11, color: "#4338CA", fontStyle: "italic" },
+  evidenceDismissBtn: { alignSelf: "flex-start", paddingVertical: 2 },
+  evidenceDismissBtnText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: Colors.primary,
+    textDecorationLine: "underline",
+  },
 
   sectionTitle: {
     fontSize: 11,

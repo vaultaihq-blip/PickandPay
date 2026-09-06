@@ -43,6 +43,11 @@ export function detectCategory(name: string): ItemCategory {
 // ─── Blank Receipt Template ────────────────────────────────────────────────────
 
 export function createBlankReceipt(): ParsedReceipt {
+  // A blank receipt is a new identity too — a canonical receipt/issues left
+  // over from an earlier scan (e.g. the user cancelled and entered manually
+  // instead) must not survive into it.
+  useCanonicalReceiptStore.getState().clear();
+
   return {
     restaurant: "New Receipt",
     date: new Date().toISOString().split("T")[0],
@@ -75,6 +80,12 @@ interface ParseReceiptResponse {
 export async function analyzeReceipt(
   imageUri: string
 ): Promise<{ receipt: ParsedReceipt; rawText: string }> {
+  // A new scan means a new receipt identity — any canonical receipt/issues
+  // left over from a previous scan must not survive into this one, even if
+  // this particular call ends up on the legacy (non-v2) branch below and
+  // never repopulates the store itself.
+  useCanonicalReceiptStore.getState().clear();
+
   console.log("📸 [parser] Starting edge function OCR:", imageUri.substring(0, 40));
   // Dynamic import: lib/supabase.ts pulls in React Native / Expo modules at
   // load time, which would make this file (and its pure normalizeReceipt
