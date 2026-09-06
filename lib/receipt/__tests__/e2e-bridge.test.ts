@@ -17,7 +17,8 @@ import { normalizeRawReceipt, type RawReceiptPayload } from "../normalizer";
 import { toParsedReceipt } from "../adapter";
 import { useCanonicalReceiptStore } from "@/store/canonicalReceiptStore";
 import { normalizeReceipt } from "@/utils/parser";
-import { validateReceiptOCR } from "@/lib/receipt-validator";
+import { validateReceiptOCR, validateEditableItems, type EditableItem } from "@/lib/receipt-validator";
+import type { ParsedReceipt } from "@/types";
 import { assert, assertEqual, describe, it } from "./harness";
 
 // Toronto fixture: printed subtotal 374.25, service 67.36, tax 57.42, total
@@ -101,6 +102,25 @@ function runBridge(envelope: { schemaVersion: number; receipt?: RawReceiptPayloa
   return { receipt, canonical };
 }
 
+/** Mirrors flattenItems() in app/(app)/review-receipt.tsx. */
+function toEditableItems(receipt: ParsedReceipt): EditableItem[] {
+  const items: EditableItem[] = [];
+  for (const cat of ["starters", "mains", "drinks", "desserts", "others"] as const) {
+    for (const item of receipt.categories[cat]) {
+      items.push({
+        id: item.id,
+        category: cat,
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice,
+        addOns: item.addOns,
+      });
+    }
+  }
+  return items;
+}
+
 describe("bridge: v2 envelope -> legacy ParsedReceipt", () => {
   it("never reports 'error' status when every modifier is attributed", () => {
     const { receipt } = runBridge(buildV2Envelope());
@@ -180,5 +200,30 @@ describe("bridge: v2 envelope -> legacy ParsedReceipt", () => {
     const stored = useCanonicalReceiptStore.getState().receipt;
     assert(stored !== null, "expected canonicalReceiptStore to hold a receipt");
     assertEqual(stored, canonical);
+  });
+
+  it("does not flag the two Chef Nuit Pad Thai or two Khao Soi orders as suspicious price variants", () => {
+    // Regression: validateEditableItems (review-receipt.tsx's live editor
+    // validation) grouped items by name and compared raw unitPrice. The
+    // canonical adapter folds a paid modifier's price into unitPrice, so two
+    // legitimate orders of the same dish with different paid add-ons (one
+    // with "extra shrimp", one without) always showed as "2 different
+    // prices" — even though the underlying menu base (23.75 for both dishes
+    // here) is identical. Real receipt: Pai Northern Thai Kitchen, Toronto.
+    const { receipt } = runBridge(buildV2Envelope());
+    const items = toEditableItems(receipt);
+    const validation = validateEditableItems(
+      items,
+      receipt.validation.computedTotal,
+      receipt.currency
+    );
+    const priceVariantWarnings = validation.warnings
+      .map((w) => w.message)
+      .filter((m) => m.includes("different prices"));
+    assertEqual(
+      priceVariantWarnings.length,
+      0,
+      `expected no false-positive price-variant warnings, got: ${priceVariantWarnings.join(" | ")}`
+    );
   });
 });

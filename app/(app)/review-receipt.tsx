@@ -45,6 +45,7 @@ function flattenItems(receipt: ParsedReceipt): EditableItem[] {
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalPrice: item.totalPrice,
+        addOns: item.addOns,
       });
     }
   }

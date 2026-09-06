@@ -46,6 +46,30 @@ function paidAddOnsTotal(item: { addOns?: { totalPrice: number }[] }): number {
   return (item.addOns ?? []).reduce((s, a) => s + (a.totalPrice ?? 0), 0);
 }
 
+/**
+ * Value a single paid modifier contributes to its parent item's total. The
+ * canonical adapter folds a modifier's price into the parent's totalPrice
+ * and zeroes the modifier's own totalPrice to stop legacy code summing it
+ * twice (see lib/receipt/adapter.ts:toLegacyItem) — its real value lives in
+ * unitPrice instead. A source that populates totalPrice directly (a future
+ * legacy producer) is respected as-is.
+ */
+function modifierValue(addOn: { unitPrice?: number; totalPrice: number }): number {
+  return addOn.totalPrice !== 0 ? addOn.totalPrice : (addOn.unitPrice ?? 0);
+}
+
+/**
+ * The item's price with paid modifiers stripped out — the menu base price.
+ * Two orders of the same dish with different paid add-ons (e.g. one with
+ * "extra shrimp", one without) legitimately have different totalPrice even
+ * though this base is identical; comparing bases (not totals) is what tells
+ * a normal group-order variation apart from an actual misread.
+ */
+function itemBasePrice(item: { totalPrice: number; addOns?: { unitPrice?: number; totalPrice: number }[] }): number {
+  const modifiersSum = (item.addOns ?? []).reduce((s, a) => s + modifierValue(a), 0);
+  return Math.round((item.totalPrice - modifiersSum) * 100) / 100;
+}
+
 // ─── ParsedReceipt validator (called immediately after OCR in scan.tsx) ───────
 
 export function validateReceiptOCR(receipt: ParsedReceipt): ValidationResult {
@@ -154,7 +178,7 @@ export interface EditableItem {
   totalPrice: number;
   /** Paid modifiers, when the caller has them available. Optional — existing
    *  callers that don't populate this keep behaving exactly as before. */
-  addOns?: { totalPrice: number }[];
+  addOns?: { unitPrice?: number; totalPrice: number }[];
 }
 
 export function validateEditableItems(
@@ -223,8 +247,13 @@ export function validateEditableItems(
   }
   for (const [, group] of byName) {
     if (group.length > 1) {
-      const prices = new Set(group.map((i) => i.unitPrice));
-      if (prices.size > 1) {
+      // Gate on the BASE price (total minus paid modifiers), not the raw
+      // unitPrice — two orders of the same dish with different paid add-ons
+      // are expected to have different totals. Only a differing base signals
+      // an actual misread.
+      const bases = new Set(group.map((i) => itemBasePrice(i)));
+      if (bases.size > 1) {
+        const prices = new Set(group.map((i) => i.unitPrice));
         warnings.push({
           message: `"${group[0].name}" has ${prices.size} different prices: ${Array.from(prices).map((p) => `${p.toFixed(2)} ${cur}`).join(", ")}`,
         });
