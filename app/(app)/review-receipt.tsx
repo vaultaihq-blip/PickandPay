@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect, useCallback } from "react";
+﻿import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -164,6 +164,30 @@ export default function ReviewReceiptScreen() {
   const canonicalIssues = useCanonicalReceiptStore(visibleIssues);
   const dismissCanonicalIssue = useCanonicalReceiptStore((s) => s.dismissIssue);
 
+  // Tapping an issue scrolls to and briefly highlights the item it points at
+  // (issue.itemId survives the canonical -> legacy projection unchanged, see
+  // lib/receipt/adapter.ts:toLegacyItem, so it matches an EditableItem.id
+  // here directly). No modal: ItemCorrectionModal edits CanonicalReceipt via
+  // ReceiptEdit, a model this screen's own items/rebuildReceipt never reads
+  // from — wiring it in without also bridging that would let a "fix" vanish
+  // silently when the user saves. Scrolling to the existing, already-wired
+  // inline fields is the safe option.
+  const scrollViewRef = useRef<ScrollView>(null);
+  const itemLayoutY = useRef<Record<string, number>>({});
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
+
+  const scrollToItem = useCallback((itemId: string | undefined) => {
+    if (itemId === undefined) return;
+    const y = itemLayoutY.current[itemId];
+    if (y !== undefined) {
+      scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 100), animated: true });
+    }
+    setHighlightedItemId(itemId);
+    setTimeout(() => {
+      setHighlightedItemId((current) => (current === itemId ? null : current));
+    }, 2500);
+  }, []);
+
   const errorMap = useMemo(() => {
     const m = new Map<string, string>();
     validation.errors.forEach((e) => { if (e.itemId) m.set(e.itemId, e.message); });
@@ -249,6 +273,7 @@ export default function ReviewReceiptScreen() {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
+          ref={scrollViewRef}
           contentContainerStyle={[
             styles.scroll,
             { paddingBottom: 20 + Math.max(insets.bottom, 16) },
@@ -356,12 +381,18 @@ export default function ReviewReceiptScreen() {
                   {t("review_receipt_possible_read_error")}
                 </Text>
                 <View style={styles.evidenceIssueRow}>
-                  <Text style={styles.evidenceIssueMessage}>{canonicalIssues[0].message}</Text>
-                  {canonicalIssues[0].sourceLine && (
-                    <Text style={styles.evidenceIssueSourceLine}>
-                      {t("review_receipt_cited_line")} "{canonicalIssues[0].sourceLine}"
-                    </Text>
-                  )}
+                  <TouchableOpacity
+                    disabled={canonicalIssues[0].itemId === undefined}
+                    onPress={() => scrollToItem(canonicalIssues[0].itemId)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.evidenceIssueMessage}>{canonicalIssues[0].message}</Text>
+                    {canonicalIssues[0].sourceLine && (
+                      <Text style={styles.evidenceIssueSourceLine}>
+                        {t("review_receipt_cited_line")} "{canonicalIssues[0].sourceLine}"
+                      </Text>
+                    )}
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.evidenceDismissBtn}
                     onPress={() => dismissCanonicalIssue(canonicalIssues[0].id)}
@@ -388,12 +419,18 @@ export default function ReviewReceiptScreen() {
 
           {items.map((item, index) => {
             const hasError = errorMap.has(item.id);
+            const isHighlighted = item.id === highlightedItemId;
             return (
               <View
                 key={item.id}
+                onLayout={(e) => { itemLayoutY.current[item.id] = e.nativeEvent.layout.y; }}
                 style={[
                   styles.itemCard,
-                  { backgroundColor: cardColor, borderColor: hasError ? "#EF4444" : borderColor },
+                  {
+                    backgroundColor: cardColor,
+                    borderColor: hasError ? "#EF4444" : isHighlighted ? Colors.primary : borderColor,
+                    borderWidth: isHighlighted ? 2 : 1,
+                  },
                 ]}
               >
                 <View style={styles.itemHeader}>
