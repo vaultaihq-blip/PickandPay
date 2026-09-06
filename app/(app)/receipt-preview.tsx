@@ -21,6 +21,19 @@ import { validateReceiptOCR } from "@/lib/receipt-validator";
 import { useI18nStore } from "@/store/i18nStore";
 
 const { width, height } = Dimensions.get("window");
+const MAX_SIDE = 2000; // cap the longer side so GPT-4o Vision gets a consistently sized image
+
+/**
+ * Width to pass to ImageManipulator's resize action so the longer side ends
+ * up at MAX_SIDE, preserving aspect ratio (the other dimension is derived
+ * automatically when only `width` is given). Returns null when the image is
+ * already within bounds and no resize is needed.
+ */
+function computeResizeWidth(width: number, height: number): number | null {
+  const longer = Math.max(width, height);
+  if (longer <= MAX_SIDE) return null;
+  return Math.round(width * (MAX_SIDE / longer));
+}
 
 export default function ReceiptPreviewScreen() {
   const {
@@ -31,7 +44,7 @@ export default function ReceiptPreviewScreen() {
     setTip,
     setTipMode,
   } = useReceiptStore();
-  const { profile } = useAuthStore();
+  const { profile, isEmailVerified } = useAuthStore();
   const { t } = useI18nStore();
 
   const [currentUri, setCurrentUri] = useState(pendingImageUri ?? "");
@@ -44,9 +57,22 @@ export default function ReceiptPreviewScreen() {
     if (isRotating || !currentUri) return;
     setIsRotating(true);
     try {
+      const actions: ImageManipulator.Action[] = [{ rotate: degrees }];
+
+      const size = await new Promise<{ w: number; h: number } | null>((resolve) => {
+        Image.getSize(currentUri, (w, h) => resolve({ w, h }), () => resolve(null));
+      });
+      if (size) {
+        // Both buttons only ever pass ±90°, which swaps width and height.
+        const resizeWidth = computeResizeWidth(size.h, size.w);
+        if (resizeWidth !== null) {
+          actions.push({ resize: { width: resizeWidth } });
+        }
+      }
+
       const result = await ImageManipulator.manipulateAsync(
         currentUri,
-        [{ rotate: degrees }],
+        actions,
         { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG, base64: true }
       );
       setCurrentUri(result.uri);
@@ -60,6 +86,15 @@ export default function ReceiptPreviewScreen() {
 
   const handleAnalyze = useCallback(async () => {
     if (!currentBase64) return;
+
+    if (!isEmailVerified()) {
+      Alert.alert(
+        "Verify Your Email",
+        "Check your inbox and click the confirmation link before using credits.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
 
     if (!profile?.isPro && (profile?.billCredits ?? 0) <= 0) {
       Alert.alert(t("scan_no_credits"), t("scan_no_credits_alt"), [
@@ -126,7 +161,7 @@ export default function ReceiptPreviewScreen() {
         { text: t("scan_try_again"), style: "cancel" },
       ]);
     }
-  }, [currentBase64, currentUri, profile, t, setReceipt, setRawImageUri, setTip, setTipMode]);
+  }, [currentBase64, currentUri, profile, isEmailVerified, t, setReceipt, setRawImageUri, setTip, setTipMode]);
 
   if (!currentUri) {
     router.back();
