@@ -343,7 +343,11 @@ export default function ReviewReceiptScreen() {
             </View>
           )}
 
-          {/* Canonical evidence issues — separate origin from the warnings above */}
+          {/* Canonical evidence issues — separate origin from the warnings above.
+              diagnoseReceipt returns competing hypotheses for the SAME delta,
+              ranked by confidence, not independent defects — so only the top
+              one is actionable; the rest are alternative explanations, not
+              additional problems, and are collapsed into a count. */}
           {canonicalIssues.length > 0 && (
             <View style={styles.evidenceBanner}>
               <Ionicons name="search" size={15} color={Colors.primary} />
@@ -351,25 +355,28 @@ export default function ReviewReceiptScreen() {
                 <Text style={styles.evidenceBannerTitle}>
                   {t("review_receipt_possible_read_error")}
                 </Text>
-                {canonicalIssues.map((issue) => (
-                  <View key={issue.id} style={styles.evidenceIssueRow}>
-                    <Text style={styles.evidenceIssueMessage}>{issue.message}</Text>
-                    {issue.sourceLine && (
-                      <Text style={styles.evidenceIssueSourceLine}>
-                        {t("review_receipt_cited_line")} "{issue.sourceLine}"
-                      </Text>
-                    )}
-                    <TouchableOpacity
-                      style={styles.evidenceDismissBtn}
-                      onPress={() => dismissCanonicalIssue(issue.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.evidenceDismissBtnText}>
-                        {t("review_receipt_dismiss")}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                <View style={styles.evidenceIssueRow}>
+                  <Text style={styles.evidenceIssueMessage}>{canonicalIssues[0].message}</Text>
+                  {canonicalIssues[0].sourceLine && (
+                    <Text style={styles.evidenceIssueSourceLine}>
+                      {t("review_receipt_cited_line")} "{canonicalIssues[0].sourceLine}"
+                    </Text>
+                  )}
+                  <TouchableOpacity
+                    style={styles.evidenceDismissBtn}
+                    onPress={() => dismissCanonicalIssue(canonicalIssues[0].id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.evidenceDismissBtnText}>
+                      {t("review_receipt_dismiss")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {canonicalIssues.length > 1 && (
+                  <Text style={styles.evidenceMoreText}>
+                    + {canonicalIssues.length - 1} {t("review_receipt_more")}
+                  </Text>
+                )}
               </View>
             </View>
           )}
@@ -743,6 +750,7 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     textDecorationLine: "underline",
   },
+  evidenceMoreText: { fontSize: 11, color: Colors.primary, fontStyle: "italic" },
 
   sectionTitle: {
     fontSize: 11,
