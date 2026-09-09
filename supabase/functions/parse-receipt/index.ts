@@ -2,617 +2,107 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * parse-receipt — two-pass receipt extraction with transcript cross-checking.
+ * parse-receipt — OCR-grounded receipt extraction.
  *
- * The vision model is used strictly as a *reader* of the image. It is never
- * asked to compute totals or to judge whether the receipt is valid: all
- * arithmetic and all validation happen deterministically, here and on the
- * client, in integer minor units.
+ * v1 of this pipeline (evidence-ledger-v1, deployed as v53) read every
+ * monetary digit via TWO separate GPT-4o Vision calls (a transcription pass
+ * and an independent witness pass) and cross-checked them. Real-device
+ * testing showed the same receipt image producing different results between
+ * runs — consistent with vision-model completions having genuine run-to-run
+ * variance even at temperature 0, unlike text-only completions over a fixed
+ * input. No amount of additional GPT re-reads removes a per-call source of
+ * randomness; it only samples it more.
  *
- * A single combined "read and structure" call let the model's structural
- * judgment quietly corrupt a number while it was reading it — the model has
- * no independent record of what it actually saw to check itself against.
- * Splitting the read from the interpretation gives us that independent
- * record for free, without external OCR:
+ * This version (ocr-grounded-v1) changes the architecture instead: a
+ * dedicated OCR engine (Google Cloud Vision, DOCUMENT_TEXT_DETECTION) is the
+ * ONE source of truth for every printed character and monetary digit. It is
+ * deterministic per input, not generative. The LLM never re-reads a digit on
+ * the happy path — it only interprets STRUCTURE and RELATIONSHIPS over OCR's
+ * evidence (item/modifier ownership, quantities, unit-vs-line-total,
+ * subtotal/tax/service/tip/total classification), referencing monetary
+ * values exclusively by OCR-token-derived amountId. The Structured Outputs
+ * schema makes it schema-impossible for this call to return a bare
+ * `basePrice: number` — see schema.ts.
  *
  * Flow:
- *   image -> pass 1 (pure transcription, no interpretation)
- *         -> pass 2 (structure the transcript text into items/charges/etc.)
- *         -> deterministic reconciliation
- *         -> deterministic transcript cross-check (every asserted amount must
- *            appear in pass 1's transcript; every transcribed amount must be
- *            claimed by something in pass 2's output, or it's injected into
- *            unresolvedLines) — this is the independent witness pass 1 buys us
- *         -> pass 3 (targeted corrective re-read of the image) only when
- *            reconciliation still fails after the cross-check
- *         -> structured payload for the client pipeline
+ *   image
+ *     -> OCR PASS: Google Cloud Vision DOCUMENT_TEXT_DETECTION (1 request)
+ *        returns words with bounding boxes + confidence; ocr.ts
+ *        reconstructs printed lines from word geometry (deterministic, not
+ *        a generative "transcribe this" step).
+ *     -> buildLedgerFromOcr(): every OCR word that money-pattern-matches
+ *        becomes ONE ledger entry, anchored to that physical OCR token.
+ *        Never deduped by value. No cross-read alignment needed or done —
+ *        there's exactly one OCR read to trust in the first place.
+ *     -> ONE semantic pass (structure + price assignment together): text
+ *        only, over OCR's lines + the full monetary ledger. Structured
+ *        Outputs' amountId enum is a fabrication-prevention SAFETY LAYER
+ *        only, never the source of truth.
+ *     -> deterministic validation: existence, then OWNERSHIP (the chosen ID
+ *        was actually near the claiming block's own lines), then evidence
+ *        strength (OCR's own confidence for that word — never blindly
+ *        trusted; see OCR_CONFIDENCE_THRESHOLD in validate.ts).
+ *     -> targeted verification (fallback only, batched): fires for an
+ *        ownership failure, a low-confidence load-bearing value, or a
+ *        reconciliation failure that survives round 1. This is the ONLY
+ *        place a vision model re-reads a digit, only for the few
+ *        occurrences actually in doubt, describing the flagged location
+ *        over the full image rather than a second primary read.
+ *     -> reconcile() (existing lightweight check) — a supporting signal
+ *        only, never proof two OCR/semantic errors didn't cancel out.
+ *     -> RawPayload, same public shape the client has always consumed.
+ *
+ * Auth and rate limiting below are unchanged from the previous pipeline.
  */
+
+import {
+  STRUCTURE_AND_ASSIGNMENT_SYSTEM_PROMPT,
+  TARGETED_VERIFICATION_SYSTEM_PROMPT,
+} from "./prompts.ts";
+import { callGoogleVision, normalizeVisionResponse, OcrError } from "./ocr.ts";
+import { buildLedgerFromOcr, type LedgerEntry } from "./ledger.ts";
+import {
+  buildStructureSchema,
+  describeLedgerForPrompt,
+  assignmentsFromBlocks,
+  type StructureBlock,
+  type Assignment,
+} from "./schema.ts";
+import {
+  validateAssignments,
+  findSuspiciousEvidence,
+  findOwnershipAmbiguous,
+  findReconciliationSuspects,
+  buildFinalPayload,
+  OCR_CONFIDENCE_THRESHOLD,
+  type SuspiciousEvidence,
+} from "./validate.ts";
+import { computeGeometricOwnership, type PriceBlockInput } from "./ownership.ts";
+import { filterToAuthoritativeColumn } from "./columns.ts";
+import {
+  computeItemsRegionEnd,
+  findStructuralGaps,
+  classifyCoverage,
+  findDuplicateOwnership,
+  determineValidity,
+} from "./coverage.ts";
+import { reconcile, toMajor } from "./reconcile.ts";
+
+const PARSER_VERSION = "ocr-grounded-v1";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RATE_LIMIT_MAX = 20;
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
+const GOOGLE_CLOUD_API_KEY = Deno.env.get("GOOGLE_CLOUD_API_KEY") ?? "";
 // Pinned to a dated snapshot, not the "gpt-4o" alias: OpenAI documents that
 // model behavior can shift between snapshots served under the same alias,
 // and recommends pinning a specific snapshot for reproducible results
-// (https://platform.openai.com/docs/models/gpt-4o — "Snapshots let you lock
-// in a specific version of the model so that performance and behavior
-// remain consistent"). gpt-4o-2024-08-06 is the snapshot "gpt-4o" currently
-// resolves to (confirmed against OpenAI's model docs). Snapshot swaps
-// (2024-11-20, 2024-05-13) were tried against the Khao Soi hallucination
-// case and made no difference — reverted here, not worth carrying.
+// (https://platform.openai.com/docs/models/gpt-4o). gpt-4o-2024-08-06 is the
+// snapshot "gpt-4o" currently resolves to.
 const MODEL = "gpt-4o-2024-08-06";
-
-// ─── Prompts ──────────────────────────────────────────────────────────────────
-//
-// Deferred (single observed failure on one complex receipt doesn't justify
-// this yet — revisit if the transcript cross-check below still lets things
-// through more than rarely):
-//   - Hybrid OCR (e.g. Tesseract as a second numeric witness) with
-//     multi-call voting — infrastructure complexity disproportionate to the
-//     problem observed so far, and pass 1's transcript already serves as an
-//     independent witness without it.
-
-const TRANSCRIPTION_SYSTEM_PROMPT = `Transcribe every line of this receipt, in order, exactly as printed.
-
-One line per array entry. Include every line, even if it has no price, even if
-it looks like a note, a modifier, a header, or unrelated text. Do not group,
-merge, skip, reorder, categorize, or interpret anything. Do not add or remove
-anything. If a line has an amount, keep the amount exactly as printed on that
-same line, in its original format — do not normalize decimal separators,
-currency symbols, or spacing.
-
-Return ONLY this JSON object. No markdown, no commentary.
-{ "lines": ["...", "...", ...] }`;
-
-const STRUCTURE_SYSTEM_PROMPT = `You turn a plain-text transcription of a restaurant receipt into structured JSON.
-
-You are a READER, not a calculator. Never compute or invent totals. Report only
-what is present in the given lines. If a value is not present, omit the field.
-
-## Input
-
-You are given the receipt's lines, already transcribed and numbered starting
-at 0 (index = position in the list). Use those exact indices for every
-sourceEvidence.lineIndex — never invent a different numbering, and never
-reference an index that wasn't given to you.
-
-## Output shape
-
-{
-  "merchant": string | null,
-  "date": "YYYY-MM-DD" | null,
-  "currency": "ISO 4217 code",
-  "items": [Item],
-  "charges": [Charge],
-  "unresolvedLines": [UnresolvedLine],
-  "printedSubtotal": number | null,
-  "printedServiceCharge": number | null,
-  "printedTax": number | null,
-  "printedTip": number | null,
-  "printedDiscount": number | null,
-  "printedTotal": number | null
-}
-
-Item {
-  "id": string,
-  "name": string,              // original language, as printed
-  "quantity": integer,         // default 1
-  "unitPrice": number | null,  // price of ONE unit, excluding modifiers
-  "baseLineTotal": number|null,// printed line total, excluding modifiers
-  "modifiers": [Modifier],
-  "discount": number | null,
-  "category": "starters"|"mains"|"drinks"|"desserts"|"others",
-  "sourceEvidence": { "lineIndex": integer, "lineText": string },
-  "confidence": 0..1
-}
-
-Modifier {
-  "id": string,
-  "name": string,
-  "price": number | null,
-  "kind": "paid" | "free",
-  "sourceEvidence": { "lineIndex": integer, "lineText": string, "parentLineIndex": integer }
-}
-
-Charge { "id": string, "name": string, "amount": number,
-         "kind": "service"|"tax"|"tip"|"discount"|"delivery"|"bag"|"other" }
-
-UnresolvedLine { "id": string, "amount": number, "text": string,
-                 "lineIndex": integer, "nearestItemLineIndex": integer|null }
-
-## Rules
-
-1. LINE REFERENCES. sourceEvidence.lineIndex must be one of the indices given
-   to you. sourceEvidence.lineText must be copied EXACTLY, character for
-   character, from the line at that index — never retype, paraphrase, or
-   "correct" it, even if it looks wrong. This field is checked mechanically
-   against the original transcript, not against your judgment.
-
-2. ITEMS vs MODIFIERS. An indented or unnumbered line directly beneath an item
-   line is a modifier of that item, not a new item.
-     - Modifier WITH a price  -> kind "paid", set price.
-     - Modifier WITHOUT price -> kind "free", price null.
-   Set parentLineIndex to the line index of the item it belongs to.
-
-3. PARENT LINE WITH NO PRICE. When an item line shows no price and the line
-   below it carries one, the price belongs to the parent item: put it in the
-   parent's unitPrice or baseLineTotal. Do not emit a separate item.
-   Example:
-       1 Pad Gra Prow
-         PGP Chicken          23.00
-   -> one item, name "Pad Gra Prow", unitPrice 23.00, with a free modifier
-      "PGP Chicken".
-
-4. NEVER DROP A PRICED LINE. Every line carrying an amount must appear in the
-   output exactly once: as an item, a modifier, a charge, a printed total
-   field, or an entry in unresolvedLines. If you cannot decide where a priced
-   line belongs, put it in unresolvedLines with its lineIndex and the index of
-   the item line above it. This is expected and useful — it is far better than
-   guessing or omitting.
-   This includes short or numeric-looking labels: a bare line such as
-       10                     10.50
-   is a priced line and must be reported.
-
-5. QUANTITIES. "2 x Beer  18.00" means quantity 2 and unitPrice 9.00. When only
-   a line total is printed, set baseLineTotal and leave unitPrice null rather
-   than dividing it yourself.
-
-6. TOTALS. Copy printedSubtotal, printedServiceCharge, printedTax, printedTip
-   and printedTotal from the transcript verbatim. Do not derive one from
-   another. Do not add them up. If not present, use null.
-
-7. CHARGES. Service, tax, tip, delivery and bag fees are charges, never items.
-
-8. CURRENCY. Return an ISO code. Use merchant name/address and explicit
-   markers to disambiguate a bare currency symbol.
-
-9. NUMBERS. Return JSON numbers, not strings, and never with thousands
-   separators. Use a dot as the decimal separator, regardless of how the
-   original line printed it.
-
-10. UNCERTAINTY. Use the confidence field honestly. A low confidence on a
-    correctly-flagged line is more useful than false certainty.
-
-Return ONLY the JSON object. No markdown, no commentary.`;
-
-// Naming note: this is "pass 3" in the module doc-comment's flow (transcribe
-// -> structure -> reconcile+cross-check -> corrective re-read), but keeps its
-// original "second pass" identifiers here since those names are also the
-// response's field names (secondPassTriggered, secondPassCorrections).
-const SECOND_PASS_SYSTEM_PROMPT = `You are re-examining ONE specific discrepancy on a receipt image.
-
-A first reading of this receipt did not add up. You are given the first reading,
-the printed subtotal, the calculated subtotal, and the exact difference.
-
-Re-read ONLY the region of the receipt relevant to the discrepancy. Determine
-which of the following explains it:
-  - a missing item
-  - a missing paid modifier
-  - an incorrect price
-  - an incorrect quantity
-  - a line attributed to the wrong parent item
-  - a duplicated line
-
-Return JSON:
-
-{
-  "corrections": [
-    {
-      "type": "missing_paid_modifier" | "missing_item" | "incorrect_item_price"
-            | "incorrect_quantity" | "wrong_parent_item" | "possible_duplicate",
-      "itemId": string | null,
-      "name": string | null,
-      "amount": number | null,
-      "quantity": integer | null,
-      "lineText": string | null,
-      "confidence": 0..1,
-      "explanation": string
-    }
-  ]
-}
-
-Rules:
-- Do not modify values unrelated to the discrepancy.
-- Do not invent a correction to force the numbers to match. If you cannot see
-  the cause, return an empty corrections array.
-- Report confidence honestly; the app will not auto-apply a low-confidence
-  correction.
-- Return ONLY the JSON object.`;
-
-// ─── Minimal exact money helpers ──────────────────────────────────────────────
-// The client owns the full reconciliation engine. The server needs just enough
-// exact arithmetic to decide whether a second pass is warranted and to log the
-// outcome — done in integer minor units so the decision is never made on
-// floating point noise.
-
-const ZERO_DECIMAL = new Set(["JPY", "KRW", "VND", "CLP", "ISK"]);
-
-function scaleFor(currency: string): number {
-  return ZERO_DECIMAL.has(currency.toUpperCase()) ? 1 : 100;
-}
-
-function toMinor(value: unknown, currency: string): number | null {
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) return null;
-    const scaled = value * scaleFor(currency);
-    const rounded = scaled < 0 ? -Math.round(Math.abs(scaled)) : Math.round(scaled);
-    return Number.isSafeInteger(rounded) ? rounded : null;
-  }
-  if (typeof value === "string") {
-    const cleaned = value.replace(/[^0-9.,-]/g, "").trim();
-    if (cleaned.length === 0) return null;
-    const normalized = cleaned.replace(",", ".");
-    const parsed = Number(normalized);
-    if (!Number.isFinite(parsed)) return null;
-    return toMinor(parsed, currency);
-  }
-  return null;
-}
-
-function toMajor(minor: number, currency: string): number {
-  return minor / scaleFor(currency);
-}
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface RawModifier {
-  id?: string;
-  name?: string;
-  price?: unknown;
-  kind?: string;
-}
-
-interface RawItem {
-  id?: string;
-  name?: string;
-  quantity?: unknown;
-  unitPrice?: unknown;
-  baseLineTotal?: unknown;
-  discount?: unknown;
-  modifiers?: RawModifier[];
-}
-
-interface RawCharge {
-  amount?: unknown;
-  kind?: string;
-}
-
-interface RawUnresolvedLine {
-  id?: unknown;
-  amount?: unknown;
-  text?: unknown;
-  lineIndex?: unknown;
-  nearestItemLineIndex?: unknown;
-}
-
-interface RawPayload {
-  currency?: unknown;
-  items?: RawItem[];
-  charges?: RawCharge[];
-  unresolvedLines?: RawUnresolvedLine[];
-  printedSubtotal?: unknown;
-  printedTotal?: unknown;
-  [key: string]: unknown;
-}
-
-// ─── Transcript-based evidence validation ─────────────────────────────────────
-//
-// Pass 1's transcript is an independent witness: pass 2 never gets to
-// "correct" it, only reference it. Any amount pass 2 asserts must actually
-// appear somewhere in the transcript, and any amount the transcript contains
-// must end up claimed by something in pass 2's output (or be surfaced as an
-// unresolved line) — nothing may vanish or be invented silently between the
-// two passes.
-
-interface TranscribedAmount {
-  value: number;
-  lineIndex: number;
-  lineText: string;
-}
-
-/**
- * Parses a money-shaped token (e.g. "23.75", "1,234.56", "23,75", "(4.50)")
- * into a major-unit number. Only tokens with an exact 2-digit fraction are
- * matched by the caller's regex, so the last separator is always decimal.
- */
-function parseMoneyToken(raw: string): number | null {
-  let text = raw.trim();
-  let negative = false;
-  if (/^\(.*\)$/.test(text)) {
-    negative = true;
-    text = text.slice(1, -1);
-  }
-  if (text.startsWith("-")) {
-    negative = true;
-    text = text.slice(1);
-  }
-  const sepIndex = Math.max(text.lastIndexOf("."), text.lastIndexOf(","));
-  if (sepIndex === -1) return null;
-  const integerPart = text.slice(0, sepIndex).replace(/[.,]/g, "");
-  const fractionPart = text.slice(sepIndex + 1);
-  if (!/^\d+$/.test(integerPart) || !/^\d{2}$/.test(fractionPart)) return null;
-  const value = Number(`${integerPart}.${fractionPart}`);
-  if (!Number.isFinite(value)) return null;
-  return negative ? -value : value;
-}
-
-// Matches a run of digits (with optional thousands separators) ending in a
-// 2-digit fraction — deliberately excludes bare integers (quantities, piece
-// counts) to keep this a money-only witness, not a generic number extractor.
-const MONEY_TOKEN_PATTERN = /-?\(?\d{1,3}(?:[.,]\d{3})*[.,]\d{2}\)?/g;
-
-function extractMoneyFromLines(lines: string[]): TranscribedAmount[] {
-  const results: TranscribedAmount[] = [];
-  lines.forEach((lineText, lineIndex) => {
-    const matches = lineText.match(MONEY_TOKEN_PATTERN);
-    if (!matches) return;
-    for (const raw of matches) {
-      const value = parseMoneyToken(raw);
-      if (value !== null) results.push({ value, lineIndex, lineText });
-    }
-  });
-  return results;
-}
-
-// Magnitude only: item-level discounts are stored as a positive amount by
-// convention (see lib/receipt/model.ts) but the printed line often shows a
-// visually negative token ("-5.00", "(5.00)") — comparing absolute values
-// sidesteps that sign-convention mismatch instead of false-flagging it.
-function centsOf(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return Math.round(Math.abs(value) * 100);
-}
-
-interface TranscriptValidation {
-  /** Count only — never log the values/names themselves (receipt content). */
-  hallucinationCount: number;
-  addedUnresolvedCount: number;
-}
-
-/**
- * Cross-checks every monetary value pass 2 asserted against pass 1's
- * transcript, mutating `payload` in place:
- *   - A value with no match in the transcript is nulled out (treated as
- *     "unreadable", which the existing reconciliation/second-pass machinery
- *     already knows how to react to) rather than shipped as a confident lie.
- *   - A transcribed amount that ends up unclaimed by anything in the output
- *     is appended to unresolvedLines, so it surfaces to the user instead of
- *     disappearing.
- * Matching is multiset-based (a value printed twice must be claimed twice)
- * so a duplicate value doesn't mask one hallucinated instance of it.
- */
-function validateAgainstTranscript(
-  payload: RawPayload,
-  transcript: TranscribedAmount[]
-): TranscriptValidation {
-  const pool = new Map<number, TranscribedAmount[]>();
-  for (const t of transcript) {
-    const c = centsOf(t.value);
-    if (c === null) continue;
-    const list = pool.get(c);
-    if (list) list.push(t);
-    else pool.set(c, [t]);
-  }
-
-  let hallucinationCount = 0;
-
-  // Non-generic and cast at each call site on purpose: RawItem/RawModifier/
-  // RawCharge have no index signature, so a generic `keyof T` helper would
-  // not type-check against them the way it does against RawPayload.
-  const claimOrNull = (obj: Record<string, unknown>, key: string): void => {
-    const value = obj[key];
-    if (typeof value !== "number") return;
-    const c = centsOf(value);
-    const list = c === null ? undefined : pool.get(c);
-    if (list && list.length > 0) {
-      list.shift();
-    } else {
-      hallucinationCount += 1;
-      obj[key] = null;
-    }
-  };
-
-  for (const item of payload.items ?? []) {
-    const itemRecord = item as unknown as Record<string, unknown>;
-    claimOrNull(itemRecord, "unitPrice");
-    claimOrNull(itemRecord, "baseLineTotal");
-    claimOrNull(itemRecord, "discount");
-    for (const modifier of item.modifiers ?? []) {
-      if (modifier.kind === "free") continue;
-      claimOrNull(modifier as unknown as Record<string, unknown>, "price");
-    }
-  }
-
-  for (const charge of payload.charges ?? []) {
-    claimOrNull(charge as unknown as Record<string, unknown>, "amount");
-  }
-
-  // Already-unresolved amounts are legitimately accounted for — they're
-  // surfaced to the user already, just not attributed to anything specific.
-  for (const line of payload.unresolvedLines ?? []) {
-    const c = centsOf(line.amount);
-    const list = c === null ? undefined : pool.get(c);
-    if (list && list.length > 0) list.shift();
-  }
-
-  for (const key of [
-    "printedSubtotal",
-    "printedServiceCharge",
-    "printedTax",
-    "printedTip",
-    "printedDiscount",
-    "printedTotal",
-  ] as const) {
-    claimOrNull(payload, key);
-  }
-
-  // Reverse check: whatever is left unclaimed in the pool was transcribed but
-  // never accounted for anywhere in pass 2's output.
-  const addedUnresolvedLines: RawUnresolvedLine[] = [];
-  for (const occurrences of pool.values()) {
-    for (const occ of occurrences) {
-      addedUnresolvedLines.push({
-        id: `evidence_${occ.lineIndex}_${addedUnresolvedLines.length}`,
-        amount: occ.value,
-        text: occ.lineText,
-        lineIndex: occ.lineIndex,
-      });
-    }
-  }
-  if (addedUnresolvedLines.length > 0) {
-    payload.unresolvedLines = [
-      ...(Array.isArray(payload.unresolvedLines) ? payload.unresolvedLines : []),
-      ...addedUnresolvedLines,
-    ];
-  }
-
-  return {
-    hallucinationCount,
-    addedUnresolvedCount: addedUnresolvedLines.length,
-  };
-}
-
-// ─── Server-side reconciliation (for logging and second-pass gating) ──────────
-
-interface ServerReconciliation {
-  currency: string;
-  itemCount: number;
-  calculatedSubtotalMinor: number;
-  printedSubtotalMinor: number | null;
-  subtotalDeltaMinor: number | null;
-  printedTotalMinor: number | null;
-  unresolvedCount: number;
-  reconciles: boolean;
-}
-
-function reconcile(payload: RawPayload): ServerReconciliation {
-  const currency =
-    typeof payload.currency === "string" && payload.currency.trim().length > 0
-      ? payload.currency.trim().toUpperCase()
-      : "EUR";
-
-  const items = Array.isArray(payload.items) ? payload.items : [];
-  let subtotalMinor = 0;
-
-  for (const item of items) {
-    const quantityRaw =
-      typeof item.quantity === "number" ? Math.round(item.quantity) : 1;
-    const quantity = Number.isFinite(quantityRaw) && quantityRaw >= 1 ? quantityRaw : 1;
-
-    const unit = toMinor(item.unitPrice, currency);
-    const lineTotal = toMinor(item.baseLineTotal, currency);
-
-    let base = 0;
-    if (unit !== null) base = unit * quantity;
-    else if (lineTotal !== null) base = lineTotal;
-
-    let modifiers = 0;
-    for (const modifier of item.modifiers ?? []) {
-      if (modifier.kind === "free") continue;
-      const price = toMinor(modifier.price, currency);
-      if (price !== null) modifiers += price;
-    }
-
-    const discount = toMinor(item.discount, currency) ?? 0;
-    subtotalMinor += base + modifiers - Math.abs(discount);
-  }
-
-  const printedSubtotalMinor = toMinor(payload.printedSubtotal, currency);
-  const printedTotalMinor = toMinor(payload.printedTotal, currency);
-  const unresolved = Array.isArray(payload.unresolvedLines)
-    ? payload.unresolvedLines
-    : [];
-
-  const subtotalDeltaMinor =
-    printedSubtotalMinor === null ? null : printedSubtotalMinor - subtotalMinor;
-
-  const reconciles =
-    subtotalDeltaMinor !== null &&
-    subtotalDeltaMinor === 0 &&
-    unresolved.length === 0;
-
-  return {
-    currency,
-    itemCount: items.length,
-    calculatedSubtotalMinor: subtotalMinor,
-    printedSubtotalMinor,
-    subtotalDeltaMinor,
-    printedTotalMinor,
-    unresolvedCount: unresolved.length,
-    reconciles,
-  };
-}
-
-// ─── Suspicious-candidate selection for the second pass ───────────────────────
-
-interface SuspiciousCandidate {
-  itemId?: string;
-  name?: string;
-  amount?: number;
-  reason: string;
-}
-
-/**
- * Pick the lines worth re-reading. Keeping this list short keeps the second
- * pass focused on the discrepancy instead of re-parsing the whole receipt.
- */
-function selectSuspicious(
-  payload: RawPayload,
-  reconciliation: ServerReconciliation
-): SuspiciousCandidate[] {
-  const candidates: SuspiciousCandidate[] = [];
-  const { currency } = reconciliation;
-
-  for (const line of payload.unresolvedLines ?? []) {
-    const amount = toMinor(line.amount, currency);
-    candidates.push({
-      amount: amount === null ? undefined : toMajor(amount, currency),
-      reason: "priced line not attributed to any item",
-    });
-  }
-
-  for (const item of payload.items ?? []) {
-    if (toMinor(item.unitPrice, currency) === null &&
-        toMinor(item.baseLineTotal, currency) === null) {
-      candidates.push({
-        itemId: item.id,
-        name: item.name,
-        reason: "item has no readable price",
-      });
-      continue;
-    }
-    for (const modifier of item.modifiers ?? []) {
-      if (modifier.kind === "paid" && toMinor(modifier.price, currency) === null) {
-        candidates.push({
-          itemId: item.id,
-          name: `${item.name ?? "item"} / ${modifier.name ?? "modifier"}`,
-          reason: "paid modifier has no readable price",
-        });
-      }
-    }
-  }
-
-  const delta = reconciliation.subtotalDeltaMinor;
-  if (delta !== null && delta !== 0) {
-    for (const item of payload.items ?? []) {
-      const unit = toMinor(item.unitPrice, currency);
-      if (unit === null) continue;
-      // An item whose price is off by exactly the delta is worth a second look.
-      if (Math.abs(delta) === Math.abs(unit)) {
-        candidates.push({
-          itemId: item.id,
-          name: item.name,
-          amount: toMajor(unit, currency),
-          reason: "price equals the unexplained difference",
-        });
-      }
-    }
-  }
-
-  return candidates.slice(0, 8);
-}
+const OCR_LANGUAGE_HINTS = ["pt", "en", "es", "fr", "zh"];
 
 // ─── OpenAI calls ─────────────────────────────────────────────────────────────
 
@@ -620,6 +110,10 @@ interface OpenAIMessageContent {
   type: string;
   [key: string]: unknown;
 }
+
+type ResponseFormat =
+  | { type: "json_object" }
+  | { type: "json_schema"; json_schema: Record<string, unknown> };
 
 class OpenAIError extends Error {
   readonly status: number;
@@ -633,7 +127,8 @@ class OpenAIError extends Error {
 async function callOpenAI(
   systemPrompt: string,
   userContent: OpenAIMessageContent[],
-  maxTokens: number
+  maxTokens: number,
+  responseFormat: ResponseFormat = { type: "json_object" }
 ): Promise<string> {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -649,7 +144,7 @@ async function callOpenAI(
       ],
       max_tokens: maxTokens,
       temperature: 0,
-      response_format: { type: "json_object" },
+      response_format: responseFormat,
     }),
   });
 
@@ -666,71 +161,100 @@ async function callOpenAI(
   return content;
 }
 
-interface SecondPassCorrection {
-  type?: string;
-  itemId?: string | null;
-  name?: string | null;
-  amount?: number | null;
-  quantity?: number | null;
-  lineText?: string | null;
-  confidence?: number | null;
-  explanation?: string | null;
+async function timed<T>(fn: () => Promise<T>): Promise<{ result: T; ms: number }> {
+  const start = Date.now();
+  const result = await fn();
+  return { result, ms: Date.now() - start };
 }
 
-async function runSecondPass(
+// ─── Targeted verification (fallback only) ─────────────────────────────────
+
+interface VerificationReading {
+  rawText: string | null;
+  value: number | null;
+  confident: boolean;
+}
+
+async function runTargetedVerification(
   imageUrl: string,
-  payload: RawPayload,
-  reconciliation: ServerReconciliation
-): Promise<SecondPassCorrection[]> {
-  const { currency, subtotalDeltaMinor, calculatedSubtotalMinor, printedSubtotalMinor } =
-    reconciliation;
-
-  const suspicious = selectSuspicious(payload, reconciliation);
-
-  const brief = {
-    currency,
-    printedSubtotal:
-      printedSubtotalMinor === null ? null : toMajor(printedSubtotalMinor, currency),
-    calculatedSubtotal: toMajor(calculatedSubtotalMinor, currency),
-    difference:
-      subtotalDeltaMinor === null ? null : toMajor(subtotalDeltaMinor, currency),
-    suspicious,
-    items: (payload.items ?? []).map((item) => ({
-      id: item.id,
-      name: item.name,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      modifiers: (item.modifiers ?? []).map((modifier) => ({
-        name: modifier.name,
-        price: modifier.price,
-        kind: modifier.kind,
-      })),
-    })),
-  };
+  suspicious: SuspiciousEvidence[],
+  ledger: LedgerEntry[],
+  lines: string[]
+): Promise<VerificationReading[]> {
+  const ledgerById = new Map(ledger.map((e) => [e.amountId, e]));
+  const locations = suspicious
+    .map((s, i) => {
+      const entry = s.amountId ? ledgerById.get(s.amountId) : undefined;
+      const lineText = s.lineIndex !== undefined ? lines[s.lineIndex] : entry?.rawText ?? "";
+      return `${i + 1}. near line ${s.lineIndex ?? "unknown"}: "${lineText}"`;
+    })
+    .join("\n");
 
   const content = await callOpenAI(
-    SECOND_PASS_SYSTEM_PROMPT,
+    TARGETED_VERIFICATION_SYSTEM_PROMPT,
     [
       { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
-      {
-        type: "text",
-        text:
-          `The parsed subtotal does not match the printed subtotal.\n\n` +
-          `${JSON.stringify(brief, null, 2)}\n\n` +
-          `Re-examine only the relevant region and report what explains the ` +
-          `difference.`,
-      },
+      { type: "text", text: `Locations to re-read:\n${locations}` },
     ],
-    1500
+    1000
   );
 
   try {
     const parsed = JSON.parse(content);
-    const corrections = parsed?.corrections;
-    return Array.isArray(corrections) ? corrections : [];
+    const readings = Array.isArray(parsed?.readings) ? parsed.readings : [];
+    return readings.map((r: Record<string, unknown>) => ({
+      rawText: typeof r?.rawText === "string" ? r.rawText : null,
+      value: typeof r?.value === "number" ? r.value : null,
+      confident: r?.confident === true,
+    }));
   } catch {
     return [];
   }
+}
+
+/**
+ * Applies verification readings back onto the ledger/assignments. A
+ * confident independent re-read is treated as resolving the occurrence
+ * (strong evidence — framed as such in comments and logs, never as proof).
+ * An unresolved one is never guessed at: the assignment is cleared so the
+ * item ends up with no price, which the existing client-side review flow
+ * already surfaces for manual correction rather than shipping a silent
+ * wrong number.
+ */
+function applyVerificationResults(
+  ledger: LedgerEntry[],
+  assignments: Assignment[],
+  suspicious: SuspiciousEvidence[],
+  readings: VerificationReading[]
+): { resolvedCount: number; unresolvedCount: number } {
+  let resolvedCount = 0;
+  let unresolvedCount = 0;
+
+  suspicious.forEach((s, i) => {
+    const reading = readings[i];
+    const resolved = reading !== undefined && reading.confident && reading.value !== null;
+
+    if (resolved) {
+      resolvedCount += 1;
+      if (s.amountId) {
+        const entry = ledger.find((e) => e.amountId === s.amountId);
+        if (entry) {
+          entry.value = reading.value as number;
+          if (reading.rawText !== null) entry.rawText = reading.rawText;
+          // A confident targeted re-read resolves the doubt this entry was
+          // flagged for — its effective confidence going forward reflects
+          // that, not literally OCR's original (possibly low) score.
+          entry.ocrConfidence = Math.max(entry.ocrConfidence, 0.95);
+        }
+      }
+    } else {
+      unresolvedCount += 1;
+      const assignment = assignments.find((a) => a.blockId === s.blockId);
+      if (assignment) assignment.amountId = null;
+    }
+  });
+
+  return { resolvedCount, unresolvedCount };
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -811,99 +335,243 @@ serve(async (req: Request) => {
     if (typeof image !== "string" || image.length === 0) {
       return errorResponse("MISSING_IMAGE", 400);
     }
-    if (OPENAI_API_KEY.length === 0) {
-      console.error("[parse-receipt] OPENAI_API_KEY is not configured");
+    if (OPENAI_API_KEY.length === 0 || GOOGLE_CLOUD_API_KEY.length === 0) {
+      console.error("[parse-receipt] OPENAI_API_KEY or GOOGLE_CLOUD_API_KEY is not configured");
       return errorResponse("NOT_CONFIGURED", 500);
     }
 
-    const imageUrl = image.startsWith("data:")
-      ? image
-      : `data:image/jpeg;base64,${image}`;
+    const base64Content = image.startsWith("data:") ? image.split(",")[1] ?? "" : image;
+    const imageUrl = image.startsWith("data:") ? image : `data:image/jpeg;base64,${image}`;
 
-    // ── Pass 1: pure transcription, no interpretation ────────────────────────
-    const transcriptionContent = await callOpenAI(
-      TRANSCRIPTION_SYSTEM_PROMPT,
-      [{ type: "image_url", image_url: { url: imageUrl, detail: "high" } }],
-      2500
+    // ── OCR pass — the ONE source of truth for every printed character and
+    // monetary digit. Deterministic per input, not a generative read. ──────
+    const ocrPass = await timed(() => callGoogleVision(GOOGLE_CLOUD_API_KEY, base64Content, OCR_LANGUAGE_HINTS));
+    const ocr = normalizeVisionResponse(ocrPass.result);
+    if (ocr.lines.length === 0) {
+      return errorResponse("UNREADABLE_RECEIPT", 422);
+    }
+    const lines = ocr.lines.map((l) => l.text);
+
+    // ── Monetary Evidence Ledger — built directly from OCR tokens ───────────
+    const ledger = buildLedgerFromOcr(ocr.lines);
+    if (ledger.length === 0) {
+      return errorResponse("UNREADABLE_RECEIPT", 422);
+    }
+
+    // FIX 11 (Group 1) — computed BEFORE the semantic pass, not just before
+    // the geometric matcher. A first version filtered only the matcher's own
+    // candidate pool and left GPT's schema/evidence list on the full ledger
+    // — Ramires proved that insufficient: GPT could still PROPOSE a
+    // wrong-column value (a "Preco: X/Uni" annotation) for a modifier block,
+    // the matcher correctly refused to confidently match it, and FIX 8.1's
+    // ambiguous-fallback then accepted GPT's own proposal anyway (nothing
+    // else had claimed it — the fallback is untouched and correct to do
+    // this; the value it was handed was the problem). Structured Outputs'
+    // amountId enum makes this the actual fix: a value outside the
+    // authoritative column is never offered to GPT as an option at all, so
+    // there is nothing left for the fallback to accept. No exemption for
+    // summary lines here — line-based exemption isn't knowable before GPT's
+    // response exists, and it proved unnecessary: every one of the six real
+    // fixtures kept its real subtotal/tax/total values in-band anyway, and
+    // FIX 10's own total-closure search runs over the FULL, unfiltered
+    // ledger regardless of what GPT could or couldn't propose here.
+    const matchingLedger = filterToAuthoritativeColumn(ledger, ocr.lines, new Set());
+
+    // ── ONE semantic pass — structure + price assignment together, text
+    // only, over OCR's own deterministic output. ────────────────────────────
+    const numberedLines = ocr.lines.map((l) => `${l.lineIndex}: ${l.text}`).join("\n");
+    // Tried and reverted (see git history / conversation record): showing
+    // GPT the FULL ledger in this description while keeping the schema enum
+    // column-restricted was hypothesized to fix a Toronto structural
+    // misclassification (a modifier's price split across two printed lines
+    // lost its pairing once the off-column half was hidden from GPT
+    // entirely). Tested live against all six real fixtures instead of just
+    // Toronto: it made Toronto WORSE (339.50 vs 363.75, further from
+    // 374.25) and broke Quebra Mar, which had been reconciling exactly
+    // (300.25 -> 137.25). The extra off-column noise in the description
+    // measurably degrades GPT's structural reasoning across the board, not
+    // just for the one line it was meant to help. Reverted to matchingLedger
+    // here; the Toronto modifier-splitting bug is still open.
+    const ledgerDescription = describeLedgerForPrompt(matchingLedger);
+    const passStructure = await timed(() =>
+      callOpenAI(
+        STRUCTURE_AND_ASSIGNMENT_SYSTEM_PROMPT,
+        [
+          {
+            type: "text",
+            text: `OCR lines (index: text):\n\n${numberedLines}\n\nMonetary amounts detected by OCR:\n\n${ledgerDescription}`,
+          },
+        ],
+        // 6000, not 3000: a long real receipt (Mad God, 65 blocks) truncated
+        // mid-JSON against the old cap. Safe to raise — truncation is caught
+        // below (JSON.parse throws -> UNREADABLE_RECEIPT, never a silent
+        // partial-structure acceptance) — verified before raising this, per
+        // FIX 11. Kept in sync with scripts/debug-parse-receipt.ts's own
+        // call so the diagnostic tool and production behave identically.
+        6000,
+        { type: "json_schema", json_schema: buildStructureSchema(matchingLedger, ocr.lines.length) }
+      )
     );
 
-    let lines: string[];
+    let merchant: string | null = null;
+    let date: string | null = null;
+    let currency = "EUR";
+    let blocks: StructureBlock[] = [];
     try {
-      const parsedTranscript = JSON.parse(transcriptionContent);
-      lines = Array.isArray(parsedTranscript?.lines)
-        ? parsedTranscript.lines.filter((l: unknown): l is string => typeof l === "string")
-        : [];
+      const parsedStructure = JSON.parse(passStructure.result);
+      merchant = typeof parsedStructure?.merchant === "string" ? parsedStructure.merchant : null;
+      date = typeof parsedStructure?.date === "string" ? parsedStructure.date : null;
+      currency =
+        typeof parsedStructure?.currency === "string" && parsedStructure.currency.trim().length > 0
+          ? parsedStructure.currency.trim().toUpperCase()
+          : "EUR";
+      blocks = Array.isArray(parsedStructure?.blocks) ? parsedStructure.blocks : [];
     } catch {
       return errorResponse("UNREADABLE_RECEIPT", 422);
     }
-    if (lines.length === 0) {
+    if (blocks.length === 0) {
       return errorResponse("UNREADABLE_RECEIPT", 422);
     }
 
-    // ── Pass 2: structure the transcript text (no image) into items/charges ──
-    const numberedLines = lines.map((line, i) => `${i}: ${line}`).join("\n");
-    const structureContent = await callOpenAI(
-      STRUCTURE_SYSTEM_PROMPT,
-      [
-        {
-          type: "text",
-          text: `Transcribed receipt lines (index: text):\n\n${numberedLines}`,
-        },
-      ],
-      4000
-    );
-
-    let payload: RawPayload;
-    try {
-      payload = JSON.parse(structureContent) as RawPayload;
-    } catch {
-      return errorResponse("UNREADABLE_RECEIPT", 422);
+    // Defense in depth: the schema enum should already make an out-of-range
+    // lineIndex impossible, but a provider guarantee is never trusted
+    // blindly — drop anything outside the real document instead of letting
+    // it corrupt downstream geometry lookups.
+    for (const block of blocks) {
+      block.lineIndices = block.lineIndices.filter((i) => i >= 0 && i < ocr.lines.length);
     }
 
-    if (!Array.isArray(payload.items)) {
-      return errorResponse("UNREADABLE_RECEIPT", 422);
+    // ── Structural coverage audit (pre-ownership) — a line in the items
+    // region carrying a monetary token that no block claims at all must
+    // never be silently treated as if it didn't exist. This is checked
+    // BEFORE price ownership runs, so ownership never gets a chance to
+    // paper over a gap the semantic pass left. ──────────────────────────────
+    const itemsRegionEnd = computeItemsRegionEnd(blocks);
+    const structuralGaps = findStructuralGaps(blocks, ledger, itemsRegionEnd);
+
+    // ── Geometric price ownership — deterministic, not GPT's job. Proven
+    // against the real rotated fixture that this receipt's name/price
+    // vertical gap drifts progressively down the page; a fixed tolerance
+    // calibrated from the top of the receipt silently mis-owns the tail.
+    // GPT's own amountId proposal on each block is downgraded to a
+    // free/paid hint for modifiers and a last-resort fallback only — never
+    // the source of which specific value an item/summary block gets. ──────
+    // Every block participates here, not just item/modifier/summary — a
+    // "quantity" or "unclassified" block still territorially claims its own
+    // lines, and that territory must still fence off a neighbour's search
+    // even though it never needs a price itself (see ownership.ts).
+    const ownershipInputs: PriceBlockInput[] = blocks.map((b) => ({
+      blockId: b.blockId,
+      kind: b.kind,
+      lineIndices: b.lineIndices,
+      name: b.name,
+      parentBlockId: b.parentBlockId,
+      proposedAmountId: b.amountId,
+    }));
+    // FIX 11 (Group 1) — reuses the SAME column-filtered ledger GPT itself
+    // was restricted to above (computed once, before the semantic pass —
+    // see the note there for why the filter has to apply that early).
+    // Every OTHER use of `ledger` below (validation, final payload assembly)
+    // still sees the FULL ledger — this filtering narrows what can become a
+    // line PRICE, never removes evidence from the record.
+    const ownershipResults = computeGeometricOwnership(ownershipInputs, matchingLedger, ocr.lines);
+    const ownershipByBlock = new Map(ownershipResults.map((r) => [r.blockId, r]));
+    for (const block of blocks) {
+      const owned = ownershipByBlock.get(block.blockId);
+      if (owned) block.amountId = owned.amountId;
     }
 
-    // ── Deterministic transcript cross-check ─────────────────────────────────
-    // Pass 1's transcript is the independent witness pass 2 is checked
-    // against: any asserted amount pass 2 can't back with a transcript line
-    // is nulled (treated as unreadable, not shipped as a confident lie), and
-    // any transcribed amount pass 2 left unclaimed is surfaced as an
-    // unresolved line instead of silently disappearing.
-    const transcribedAmounts = extractMoneyFromLines(lines);
-    const evidence = validateAgainstTranscript(payload, transcribedAmounts);
+    // ── Deterministic validation ─────────────────────────────────────────────
+    let assignments = assignmentsFromBlocks(blocks);
+    let validations = validateAssignments(blocks, assignments, ledger);
+    // A confident geometric match is the authoritative ownership decision —
+    // it supersedes the line-proximity radius check below, which predates
+    // it and can reject a correct match that (legitimately, per the fitted
+    // drift) spans more lines than the radius assumes. The radius check
+    // still applies in full to anything geometric ownership didn't confidently
+    // resolve (the "unclassified"/"quantity" kinds it never touches, and any
+    // block that fell back to GPT's own hint).
+    validations = validations.map((v) => {
+      const owned = ownershipByBlock.get(v.blockId);
+      if (owned?.confident && v.amountId === owned.amountId) {
+        return { ...v, ownershipValid: true };
+      }
+      return v;
+    });
+    const suspiciousByBlock = new Map<string, SuspiciousEvidence>();
+    for (const s of [...findSuspiciousEvidence(blocks, validations), ...findOwnershipAmbiguous(ownershipResults)]) {
+      if (s.blockId) suspiciousByBlock.set(s.blockId, s);
+    }
+    const suspicious = [...suspiciousByBlock.values()];
 
-    // ── Deterministic reconciliation ─────────────────────────────────────────
-    const reconciliation = reconcile(payload);
+    // ── Targeted verification — only for flagged occurrences ────────────────
+    let verificationTimeMs = 0;
+    let verificationResolved = 0;
+    let verificationUnresolved = 0;
+    if (suspicious.length > 0) {
+      const passVerification = await timed(() =>
+        runTargetedVerification(imageUrl, suspicious, ledger, lines)
+      );
+      verificationTimeMs = passVerification.ms;
+      const applied = applyVerificationResults(ledger, assignments, suspicious, passVerification.result);
+      verificationResolved = applied.resolvedCount;
+      verificationUnresolved = applied.unresolvedCount;
+      validations = validateAssignments(blocks, assignments, ledger);
+    }
 
-    // ── Pass 3: targeted corrective re-read, only if still not reconciled ────
-    let secondPassCorrections: SecondPassCorrection[] = [];
-    let secondPassTriggered = false;
+    // ── Assemble a provisional payload and reconcile it. Reconciling
+    // arithmetic never upgrades an unverified value, and FAILING arithmetic
+    // must not be waved through just because each value looked fine in
+    // isolation. ──────────────────────────────────────────────────────────────
+    let assembled = buildFinalPayload(merchant, currency, lines, blocks, validations, ledger);
+    let reconciliation = reconcile(assembled.payload);
 
+    // ── Second-round escalation — reconciliation failure is itself a
+    // targeted-verification trigger. Capped at one extra round. ─────────────
+    let reconciliationRetried = false;
     if (!reconciliation.reconciles && reconciliation.printedSubtotalMinor !== null) {
-      secondPassTriggered = true;
-      try {
-        secondPassCorrections = await runSecondPass(
-          imageUrl,
-          payload,
-          reconciliation
+      const alreadyChecked = new Set(
+        suspicious.map((s) => s.amountId).filter((id): id is string => id !== undefined)
+      );
+      const reconSuspects = findReconciliationSuspects(blocks, validations, alreadyChecked);
+      if (reconSuspects.length > 0) {
+        reconciliationRetried = true;
+        const passReconVerification = await timed(() =>
+          runTargetedVerification(imageUrl, reconSuspects, ledger, lines)
         );
-      } catch (error) {
-        // A failed second pass must not fail the request: the client can still
-        // reconcile and let the user correct manually.
-        console.error(
-          "[parse-receipt] second pass failed:",
-          error instanceof Error ? error.message : "unknown"
-        );
+        verificationTimeMs += passReconVerification.ms;
+        const applied = applyVerificationResults(ledger, assignments, reconSuspects, passReconVerification.result);
+        verificationResolved += applied.resolvedCount;
+        verificationUnresolved += applied.unresolvedCount;
+        validations = validateAssignments(blocks, assignments, ledger);
+        assembled = buildFinalPayload(merchant, currency, lines, blocks, validations, ledger);
+        reconciliation = reconcile(assembled.payload);
       }
     }
 
-    const topCorrection = secondPassCorrections[0];
+    const { payload, orphanCount } = assembled;
+    payload.date = date;
 
-    // ── Structured logging (no image data, no personal information) ──────────
+    // ── Second coverage audit (post-ownership) + final validity ─────────────
+    // Reconciliation success is never sufficient on its own: a receipt
+    // where a dropped modifier's amount was silently absorbed by a
+    // neighbouring item can still reconcile by coincidental cancellation.
+    // VALID requires structural coverage, exclusive ownership, and
+    // ownership-validation to ALL hold in addition to reconciliation — any
+    // one of them failing makes the receipt invalid regardless of the
+    // others, and reconciliation is consulted only as one input among
+    // several, never as a way to select or excuse an assignment.
+    const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd);
+    const duplicateOwnership = findDuplicateOwnership(assignments);
+    const validity = determineValidity(structuralGaps, coverage, duplicateOwnership, validations, reconciliation.reconciles);
+
+    const lowConfidenceCount = ledger.filter((e) => e.ocrConfidence < OCR_CONFIDENCE_THRESHOLD).length;
+
+    // ── Structured logging — counts and timings only, never receipt content ─
     console.log(
       JSON.stringify({
         event: "parse_receipt_completed",
+        parserVersion: PARSER_VERSION,
         currency: reconciliation.currency,
         itemCount: reconciliation.itemCount,
         unresolvedCount: reconciliation.unresolvedCount,
@@ -923,15 +591,35 @@ serve(async (req: Request) => {
           reconciliation.printedTotalMinor === null
             ? null
             : toMajor(reconciliation.printedTotalMinor, reconciliation.currency),
+        // Reconciliation is a supporting signal only — this status reflects
+        // arithmetic agreement, not a claim that every value was verified.
         validationStatus: reconciliation.reconciles ? "reconciled" : "needs_review",
-        transcriptLineCount: lines.length,
-        // Counts only — never the values/names themselves (receipt content).
-        evidenceHallucinationCount: evidence.hallucinationCount,
-        evidenceAddedUnresolvedCount: evidence.addedUnresolvedCount,
-        secondPassTriggered,
-        correctionCount: secondPassCorrections.length,
-        topCorrectionType: topCorrection?.type ?? null,
-        topCorrectionConfidence: topCorrection?.confidence ?? null,
+        // VALID requires coverage + exclusive ownership + reconciliation
+        // ALL together — never reconciliation alone. See coverage.ts.
+        valid: validity.valid,
+        structuralGapCount: validity.structuralGapCount,
+        unresolvedLoadBearingCount: validity.unresolvedLoadBearingCount,
+        duplicateOwnershipCount: validity.duplicateOwnershipCount,
+        ownershipInvalidCount: validity.ownershipInvalidCount,
+        // Measurable reliability signals — no fabricated/estimated rates.
+        ocrWordCount: ocr.words.length,
+        monetaryObservations: ledger.length,
+        lowConfidenceObservations: lowConfidenceCount,
+        targetedVerifications: suspicious.length,
+        reconciliationTriggeredVerification: reconciliationRetried,
+        verificationResolved,
+        verificationUnresolved,
+        unresolvedMonetaryValues: orphanCount,
+        userConfirmationsRequired: verificationUnresolved,
+        reconciliationFailures: reconciliation.reconciles ? 0 : 1,
+        // Performance telemetry.
+        ocrTimeMs: ocrPass.ms,
+        structureTimeMs: passStructure.ms,
+        verificationTimeMs,
+        totalParserTimeMs: Date.now() - startedAt,
+        // Total external API calls: 1 OCR + 1 semantic on the happy path,
+        // plus 1 per verification round actually triggered.
+        modelCallCount: 2 + (suspicious.length > 0 ? 1 : 0) + (reconciliationRetried ? 1 : 0),
         durationMs: Date.now() - startedAt,
       })
     );
@@ -940,6 +628,7 @@ serve(async (req: Request) => {
       // Version marker so the client can tell the structural format from the
       // legacy category-based one during rollout.
       schemaVersion: 2,
+      parserVersion: PARSER_VERSION,
       receipt: payload,
       serverReconciliation: {
         reconciles: reconciliation.reconciles,
@@ -948,14 +637,19 @@ serve(async (req: Request) => {
             ? null
             : toMajor(reconciliation.subtotalDeltaMinor, reconciliation.currency),
         unresolvedCount: reconciliation.unresolvedCount,
+        // Coverage + exclusive ownership + reconciliation, all together —
+        // never reconciliation alone. See coverage.ts.
+        valid: validity.valid,
       },
-      // Suggestions only. Never applied without explicit user confirmation.
-      secondPassCorrections,
     });
   } catch (error) {
     if (error instanceof OpenAIError) {
       console.error("[parse-receipt]", error.message);
       if (error.status === 429) return errorResponse("RATE_LIMITED", 429);
+      return errorResponse("PROVIDER_ERROR", 502);
+    }
+    if (error instanceof OcrError) {
+      console.error("[parse-receipt]", error.message);
       return errorResponse("PROVIDER_ERROR", 502);
     }
     console.error(
@@ -965,7 +659,3 @@ serve(async (req: Request) => {
     return errorResponse("INTERNAL_ERROR", 500);
   }
 });
-
-
-
-
