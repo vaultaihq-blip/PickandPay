@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, assert, assertEqual } from "./harness";
 import {
   reconstructLines,
@@ -6,6 +8,17 @@ import {
   type OcrWord,
   type BoundingBox,
 } from "../ocr";
+import { buildLedgerFromOcr, resetAmountIdCounterForTests } from "../ledger";
+
+function loadFixture(name: string) {
+  const path = join(process.cwd(), "supabase/functions/parse-receipt/__fixtures__/", name);
+  const raw = JSON.parse(readFileSync(path, "utf-8"));
+  resetWordIdCounterForTests();
+  const ocr = normalizeVisionResponse(raw);
+  resetAmountIdCounterForTests();
+  const ledger = buildLedgerFromOcr(ocr.lines);
+  return { ocr, ledger };
+}
 
 function rectBox(x: number, y: number, w: number, h: number): BoundingBox {
   return {
@@ -264,5 +277,104 @@ describe("ocr: normalizeVisionResponse", () => {
     assertEqual(result.lines.length, 0);
     assertEqual(result.words.length, 0);
     assertEqual(result.pageWidth, null);
+  });
+});
+
+describe("ocr: AF — glued OCR fragments are reassembled into one decimal (Augustiner, real fixture, no network)", () => {
+  it("'33' ',' '60' (touching glyphs) resolve to one ledger entry, value 33.60", () => {
+    const { ocr, ledger } = loadFixture("vision-augustiner-de.json");
+    const glued = ledger.find((e) => Math.abs(e.value - 33.6) < 0.001);
+    assert(glued !== undefined, "the split '33,60' must resolve to a single 33.6 ledger entry");
+    assertEqual(glued!.rawText, "33,60");
+    const line = ocr.lines.find((l) => l.lineIndex === glued!.lineIndex);
+    assertEqual(line!.text, "33,60", "the reconstructed line itself must read as one glued token, not '33 , 60'");
+  });
+});
+
+describe("ocr: AG — words with a normal separation gap are never glued (Augustiner, real fixture)", () => {
+  it("'Total' and '96,50' stay two distinct words, not 'Total96,50'", () => {
+    const { ocr } = loadFixture("vision-augustiner-de.json");
+    const totalLine = ocr.lines.find((l) => l.text.startsWith("Total"));
+    assert(totalLine !== undefined, "fixture must still contain the Total line");
+    assertEqual(totalLine!.text, "Total 96,50", "conservative: a normal word gap must never be glued");
+  });
+});
+
+describe("ocr: AH — lineHasPriceShape recognizes a split decimal even when glueOcrFragments doesn't fire", () => {
+  function box(x: number, y: number, w: number, h: number): BoundingBox {
+    return { vertices: [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }] };
+  }
+  function word(id: string, text: string, b: BoundingBox, breakType: string | null): OcrWord {
+    return { wordId: id, text, boundingBox: b, confidence: 0.99, lineIndex: -1, breakType };
+  }
+
+  it("merges a name line with a price line whose decimal is split across two words with a normal (non-glue) gap between them", () => {
+    // Gaps sized so glueOcrFragments' own threshold (derived from THIS
+    // synthetic document's median gap) does not fire on either pair — "23,"
+    // is not a bare separator word (isBareSeparatorWord requires EXACTLY
+    // "." or ","), so the separator-specific rule doesn't apply either.
+    // This isolates the claim: the merge succeeds because lineHasPriceShape
+    // itself now scans joined text, not because gluing happened to help.
+    const words = [
+      word("w1", "Khao", box(0, 500, 40, 30), "SPACE"),
+      word("w2", "Soi", box(90, 500, 30, 30), "LINE_BREAK"),
+      word("w3", "23,", box(300, 500, 40, 30), "SPACE"),
+      word("w4", "75", box(400, 500, 30, 30), "LINE_BREAK"),
+    ];
+    const lines = reconstructLines(words);
+    assertEqual(lines.length, 1, "expected the name line and the split-price line to merge");
+    assert(lines[0].text.includes("23,") && lines[0].text.includes("75"), "both price fragments must survive the merge");
+  });
+});
+
+describe("ocr: AI — a glued word preserves traceability to its original OCR words", () => {
+  function box(x: number, y: number, w: number, h: number): BoundingBox {
+    return { vertices: [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }] };
+  }
+  function word(id: string, text: string, b: BoundingBox, breakType: string | null, confidence = 0.99): OcrWord {
+    return { wordId: id, text, boundingBox: b, confidence, lineIndex: -1, breakType };
+  }
+
+  it("wordId stays the first component's id, sourceWordIds lists every fused word, confidence is the minimum", () => {
+    // A run of normal-spacing words establishes the reference gap, then a
+    // touching triple ("9" "," "50") gets glued.
+    const words = [
+      word("w1", "Item", box(0, 0, 40, 20), "SPACE", 0.99),
+      word("w2", "Name", box(90, 0, 40, 20), "LINE_BREAK", 0.99),
+      word("w3", "9", box(300, 0, 15, 20), null, 0.9),
+      word("w4", ",", box(316, 0, 6, 20), "SPACE", 0.85),
+      word("w5", "50", box(323, 0, 20, 20), "LINE_BREAK", 0.95),
+    ];
+    const lines = reconstructLines(words);
+    const priceLine = lines.find((l) => l.text.includes("9"));
+    assert(priceLine !== undefined, "expected a line containing the glued price");
+    const gluedWord = priceLine!.words.find((wo) => wo.word.text === "9,50");
+    assert(gluedWord !== undefined, "expected '9' ',' '50' to have fused into one '9,50' word");
+    assertEqual(gluedWord!.word.wordId, "w3", "wordId must stay the first original component's id");
+    assertEqual(JSON.stringify(gluedWord!.word.sourceWordIds), JSON.stringify(["w3", "w4", "w5"]), "sourceWordIds must list every fused word in order");
+    assertEqual(gluedWord!.word.confidence, 0.85, "confidence must be the minimum across the fused words");
+
+    resetAmountIdCounterForTests();
+    const ledger = buildLedgerFromOcr(lines);
+    const entry = ledger.find((e) => e.value === 9.5);
+    assert(entry !== undefined, "the ledger must still resolve an amountId for the glued value");
+    assertEqual(entry!.wordId, "w3", "the ledger entry's wordId must trace back to the first original OCR word");
+  });
+});
+
+describe("ocr: AJ — a receipt with no glued fragments is unaffected (Ramires, real fixture)", () => {
+  it("the derived cut glues nothing that would change an already-correct value", () => {
+    const before = { ledgerLength: undefined as number | undefined };
+    const { ledger } = loadFixture("vision-ramires-pt.json");
+    before.ledgerLength = ledger.length;
+    // Regression floor, not a magic number: this fixture had 52 ledger
+    // entries before FIX 12 (see the FIX 11 validation round). Gluing
+    // fragments can only ever reduce this count (two tokens becoming one) —
+    // if it drops meaningfully below that, something is being glued that
+    // shouldn't be.
+    assert(ledger.length >= 50, `expected close to the pre-FIX-12 entry count (52), got ${ledger.length} — over-gluing would shrink this`);
+
+    const decimalEntries = ledger.filter((e) => /[.,]\d{2}$/.test(e.rawText));
+    assert(decimalEntries.length > 20, "sanity check: this fixture has plenty of decimal entries, unaffected by FIX 12");
   });
 });

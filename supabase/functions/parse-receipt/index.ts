@@ -85,6 +85,9 @@ import {
   classifyCoverage,
   findDuplicateOwnership,
   determineValidity,
+  classifySummaryCoverage,
+  findSummaryDuplicateRoles,
+  determineSummaryValidity,
 } from "./coverage.ts";
 import { reconcile, toMajor } from "./reconcile.ts";
 
@@ -103,6 +106,23 @@ const GOOGLE_CLOUD_API_KEY = Deno.env.get("GOOGLE_CLOUD_API_KEY") ?? "";
 // snapshot "gpt-4o" currently resolves to.
 const MODEL = "gpt-4o-2024-08-06";
 const OCR_LANGUAGE_HINTS = ["pt", "en", "es", "fr", "zh"];
+// FIX 22 — measured against all 72 saved structuring runs across the FIX
+// 19/20/21 diagnostic corpora (temperature=0, same image, same prompt):
+// structuralGapCount was 0-2 in 69 of them and 27/32/32 in exactly 3 (all
+// the same Ramires image on a bad run). No value in between was ever
+// observed — a clean, wide gap, not a tuned cutoff. 5 sits well above every
+// good run and well below every bad one; any value from 3 to 26 would have
+// drawn the same line on this data.
+const STRUCTURAL_GAP_RETRY_THRESHOLD = 5;
+// FIX 17 Part 2 tried adding the receipt image to the structuring call
+// alongside OCR text (same prompt, same amountId-only schema). Measured
+// against the pre-registered criteria: structure-pass block-count stability
+// got WORSE on 3 of 7 real receipts (Ramires, Pai, Mad God — including Mad
+// God, the specific worst-case the experiment targeted), token cost roughly
+// tripled and latency roughly quadrupled, with unresolvedLoadBearingCount
+// unchanged on 5 of 7. Zero new FALSE_VALID, but that alone doesn't clear
+// the pre-registered bar. REJECTED and reverted — see this session's FIX 17
+// Part 2 report for the full measurement if this is ever revisited.
 
 // ─── OpenAI calls ─────────────────────────────────────────────────────────────
 
@@ -165,6 +185,27 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ result: T; ms: number }
   const start = Date.now();
   const result = await fn();
   return { result, ms: Date.now() - start };
+}
+
+/**
+ * FIX 22 — the Vision call failed intermittently and transiently during the
+ * FIX 20/21 diagnostic corpus runs (~half the runs hit "fetch failed" at
+ * least once, recovering on a bare retry with no other change). Diagnosed
+ * as a network-layer failure, not an API error: `callGoogleVision` throws
+ * `OcrError` for a real API response (bad key, quota, malformed image) —
+ * those fail identically on retry and are never retried here. A DIFFERENT
+ * thrown error (fetch itself never got a response — a dropped connection,
+ * DNS hiccup) is the one this retries, exactly once, matching the
+ * diagnostic script's own manual retry loop that resolved it there.
+ */
+async function callGoogleVisionWithRetry(apiKey: string, base64Content: string, languageHints: string[]): Promise<unknown> {
+  try {
+    return await callGoogleVision(apiKey, base64Content, languageHints);
+  } catch (err) {
+    if (err instanceof OcrError) throw err; // a real API response — retrying changes nothing
+    console.warn("[parse-receipt] Vision call failed with a transient (non-API) error, retrying once:", err instanceof Error ? err.message : err);
+    return await callGoogleVision(apiKey, base64Content, languageHints);
+  }
 }
 
 // ─── Targeted verification (fallback only) ─────────────────────────────────
@@ -345,7 +386,7 @@ serve(async (req: Request) => {
 
     // ── OCR pass — the ONE source of truth for every printed character and
     // monetary digit. Deterministic per input, not a generative read. ──────
-    const ocrPass = await timed(() => callGoogleVision(GOOGLE_CLOUD_API_KEY, base64Content, OCR_LANGUAGE_HINTS));
+    const ocrPass = await timed(() => callGoogleVisionWithRetry(GOOGLE_CLOUD_API_KEY, base64Content, OCR_LANGUAGE_HINTS));
     const ocr = normalizeVisionResponse(ocrPass.result);
     if (ocr.lines.length === 0) {
       return errorResponse("UNREADABLE_RECEIPT", 422);
@@ -393,61 +434,99 @@ serve(async (req: Request) => {
     // just for the one line it was meant to help. Reverted to matchingLedger
     // here; the Toronto modifier-splitting bug is still open.
     const ledgerDescription = describeLedgerForPrompt(matchingLedger);
-    const passStructure = await timed(() =>
-      callOpenAI(
-        STRUCTURE_AND_ASSIGNMENT_SYSTEM_PROMPT,
-        [
-          {
-            type: "text",
-            text: `OCR lines (index: text):\n\n${numberedLines}\n\nMonetary amounts detected by OCR:\n\n${ledgerDescription}`,
-          },
-        ],
-        // 6000, not 3000: a long real receipt (Mad God, 65 blocks) truncated
-        // mid-JSON against the old cap. Safe to raise — truncation is caught
-        // below (JSON.parse throws -> UNREADABLE_RECEIPT, never a silent
-        // partial-structure acceptance) — verified before raising this, per
-        // FIX 11. Kept in sync with scripts/debug-parse-receipt.ts's own
-        // call so the diagnostic tool and production behave identically.
-        6000,
-        { type: "json_schema", json_schema: buildStructureSchema(matchingLedger, ocr.lines.length) }
-      )
-    );
 
-    let merchant: string | null = null;
-    let date: string | null = null;
-    let currency = "EUR";
-    let blocks: StructureBlock[] = [];
-    try {
-      const parsedStructure = JSON.parse(passStructure.result);
-      merchant = typeof parsedStructure?.merchant === "string" ? parsedStructure.merchant : null;
-      date = typeof parsedStructure?.date === "string" ? parsedStructure.date : null;
-      currency =
-        typeof parsedStructure?.currency === "string" && parsedStructure.currency.trim().length > 0
-          ? parsedStructure.currency.trim().toUpperCase()
-          : "EUR";
-      blocks = Array.isArray(parsedStructure?.blocks) ? parsedStructure.blocks : [];
-    } catch {
+    interface StructurePassResult {
+      merchant: string | null;
+      date: string | null;
+      currency: string;
+      blocks: StructureBlock[];
+      ms: number;
+    }
+
+    // Extracted so FIX 22's retry (below) can run the IDENTICAL call a
+    // second time — same prompt, same schema, nothing altered — and only
+    // ever choose between the two results by structuralGapCount, never by
+    // which one lands closer to any expected total (that signal does not
+    // exist in production, and using it here would be optimizing against
+    // the answer).
+    async function runStructurePass(): Promise<StructurePassResult | null> {
+      const pass = await timed(() =>
+        callOpenAI(
+          STRUCTURE_AND_ASSIGNMENT_SYSTEM_PROMPT,
+          [
+            {
+              type: "text",
+              text: `OCR lines (index: text):\n\n${numberedLines}\n\nMonetary amounts detected by OCR:\n\n${ledgerDescription}`,
+            },
+          ],
+          // 6000, not 3000: a long real receipt (Mad God, 65 blocks) truncated
+          // mid-JSON against the old cap. Safe to raise — truncation is caught
+          // below (JSON.parse throws -> UNREADABLE_RECEIPT, never a silent
+          // partial-structure acceptance) — verified before raising this, per
+          // FIX 11. Kept in sync with scripts/debug-parse-receipt.ts's own
+          // call so the diagnostic tool and production behave identically.
+          6000,
+          { type: "json_schema", json_schema: buildStructureSchema(matchingLedger, ocr.lines.length) }
+        )
+      );
+      try {
+        const parsedStructure = JSON.parse(pass.result);
+        const merchant = typeof parsedStructure?.merchant === "string" ? parsedStructure.merchant : null;
+        const date = typeof parsedStructure?.date === "string" ? parsedStructure.date : null;
+        const currency =
+          typeof parsedStructure?.currency === "string" && parsedStructure.currency.trim().length > 0
+            ? parsedStructure.currency.trim().toUpperCase()
+            : "EUR";
+        const blocks: StructureBlock[] = Array.isArray(parsedStructure?.blocks) ? parsedStructure.blocks : [];
+        // Defense in depth: the schema enum should already make an
+        // out-of-range lineIndex impossible, but a provider guarantee is
+        // never trusted blindly — drop anything outside the real document
+        // instead of letting it corrupt downstream geometry lookups.
+        for (const block of blocks) {
+          block.lineIndices = block.lineIndices.filter((i) => i >= 0 && i < ocr.lines.length);
+        }
+        return { merchant, date, currency, blocks, ms: pass.ms };
+      } catch {
+        return null;
+      }
+    }
+
+    let structurePass = await runStructurePass();
+    if (structurePass === null || structurePass.blocks.length === 0) {
       return errorResponse("UNREADABLE_RECEIPT", 422);
     }
-    if (blocks.length === 0) {
-      return errorResponse("UNREADABLE_RECEIPT", 422);
+    let itemsRegionEnd = computeItemsRegionEnd(structurePass.blocks);
+    let structuralGaps = findStructuralGaps(structurePass.blocks, ledger, itemsRegionEnd);
+    let structureTimeMs = structurePass.ms;
+
+    // FIX 22 Part 1 — structuralGapCount is a direct, deterministic-given-
+    // the-blocks measure of segmentation quality, computed before ownership
+    // ever runs. A bad structuring call (Ramires: 1 -> 27-32 on the exact
+    // same image, same prompt) is retried ONCE — never more, per the
+    // measured threshold above — and only replaced by the retry if the
+    // retry's OWN structuralGapCount is strictly lower. If the retry is not
+    // better (or the retry itself fails to parse), the first pass is kept;
+    // a bad structuring pass is never silently discarded without a
+    // like-for-like comparison.
+    let structureRetryFired = false;
+    let structuralGapCountBeforeRetry: number | null = null;
+    if (structuralGaps.length > STRUCTURAL_GAP_RETRY_THRESHOLD) {
+      structuralGapCountBeforeRetry = structuralGaps.length;
+      structureRetryFired = true;
+      const retryPass = await runStructurePass();
+      if (retryPass !== null && retryPass.blocks.length > 0) {
+        const retryItemsRegionEnd = computeItemsRegionEnd(retryPass.blocks);
+        const retryStructuralGaps = findStructuralGaps(retryPass.blocks, ledger, retryItemsRegionEnd);
+        structureTimeMs += retryPass.ms;
+        if (retryStructuralGaps.length < structuralGaps.length) {
+          structurePass = retryPass;
+          itemsRegionEnd = retryItemsRegionEnd;
+          structuralGaps = retryStructuralGaps;
+        }
+      }
     }
 
-    // Defense in depth: the schema enum should already make an out-of-range
-    // lineIndex impossible, but a provider guarantee is never trusted
-    // blindly — drop anything outside the real document instead of letting
-    // it corrupt downstream geometry lookups.
-    for (const block of blocks) {
-      block.lineIndices = block.lineIndices.filter((i) => i >= 0 && i < ocr.lines.length);
-    }
-
-    // ── Structural coverage audit (pre-ownership) — a line in the items
-    // region carrying a monetary token that no block claims at all must
-    // never be silently treated as if it didn't exist. This is checked
-    // BEFORE price ownership runs, so ownership never gets a chance to
-    // paper over a gap the semantic pass left. ──────────────────────────────
-    const itemsRegionEnd = computeItemsRegionEnd(blocks);
-    const structuralGaps = findStructuralGaps(blocks, ledger, itemsRegionEnd);
+    const { merchant, date, currency, blocks } = structurePass;
 
     // ── Geometric price ownership — deterministic, not GPT's job. Proven
     // against the real rotated fixture that this receipt's name/price
@@ -474,7 +553,7 @@ serve(async (req: Request) => {
     // Every OTHER use of `ledger` below (validation, final payload assembly)
     // still sees the FULL ledger — this filtering narrows what can become a
     // line PRICE, never removes evidence from the record.
-    const ownershipResults = computeGeometricOwnership(ownershipInputs, matchingLedger, ocr.lines);
+    const ownershipResults = computeGeometricOwnership(ownershipInputs, matchingLedger, ocr.lines, itemsRegionEnd);
     const ownershipByBlock = new Map(ownershipResults.map((r) => [r.blockId, r]));
     for (const block of blocks) {
       const owned = ownershipByBlock.get(block.blockId);
@@ -549,7 +628,7 @@ serve(async (req: Request) => {
       }
     }
 
-    const { payload, orphanCount } = assembled;
+    const { payload, orphanCount, summaryRoleAssignments, priceKindOverrides } = assembled;
     payload.date = date;
 
     // ── Second coverage audit (post-ownership) + final validity ─────────────
@@ -563,9 +642,45 @@ serve(async (req: Request) => {
     // several, never as a way to select or excuse an assignment.
     const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd);
     const duplicateOwnership = findDuplicateOwnership(assignments);
-    const validity = determineValidity(structuralGaps, coverage, duplicateOwnership, validations, reconciliation.reconciles);
+
+    // FIX 15 — summary coverage, the same invariant extended to the summary
+    // region: a receipt whose item subtotal matches the printed subtotal
+    // exactly can still hide an unexplained tax and a wrong grand total (see
+    // coverage.ts's own header comment on the Mademoiselle case this fix
+    // closes). `itemsRegionEnd` doubles as the summary region's start line —
+    // the same boundary buildFinalPayload used internally to build
+    // `summaryRoleAssignments`, so both sides agree on where "summary"
+    // begins without recomputing the formula twice.
+    const summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, summaryRoleAssignments);
+    const summaryDuplicateRoles = findSummaryDuplicateRoles(summaryRoleAssignments);
+    const summaryValidity = determineSummaryValidity(summaryCoverage, summaryDuplicateRoles);
+
+    // Arithmetic reconciliation AND summary coverage must both hold — this
+    // is the single value the rest of the response/logging treats as "did
+    // this receipt reconcile", replacing the old arithmetic-only signal.
+    // Never compute these independently downstream; a caller checking only
+    // reconciliation.reconciles would silently regress to the exact bug
+    // this fix closes.
+    const finalReconciles = reconciliation.reconciles && summaryValidity.valid;
+
+    const validity = determineValidity(structuralGaps, coverage, duplicateOwnership, validations, finalReconciles);
 
     const lowConfidenceCount = ledger.filter((e) => e.ocrConfidence < OCR_CONFIDENCE_THRESHOLD).length;
+
+    // FIX 25 — crossingsDetected: how many item/modifier blocks were
+    // demoted by the post-hoc crossing check (ownership.ts's
+    // detectCrossings). summaryBoundaryPenalties: how many item/modifier
+    // blocks still ended up claiming a value at or past itemsRegionEnd
+    // anyway — the penalty didn't wall it off because no in-region
+    // alternative existed anywhere in the document (Mad God's shape).
+    const crossingsDetected = ownershipResults.filter((r) => r.crossingDetected).length;
+    const ledgerByAmountIdForDiag = new Map(ledger.map((e) => [e.amountId, e]));
+    const summaryBoundaryPenalties = blocks.filter((b) => {
+      if (b.kind !== "item" && b.kind !== "modifier") return false;
+      if (!b.amountId) return false;
+      const entry = ledgerByAmountIdForDiag.get(b.amountId);
+      return entry !== undefined && entry.lineIndex >= itemsRegionEnd;
+    }).length;
 
     // ── Structured logging — counts and timings only, never receipt content ─
     console.log(
@@ -592,15 +707,52 @@ serve(async (req: Request) => {
             ? null
             : toMajor(reconciliation.printedTotalMinor, reconciliation.currency),
         // Reconciliation is a supporting signal only — this status reflects
-        // arithmetic agreement, not a claim that every value was verified.
-        validationStatus: reconciliation.reconciles ? "reconciled" : "needs_review",
+        // arithmetic agreement AND summary coverage, not a claim that every
+        // value was verified.
+        validationStatus: finalReconciles ? "reconciled" : "needs_review",
         // VALID requires coverage + exclusive ownership + reconciliation
         // ALL together — never reconciliation alone. See coverage.ts.
         valid: validity.valid,
+        // FIX 18/19/20 — four numbers instead of one raw "unresolved" count:
+        // structuralGapCount is the real health signal (a value outside
+        // ANY block's territory at all); echoExactCount is a proven bare
+        // duplicate of an already-claimed value; echoMultiplicativeCount is
+        // a proven candidate*quantity=claimed relationship (FIX 11's own
+        // excluded secondary column, now recognized rather than
+        // miscounted, in both its quantity=1 and quantity>1 shapes);
+        // genuineOwnershipMissCount (= unresolvedLoadBearingCount, kept
+        // under its established name for continuity) is what's actually
+        // left unexplained. See coverage.ts's ECHO_OF_CLAIMED_VALUE and
+        // ECHO_MULTIPLICATIVE_OF_CLAIMED_VALUE comments.
         structuralGapCount: validity.structuralGapCount,
+        // FIX 22 Part 1 — did the structuralGap-triggered retry fire, and
+        // what was the gap count immediately before it (null when it never
+        // fired). structuralGapCount above already reflects whichever pass
+        // won, so this is purely diagnostic: how often retry fires in
+        // practice, and by how much it moved the number when it did.
+        structureRetryFired,
+        structuralGapCountBeforeRetry,
+        echoExactCount: validity.echoExactCount,
+        echoMultiplicativeCount: validity.echoMultiplicativeCount,
+        // FIX 23 — how many items had GPT's own priceKind overridden by the
+        // deterministic unit-price-annotation rule (see validate.ts's
+        // buildFinalPayload). Purely diagnostic: quantifies how often GPT's
+        // signal disagreed with verified arithmetic on this run.
+        priceKindOverrideCount: priceKindOverrides.length,
+        priceKindOverrides: priceKindOverrides.map((o) => o.name),
+        crossingsDetected,
+        summaryBoundaryPenalties,
         unresolvedLoadBearingCount: validity.unresolvedLoadBearingCount,
+        genuineOwnershipMissCount: validity.unresolvedLoadBearingCount,
         duplicateOwnershipCount: validity.duplicateOwnershipCount,
         ownershipInvalidCount: validity.ownershipInvalidCount,
+        // FIX 15 — summary coverage diagnostics. No receipt content, counts
+        // only, same discipline as every other field in this log line.
+        summaryMonetaryObservationCount: summaryValidity.summaryMonetaryObservationCount,
+        summaryClaimedAmountCount: summaryValidity.summaryClaimedAmountCount,
+        summaryUnresolvedAmountCount: summaryValidity.summaryUnresolvedAmountCount,
+        summaryDuplicateRoleAttemptCount: summaryValidity.summaryDuplicateRoleAttemptCount,
+        summaryCoverageValid: summaryValidity.valid,
         // Measurable reliability signals — no fabricated/estimated rates.
         ocrWordCount: ocr.words.length,
         monetaryObservations: ledger.length,
@@ -611,15 +763,16 @@ serve(async (req: Request) => {
         verificationUnresolved,
         unresolvedMonetaryValues: orphanCount,
         userConfirmationsRequired: verificationUnresolved,
-        reconciliationFailures: reconciliation.reconciles ? 0 : 1,
+        reconciliationFailures: finalReconciles ? 0 : 1,
         // Performance telemetry.
         ocrTimeMs: ocrPass.ms,
-        structureTimeMs: passStructure.ms,
+        structureTimeMs,
         verificationTimeMs,
         totalParserTimeMs: Date.now() - startedAt,
         // Total external API calls: 1 OCR + 1 semantic on the happy path,
-        // plus 1 per verification round actually triggered.
-        modelCallCount: 2 + (suspicious.length > 0 ? 1 : 0) + (reconciliationRetried ? 1 : 0),
+        // plus 1 more if the FIX 22 structural-quality retry fired, plus 1
+        // per verification round actually triggered.
+        modelCallCount: 2 + (structureRetryFired ? 1 : 0) + (suspicious.length > 0 ? 1 : 0) + (reconciliationRetried ? 1 : 0),
         durationMs: Date.now() - startedAt,
       })
     );
@@ -631,7 +784,9 @@ serve(async (req: Request) => {
       parserVersion: PARSER_VERSION,
       receipt: payload,
       serverReconciliation: {
-        reconciles: reconciliation.reconciles,
+        // FIX 15 — arithmetic reconciliation AND summary coverage, never
+        // arithmetic alone. See coverage.ts's header comment.
+        reconciles: finalReconciles,
         subtotalDelta:
           reconciliation.subtotalDeltaMinor === null
             ? null

@@ -1,7 +1,14 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, assert, assertEqual } from "./harness";
 import { computeGeometricOwnership, type PriceBlockInput } from "../ownership";
 import type { LedgerEntry } from "../ledger";
+import { buildLedgerFromOcr } from "../ledger";
 import type { OcrLine, OcrWord, BoundingBox } from "../ocr";
+import { normalizeVisionResponse } from "../ocr";
+import { computeItemsRegionEnd } from "../coverage";
+import { validateAssignments, buildFinalPayload } from "../validate";
+import { reconcile } from "../reconcile";
 
 // ─── Fixture builders — plain upright (angle 0) geometry unless a test
 // specifically needs drift, since rotation-independence is already covered
@@ -398,5 +405,238 @@ describe("ownership: R — order independence when two blocks propose the same a
     const { x, y } = run(false);
     assertEqual(x.amountId, null, "contested proposal — X must not win it, regardless of processing order");
     assertEqual(y.amountId, null, "contested proposal — Y must not win it, regardless of processing order");
+  });
+});
+
+// ─── FIX 25 — two doors closed on the FALSE_VALID class coverage.ts can't
+// see (it only checks a value was claimed by SOME block, never the RIGHT
+// one): Part 1 penalizes an item/modifier reaching past itemsRegionEnd;
+// Part 2 flags a genuine reading-order-vs-claim-order inversion. Both are
+// implemented and verified below against real fixtures where the real
+// data actually exercises the mechanism, and against controlled synthetic
+// geometry (same style as the rest of this file) where it doesn't. ────────
+
+function loadRealFixture(filename: string) {
+  const raw = JSON.parse(
+    readFileSync(join(process.cwd(), `supabase/functions/parse-receipt/__fixtures__/${filename}`), "utf-8")
+  );
+  const ocr = normalizeVisionResponse(raw);
+  const ledger = buildLedgerFromOcr(ocr.lines);
+  return { ocr, ledger };
+}
+
+describe("ownership: FIX 25 Part 1 — items-region boundary as a penalty, not a wall", () => {
+  it("CR — Buca di Beppo real fixture: no item block claims the Subtotal or Total value anymore", () => {
+    // Real blocks, exactly as GPT reported them for this receipt (a photo
+    // with overlapping promotional flyers behind the receipt, which
+    // garbled the OCR line reconstruction — see the FIX 24 report). Before
+    // this fix, "Iced Tea" and "Sm Chop Antipasto Salad" confidently
+    // claimed the printed Subtotal (100.26) and Total (109.28) instead of
+    // their real prices (3.29, 18.99), because computeGeometricOwnership
+    // had no notion of the items/summary boundary at all.
+    const { ocr, ledger } = loadRealFixture("vision-bucadibeppo-en.json");
+    const blocks: PriceBlockInput[] = [
+      { blockId: "b1", kind: "unclassified", lineIndices: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], name: null, parentBlockId: null, proposedAmountId: null },
+      { blockId: "b2", kind: "item", lineIndices: [15], name: "Iced Tea", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b3", kind: "item", lineIndices: [16], name: "Sm Garlic Bread", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b4", kind: "item", lineIndices: [17], name: "9oz Buca Chianti", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b5", kind: "item", lineIndices: [18], name: "G1 Buca Chianti", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b6", kind: "item", lineIndices: [19], name: "Sm Chop Antipasto Salad", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b7", kind: "item", lineIndices: [20], name: "Lg Supremo Pizza", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b15", kind: "unclassified", lineIndices: [28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43], name: null, parentBlockId: null, proposedAmountId: null },
+      { blockId: "b16", kind: "summary", lineIndices: [44, 45, 46, 47, 48], name: "Subtotal", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b17", kind: "summary", lineIndices: [45, 46, 47, 48], name: "Tax", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b18", kind: "summary", lineIndices: [48, 49, 50, 51, 52, 53], name: "Total", parentBlockId: null, proposedAmountId: null },
+    ];
+    const itemsRegionEnd = computeItemsRegionEnd(blocks);
+    assertEqual(itemsRegionEnd, 44, "sanity check on the real boundary this fixture produces");
+    const ownership = computeGeometricOwnership(blocks, ledger, ocr.lines, itemsRegionEnd);
+    const ledgerByAmountId = new Map(ledger.map((e) => [e.amountId, e]));
+    for (const b of blocks) {
+      if (b.kind !== "item" && b.kind !== "modifier") continue;
+      const o = ownership.find((r) => r.blockId === b.blockId);
+      const claimedEntry = o?.amountId ? ledgerByAmountId.get(o.amountId) : null;
+      assert(
+        !claimedEntry || claimedEntry.lineIndex < itemsRegionEnd,
+        `${b.blockId} (${b.name}) must never claim a summary-region value — claimed ${JSON.stringify(claimedEntry)}`
+      );
+    }
+  });
+
+  it("CS — an item genuinely needing the second-pass search to reach past itemsRegionEnd still resolves: the penalty is not a wall", () => {
+    // Motivated by a real, verified Mad God shape: "Total liq" (a summary
+    // label) prints early in reading order while a real item's own price
+    // confirmation still follows it a few lines later — a real receipt
+    // layout quirk, not a hypothetical. The exact real Mad God item this
+    // was traced from (Cafe Delta) turns out to resolve via the FIRST pass
+    // instead (its own name-line also carries a bare quantity marker,
+    // "7.00", which the pre-existing same-line fast path grabs before ever
+    // reaching the DP — a separate, already-known "quantity-as-decimal"
+    // gap, explicitly out of scope since FIX 19). This test isolates the
+    // SECOND-pass case specifically — a block with NO local same-line
+    // candidate, forcing the DP search across the boundary — using
+    // controlled geometry so the boundary penalty's effect (not an
+    // unrelated first-pass quirk) is what's actually being verified.
+    const lines: OcrLine[] = [
+      nameLine(0, "Warmup1", 0),
+      nameLine(1, "Warmup2", 20),
+      nameLine(2, "Warmup3", 40),
+      nameLine(3, "Nightcap", 60), // name only — its price is not on this line
+      makeLine(4, [makeWord("lbl", "Total", 0, 80), makeWord("tv", "99.00", 300, 80)]), // summary label WITH its own value — must not compete for Nightcap's price
+      makeLine(5, [makeWord("pv", "2.50", 300, 100)]), // Nightcap's real, only price — past the boundary
+    ];
+    const ledger: LedgerEntry[] = [
+      entry("AW1", 5, 0, 8), // warm-up pairs so fitDrift has 3+ points, with
+      entry("AW2", 6, 1, 33), // non-zero variance in the gap so the FIX 7.2
+      entry("AW3", 7, 2, 51), // residual guard has real tolerance, not zero
+      entry("A_TOTAL", 99, 4, 80),
+      entry("A_PRICE", 2.5, 5, 78),
+    ];
+    const blocks: PriceBlockInput[] = [
+      itemBlock("bWarmup1", 0, "Warmup1"),
+      itemBlock("bWarmup2", 1, "Warmup2"),
+      itemBlock("bWarmup3", 2, "Warmup3"),
+      itemBlock("bNightcap", 3, "Nightcap"),
+      { blockId: "bTotal", kind: "summary", lineIndices: [4], name: "Total", parentBlockId: null, proposedAmountId: null },
+    ];
+    const itemsRegionEnd = computeItemsRegionEnd(blocks);
+    assertEqual(itemsRegionEnd, 4);
+    const ownership = computeGeometricOwnership(blocks, ledger, lines, itemsRegionEnd);
+    const nightcap = ownership.find((r) => r.blockId === "bNightcap")!;
+    assertEqual(nightcap.amountId, "A_PRICE", "the ONLY candidate anywhere sits past the boundary — the penalty must not be a wall when there is no legitimate in-region alternative");
+  });
+});
+
+describe("ownership: FIX 25 Part 2 — crossing detection over the full result set", () => {
+  it("CQ — Hollywood Cafe real fixture: SODA/CHEESE STEAK's mis-attribution is traced and confirmed to be NOT a position crossing — the round's central negative finding", () => {
+    // FIX 24 called this "the ownership matcher, not echo/adjacency" —
+    // true, but imprecise about WHERE inside ownership.ts. Traced further
+    // for FIX 25: GPT itself mis-reported BOTH blocks' lineIndices
+    // (SODA:[6], CHEESE STEAK:[7] — one line short of where each name
+    // really prints). correctAnchorLine independently relocates EACH block
+    // to wherever its own NAME text actually appears (7 and 8
+    // respectively) — succeeding at its own job for each block in
+    // isolation. But this receipt's price column is genuinely offset by
+    // one printed row from its name column, so the corrected anchor lines
+    // each carry a single, unambiguous — and WRONG — decimal. Because both
+    // corrections shift in the SAME direction, the claimed values still
+    // increase monotonically (line 7 then line 8): no ORDER INVERSION
+    // exists for a position-based check to catch. This is a fundamentally
+    // different failure shape than a true crossing (see the mechanism
+    // proof below) — Part 2 cannot close this door, and this round's own
+    // stated deciding condition is not met. Reported, not forced.
+    const { ocr, ledger } = loadRealFixture("vision-hollywoodcafe-en.json");
+    const blocks: PriceBlockInput[] = [
+      { blockId: "SODA", kind: "item", lineIndices: [6], name: "SODA", parentBlockId: null, proposedAmountId: null },
+      { blockId: "STEAK", kind: "item", lineIndices: [7], name: "CHEESE STEAK", parentBlockId: null, proposedAmountId: null },
+      { blockId: "AMCHS", kind: "modifier", lineIndices: [8], name: "AMERICAN CHS", parentBlockId: "STEAK", proposedAmountId: null },
+      { blockId: "FRDONION", kind: "modifier", lineIndices: [9], name: "FRD ONION", parentBlockId: "STEAK", proposedAmountId: null },
+      { blockId: "CHIX", kind: "item", lineIndices: [10], name: "Chix Cheesesteak", parentBlockId: null, proposedAmountId: null },
+      { blockId: "SUBTOTAL", kind: "summary", lineIndices: [11], name: "SUB-TOTAL", parentBlockId: null, proposedAmountId: null },
+    ];
+    const itemsRegionEnd = computeItemsRegionEnd(blocks);
+    const ownership = computeGeometricOwnership(blocks, ledger, ocr.lines, itemsRegionEnd);
+    const ledgerByAmountId = new Map(ledger.map((e) => [e.amountId, e]));
+    const soda = ownership.find((r) => r.blockId === "SODA")!;
+    const steak = ownership.find((r) => r.blockId === "STEAK")!;
+    assertEqual(soda.crossingDetected, false, "no position inversion exists here — verified by direct trace, not assumed");
+    assertEqual(steak.crossingDetected, false);
+    assertEqual(ledgerByAmountId.get(soda.amountId!)?.value, 10.49, "SODA still ends up with Cheese Steak's real price — Part 2 does not close this door");
+    assertEqual(ledgerByAmountId.get(steak.amountId!)?.value, 1.0, "CHEESE STEAK still ends up with a modifier's real price — Part 2 does not close this door");
+  });
+
+  it("proof of mechanism — a genuine reading-order-vs-claim-order inversion IS detected and demoted, proving Part 2 works for the failure shape it actually targets", () => {
+    // Two blocks, each resolved via the first-pass same-line fast path
+    // (same mechanism Hollywood Cafe uses) — but here the SAME-LINE
+    // candidates are deliberately positioned so block P's own claim sits
+    // PHYSICALLY BELOW block Q's, even though P's name prints first. This
+    // is what an actual crossing looks like — unlike Hollywood Cafe's
+    // shape (see CQ), where both blocks' claims stay in relative order.
+    const lines: OcrLine[] = [nameLine(0, "P", 0), nameLine(1, "Q", 20)];
+    const ledger: LedgerEntry[] = [
+      entry("A_FOR_P", 99, 0, 1000), // P's own line, but geometrically far below Q's
+      entry("A_FOR_Q", 5, 1, 10), // Q's own line, geometrically right after P's name
+    ];
+    const blocks: PriceBlockInput[] = [itemBlock("bP", 0, "P"), itemBlock("bQ", 1, "Q")];
+    const ownership = computeGeometricOwnership(blocks, ledger, lines);
+    const p = ownership.find((r) => r.blockId === "bP")!;
+    const q = ownership.find((r) => r.blockId === "bQ")!;
+    assertEqual(p.crossingDetected, true, "P's claim sits after Q's despite P's name coming first — a genuine inversion");
+    assertEqual(q.crossingDetected, true);
+    assertEqual(p.amountId, null, "neither side is guessed to be the 'right' one — both stay unresolved");
+    assertEqual(q.amountId, null);
+  });
+
+  it("CT — Mad God-shaped repeated values (three real 16.95 occurrences) in correct increasing order are never marked as a crossing", () => {
+    // Real Mad God value (Truffle, 16.95, appears three times on this
+    // receipt) — equal VALUES must never be read as evidence of a
+    // crossing; only the ORDER of each block's own claimed POSITION
+    // matters, and here it strictly increases.
+    const lines: OcrLine[] = [
+      nameLine(0, "Truffle", 0),
+      nameLine(1, "Truffle", 20),
+      nameLine(2, "Truffle", 40),
+    ];
+    const ledger: LedgerEntry[] = [entry("T1", 16.95, 0, 5), entry("T2", 16.95, 1, 25), entry("T3", 16.95, 2, 45)];
+    const blocks: PriceBlockInput[] = [itemBlock("bT1", 0, "Truffle"), itemBlock("bT2", 1, "Truffle"), itemBlock("bT3", 2, "Truffle")];
+    const ownership = computeGeometricOwnership(blocks, ledger, lines);
+    for (const o of ownership) {
+      assertEqual(o.crossingDetected, false, `${o.blockId}: equal values in correct increasing order must never be flagged`);
+    }
+    assertEqual(ownership.find((o) => o.blockId === "bT1")?.amountId, "T1");
+    assertEqual(ownership.find((o) => o.blockId === "bT2")?.amountId, "T2");
+    assertEqual(ownership.find((o) => o.blockId === "bT3")?.amountId, "T3");
+  });
+
+  it("CV — correct order, no crossing anywhere → nothing is marked (counter-test: the check must not fire on everything)", () => {
+    const lines: OcrLine[] = [nameLine(0, "Alpha", 0), nameLine(1, "Beta", 20), nameLine(2, "Gamma", 40)];
+    const ledger: LedgerEntry[] = [entry("A1", 10, 0, 5), entry("A2", 20, 1, 25), entry("A3", 30, 2, 45)];
+    const blocks: PriceBlockInput[] = [itemBlock("bA", 0, "Alpha"), itemBlock("bB", 1, "Beta"), itemBlock("bC", 2, "Gamma")];
+    const ownership = computeGeometricOwnership(blocks, ledger, lines);
+    for (const o of ownership) {
+      assertEqual(o.crossingDetected, false, `${o.blockId}: strictly increasing, distinct values in order must never be flagged`);
+      assert(o.amountId !== null, `${o.blockId}: a clean, unambiguous match must still resolve`);
+    }
+  });
+
+  it("CU — the FIX 24 FALSE_VALID reproduction (Hollywood-Cafe-shaped clean two-item swap), routed through the REAL ownership pathway: still reconciles — empirically verified, not assumed", () => {
+    // FIX 24's original proof hardcoded block.amountId directly, never
+    // invoking ownership.ts at all — meaning it could never have reflected
+    // ANY ownership.ts change, by construction. This version routes the
+    // SAME shape (two items, prices cleanly swapped, nothing dropped —
+    // unlike the real Hollywood Cafe run, where a THIRD value being
+    // dropped entirely happened to already break the coincidental
+    // arithmetic match) through computeGeometricOwnership for real, then
+    // through buildFinalPayload/reconcile. Both items resolve via the
+    // first-pass fast path with their relative order preserved (same
+    // shape as CQ) — no crossing, so reconciles is still true.
+    const lines: OcrLine[] = [
+      makeLine(0, [makeWord("s", "SODA", 0, 0), makeWord("sv", "10.49", 300, 0)]),
+      makeLine(1, [makeWord("c", "CHEESESTEAK", 0, 20), makeWord("cv", "2.49", 300, 20)]),
+      makeLine(2, [makeWord("st", "Subtotal", 0, 40), makeWord("sub", "12.98", 300, 40)]),
+    ];
+    const ledger: LedgerEntry[] = [entry("A1", 10.49, 0, 0), entry("A2", 2.49, 1, 20), entry("A3", 12.98, 2, 40)];
+    const blocks: PriceBlockInput[] = [
+      { blockId: "SODA", kind: "item", lineIndices: [0], name: "SODA", parentBlockId: null, proposedAmountId: null },
+      { blockId: "STEAK", kind: "item", lineIndices: [1], name: "CHEESESTEAK", parentBlockId: null, proposedAmountId: null },
+      { blockId: "SUB", kind: "summary", lineIndices: [2], name: "Subtotal", parentBlockId: null, proposedAmountId: null },
+    ];
+    const itemsRegionEnd = computeItemsRegionEnd(blocks);
+    const ownership = computeGeometricOwnership(blocks, ledger, lines, itemsRegionEnd);
+    assertEqual(ownership.find((o) => o.blockId === "SODA")?.crossingDetected, false, "confirmed: no inversion in this shape");
+
+    const structureBlocks = blocks.map((b) => {
+      const o = ownership.find((r) => r.blockId === b.blockId);
+      return { blockId: b.blockId, kind: b.kind, lineIndices: b.lineIndices, name: b.name, parentBlockId: b.parentBlockId, amountId: o?.amountId ?? null, quantity: 1, priceKind: "lineTotal" as const };
+    });
+    const assignments = structureBlocks.map((b) => ({ blockId: b.blockId, amountId: b.amountId, quantity: b.quantity, priceKind: b.priceKind }));
+    const validations = validateAssignments(structureBlocks, assignments, ledger);
+    const { payload } = buildFinalPayload(null, "USD", [], structureBlocks, validations, ledger);
+    const reconciliation = reconcile(payload);
+    assertEqual(
+      reconciliation.reconciles,
+      true,
+      "EMPIRICAL RESULT, not the hoped-for outcome: this round's own deciding condition (this reproduction must stop reconciling) is NOT met — see CQ for the traced root cause"
+    );
   });
 });

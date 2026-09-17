@@ -37,6 +37,8 @@
 import type { OcrLine } from "./ocr.ts";
 import { dominantAngle, toReadingFrame } from "./ocr.ts";
 import type { LedgerEntry } from "./ledger.ts";
+import type { ColumnBand } from "./geometry.ts";
+import { clusterByX } from "./geometry.ts";
 
 /**
  * A token's RIGHT edge in reading-frame X, not its center. Verified against
@@ -57,91 +59,10 @@ function rightEdgeX(entry: LedgerEntry, angle: number): number {
  *  else in this pipeline either; column detection doesn't need to see it. */
 const DECIMAL_SHAPED = /[.,]\d{2}$/;
 
-export interface ColumnBand {
-  minX: number;
-  maxX: number;
-  memberIds: string[];
-}
-
-/**
- * A gap between consecutive sorted X positions this many times the
- * receipt's OWN typical within-column spacing marks a column boundary.
- * Measured directly against all six real fixtures (right-edge X, near-zero
- * gaps excluded from the reference — see medianOf/spacingGaps below):
- *
- *   fixture      reference gap   6x threshold   smallest real boundary
- *   Toronto            1.5             9.1      (single column — n/a)
- *   Quebra Mar         4.4            26.3            116.5
- *   Ramires           11.2            67.2            134.3
- *   Sulbarreiro        1.9            11.3            378.0
- *   Mad God            2.0            12.2             19.5
- *   Augustiner         5.5            32.9            119.9
- *
- * 6x clears the real boundary on every fixture with margin to spare — Mad
- * God is the tightest at ~1.6x headroom, everything else has 2x-33x. Not
- * tuned per-fixture; the same constant applies everywhere, and it was
- * chosen from this table, not adjusted until a specific test passed.
- */
-const COLUMN_GAP_MULTIPLIER = 6;
-
-function medianOf(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
-/**
- * 1-D clustering by biggest-relative-gap — splits sorted points into bands
- * wherever a gap exceeds COLUMN_GAP_MULTIPLIER times the median gap across
- * ALL points. The median is computed once globally (not per-cluster):
- * within-column gaps dominate a real receipt's point count, so the global
- * median is itself already a good estimate of "typical within-column
- * spacing" without needing an iterative/recursive scheme.
- */
-function clusterByX(points: Array<{ id: string; x: number }>): { bands: ColumnBand[]; boundaryGap: number } {
-  if (points.length === 0) return { bands: [], boundaryGap: 0 };
-  const sorted = [...points].sort((a, b) => a.x - b.x);
-  if (sorted.length === 1) {
-    return { bands: [{ minX: sorted[0].x, maxX: sorted[0].x, memberIds: [sorted[0].id] }], boundaryGap: 0 };
-  }
-
-  const gaps: number[] = [];
-  for (let i = 1; i < sorted.length; i++) gaps.push(sorted[i].x - sorted[i - 1].x);
-  // Repeated identical values (many "1.00" quantities, all rendering at the
-  // exact same right-aligned X) produce a run of near-zero gaps that can
-  // dominate the gap list and drag the median down to near zero — measured
-  // on Mad God's real data: raw median gap was 0.27, collapsing the
-  // boundary threshold enough to shatter the genuine Valor column into six
-  // fragments. A near-zero gap says "same value repeated", not "typical
-  // spacing between distinct column members" — it's excluded from the
-  // reference calculation for that reason, not filtered arbitrarily.
-  const NEAR_ZERO_GAP = 1;
-  const spacingGaps = gaps.filter((g) => g > NEAR_ZERO_GAP);
-  const referenceGap = spacingGaps.length > 0 ? medianOf(spacingGaps) : medianOf(gaps);
-  // A tiny epsilon floor guards only against a degenerate zero reference
-  // (every single gap near-zero) — it is never itself a real threshold.
-  const boundaryGap = Math.max(referenceGap * COLUMN_GAP_MULTIPLIER, 1e-6);
-
-  const bands: ColumnBand[] = [];
-  let current: Array<{ id: string; x: number }> = [sorted[0]];
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].x - sorted[i - 1].x > boundaryGap) {
-      bands.push(toBand(current));
-      current = [];
-    }
-    current.push(sorted[i]);
-  }
-  bands.push(toBand(current));
-  return { bands, boundaryGap };
-}
-
-function toBand(points: Array<{ id: string; x: number }>): ColumnBand {
-  return {
-    minX: Math.min(...points.map((p) => p.x)),
-    maxX: Math.max(...points.map((p) => p.x)),
-    memberIds: points.map((p) => p.id),
-  };
-}
+// ColumnBand and the gap-based clusterByX clustering (COLUMN_GAP_MULTIPLIER
+// = 6, measured against all six real fixtures) now live in geometry.ts,
+// shared with ledger.ts's FIX 15.2 space-thousands disambiguation — the
+// exact same tested band logic, not a re-tuned copy.
 
 function candidatePoints(
   ledger: LedgerEntry[],

@@ -43,6 +43,13 @@ export interface OcrWord {
    *  (detectedBreak.type), used to reconstruct printed line boundaries.
    *  Null when Vision attached no annotation at all to this word. */
   breakType: string | null;
+  /** FIX 12 — set only on a synthetic word produced by glueOcrFragments:
+   *  the wordIds of every original Vision word this one was fused from, in
+   *  order. `wordId` itself stays the FIRST component's id (so every other
+   *  consumer that expects one id per word, e.g. the ledger, keeps
+   *  working unchanged) — this field is the traceability record for the
+   *  fusion itself. Absent on an ordinary, unfused word. */
+  sourceWordIds?: string[];
 }
 
 export interface OcrLine {
@@ -242,6 +249,159 @@ function reconstructByNormalizedGeometry(words: OcrWord[]): OcrWord[][] {
   });
 }
 
+// ─── Fragment gluing (FIX 12) ───────────────────────────────────────────────
+//
+// FIX 11's measurement of the Augustiner fixture found two items (33.60,
+// 34.50 of a 68.10 shortfall) lost not to geometry or the semantic pass, but
+// to OCR itself: Vision sometimes tokenizes ONE printed number as several
+// "words" — most commonly a decimal separator ("." or ",") returned as its
+// own standalone word, physically touching its digit neighbours ("33" "," "60"
+// for a printed "33,60"). assembleLines() always inserts a text-level space
+// between words, so the reconstructed line becomes "33 , 60" — a string
+// findMoneyTokens can no longer parse as one decimal, and (independently)
+// lineHasPriceShape below no longer recognizes as price-shaped either, so
+// this line never merges with its own item name in the two-column pass.
+//
+// Runs on each line GROUP, before mergeAdjacentTwoColumnLines — never after.
+// Confirmed against Mad God's real fixture that running this later is unsafe:
+// that merge pass already joins two DIFFERENT visual rows by Y-band overlap
+// alone, no X-gap check at all, and one such joined group puts "Total" and
+// "23.00" a measured -787 units apart in reading-frame X — a number that
+// must never be read as "touching glyphs". Gluing only within pre-merge
+// groups means the two words in that pair are never even adjacent yet.
+//
+// Two rules, both derived from THIS document's own geometry — never a fixed
+// pixel constant (same requirement FIX 11's column band and FIX 6's drift
+// regression were held to):
+//
+//  1. GENERAL — a gap at or below FRAGMENT_GAP_DIVISOR of the document's own
+//     median "normal" inter-word gap (near-zero/negative gaps excluded from
+//     that reference for the same reason columns.ts excludes them: a run of
+//     touching glyphs would otherwise drag the median down and collapse the
+//     threshold). Verified against all six real fixtures at divisors 2-5:
+//     every pair this catches either glues a symbol into its number
+//     ("$"+"13.50", "9.00"+"%") — harmless, findMoneyTokens's currency/
+//     percent checks work the same whether the symbol is its own word or
+//     glued text — or nothing decimal-shaped at all.
+//
+//  2. SEPARATOR-SPECIFIC — a standalone "." or "," word (nothing else in its
+//     text) immediately beside a digit-only word, with a gap at or below the
+//     document's own median gap directly (not divided down). Needed because
+//     rule 1 alone doesn't fire on Augustiner's real "," -> "60" gap: at
+//     ~16-25 units against a median inter-word gap of ~26.6 on that receipt,
+//     it is NOT a magnitude outlier — indistinguishable from an ordinary
+//     word gap by position alone (measured, not assumed: a period/comma
+//     glyph's own bounding box is narrow enough that Vision's reported gap
+//     around it is unreliable). Scoped narrowly — the word must be EXACTLY
+//     "." or "," — specifically to avoid gluing an unrelated "A, B" pair of
+//     two genuinely separate numbers; this is a check on the WORD's own
+//     identity, never on how many digits follow a separator (that
+//     value-shape reasoning was rejected for this fix on other grounds).
+//
+// Both rules share a floor: a gap more negative than the smaller of the two
+// words' own box heights is never glued regardless of either rule — real
+// touching glyphs overlap by at most a fraction of their own height; a gap
+// far past that is evidence of a mis-grouped pair (e.g. the Mad God case
+// above), not glued type.
+const FRAGMENT_GAP_DIVISOR = 3;
+const FRAGMENT_NEAR_ZERO_GAP = 3;
+
+function isBareSeparatorWord(text: string): boolean {
+  return text === "." || text === ",";
+}
+function isDigitOnlyWord(text: string): boolean {
+  return /^\d+$/.test(text);
+}
+
+function wordEdgesX(word: OcrWord, angle: number): { left: number; right: number } {
+  const xs = word.boundingBox.vertices.map((v) => toReadingFrame(v.x, v.y, angle).normalX);
+  return { left: Math.min(...xs), right: Math.max(...xs) };
+}
+function wordHeight(word: OcrWord, angle: number): number {
+  const ys = word.boundingBox.vertices.map((v) => toReadingFrame(v.x, v.y, angle).normalY);
+  return Math.max(...ys) - Math.min(...ys);
+}
+
+function glueWords(run: OcrWord[]): OcrWord {
+  const first = run[0];
+  return {
+    wordId: first.wordId,
+    text: run.map((w) => w.text).join(""),
+    boundingBox: { vertices: run.flatMap((w) => w.boundingBox.vertices) },
+    confidence: Math.min(...run.map((w) => w.confidence)),
+    lineIndex: first.lineIndex,
+    breakType: run[run.length - 1].breakType,
+    sourceWordIds: run.flatMap((w) => w.sourceWordIds ?? [w.wordId]),
+  };
+}
+
+/** Glues touching-glyph fragments within each already-identified line group.
+ *  Never called across groups — a group here is a printed line as Vision's
+ *  own word order/break metadata (or the geometric fallback) already
+ *  identified it, before the two-column merge exists to create cross-row
+ *  groups. */
+function glueOcrFragments(groups: OcrWord[][], angle: number): OcrWord[][] {
+  // Reference gap: median of every same-group consecutive-word gap across
+  // the WHOLE document, excluding near-zero ones — global, not per-line,
+  // matching columns.ts's clusterByX reasoning: within-token gaps are rare
+  // relative to real word gaps, so a global median is already a good
+  // estimate of "typical spacing" without an iterative scheme.
+  const allGaps: number[] = [];
+  for (const group of groups) {
+    for (let i = 1; i < group.length; i++) {
+      const gap = wordEdgesX(group[i], angle).left - wordEdgesX(group[i - 1], angle).right;
+      allGaps.push(gap);
+    }
+  }
+  const normalGaps = allGaps.filter((g) => g > FRAGMENT_NEAR_ZERO_GAP);
+  if (normalGaps.length === 0) return groups; // no signal to derive a reference from — glue nothing
+
+  const sorted = [...normalGaps].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const referenceGap = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  const generalThreshold = referenceGap / FRAGMENT_GAP_DIVISOR;
+  const separatorThreshold = referenceGap;
+
+  return groups.map((group) => {
+    if (group.length < 2) return group;
+
+    const shouldGlue: boolean[] = [];
+    for (let i = 1; i < group.length; i++) {
+      const prev = group[i - 1];
+      const cur = group[i];
+      const gap = wordEdgesX(cur, angle).left - wordEdgesX(prev, angle).right;
+      const floor = -Math.min(wordHeight(prev, angle), wordHeight(cur, angle));
+      if (gap <= floor) {
+        shouldGlue.push(false);
+        continue;
+      }
+      const isSeparatorPair =
+        (isBareSeparatorWord(prev.text) && isDigitOnlyWord(cur.text)) ||
+        (isDigitOnlyWord(prev.text) && isBareSeparatorWord(cur.text));
+      if (gap <= generalThreshold) {
+        shouldGlue.push(true);
+      } else if (isSeparatorPair && gap <= separatorThreshold) {
+        shouldGlue.push(true);
+      } else {
+        shouldGlue.push(false);
+      }
+    }
+
+    const result: OcrWord[] = [];
+    let run: OcrWord[] = [group[0]];
+    for (let i = 0; i < shouldGlue.length; i++) {
+      if (shouldGlue[i]) {
+        run.push(group[i + 1]);
+      } else {
+        result.push(run.length === 1 ? run[0] : glueWords(run));
+        run = [group[i + 1]];
+      }
+    }
+    result.push(run.length === 1 ? run[0] : glueWords(run));
+    return result;
+  });
+}
+
 // ─── Two-column merge ───────────────────────────────────────────────────────
 //
 // A receipt line like "Khao Soi ................ $23.75" often lands in
@@ -258,19 +418,31 @@ function hasLetter(text: string): boolean {
 function lineHasDescriptiveText(words: OcrWord[]): boolean {
   return words.some((w) => w.text.length >= 2 && hasLetter(w.text));
 }
+/** Checks the price-shape pattern against the GROUP's text with NO space
+ *  between words (FIX 12) — deliberately not the same join assembleLines()
+ *  uses for the real visible line text. A decimal split across two OCR
+ *  words ("33" "," "60") never matches per-word, and a single-space join
+ *  still can't bridge it either (the space sits between the digit and its
+ *  separator). This is independent of glueOcrFragments succeeding — a
+ *  gap this function never even looks at could in principle stop gluing
+ *  from firing while the text is still, visually, one price. False
+ *  positives here cost only an attempted two-column merge, never a wrong
+ *  monetary value: findMoneyTokens (the actual price-parsing path) uses
+ *  the real, space-joined assembled text and its own separate logic. */
 function lineHasPriceShape(words: OcrWord[]): boolean {
-  return words.some((w, i) => {
-    if (!/\d[.,]\d{2}/.test(w.text)) return false;
-    // A decimal number immediately followed by '%' (glued, or as the very
-    // next OCR word) is a rate — e.g. "Service (18.00%)" — not a price
-    // shape for merge purposes. Mirrors ledger.ts's percent-adjacency
-    // exclusion locally rather than importing it, so this module's merge
-    // heuristic stays self-contained; findMoneyTokens itself is untouched.
-    if (/%$/.test(w.text)) return false;
-    const next = words[i + 1];
-    if (next && /^\s*%/.test(next.text)) return false;
-    return true;
-  });
+  const text = words.map((w) => w.text).join("");
+  const pattern = /\d[.,]\d{2}/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    // A decimal number immediately followed by '%' (glued, or separated by
+    // whitespace) is a rate — e.g. "Service (18.00%)" — not a price shape
+    // for merge purposes. Mirrors ledger.ts's percent-adjacency exclusion
+    // locally rather than importing it, so this module's merge heuristic
+    // stays self-contained; findMoneyTokens itself is untouched.
+    const after = text.slice(match.index + match[0].length);
+    if (!/^\s*%/.test(after)) return true;
+  }
+  return false;
 }
 
 function mergeAdjacentTwoColumnLines(groups: OcrWord[][], angle: number): OcrWord[][] {
@@ -354,7 +526,10 @@ export function reconstructLines(words: OcrWord[]): OcrLine[] {
     ? reconstructByWordOrderAndBreaks(words)
     : reconstructByNormalizedGeometry(words);
 
-  const merged = mergeAdjacentTwoColumnLines(groups, angle);
+  // FIX 12 — before the two-column merge, never after (see glueOcrFragments'
+  // own header comment for why order matters here).
+  const glued = glueOcrFragments(groups, angle);
+  const merged = mergeAdjacentTwoColumnLines(glued, angle);
   return assembleLines(merged);
 }
 

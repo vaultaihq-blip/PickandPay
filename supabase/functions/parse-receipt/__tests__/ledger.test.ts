@@ -197,3 +197,87 @@ describe("ledger: buildLedgerFromOcr", () => {
     assertEqual(ledger[0].boundingBox, priceWord.boundingBox);
   });
 });
+
+// ─── FIX 15.2 — space as a thousands separator, disambiguated by column ────
+//
+// makeLine (above) packs every word at nearly-identical X, which can never
+// exercise column disambiguation. These tests build lines with explicit,
+// controlled X positions instead: a "quantity" word placed far left, a
+// "price" word placed far right, matching a real receipt's two-column
+// layout.
+
+function boxAt(x: number, width = 30): BoundingBox {
+  return { vertices: [{ x, y: 0 }, { x: x + width, y: 0 }, { x: x + width, y: 10 }, { x, y: 10 }] };
+}
+
+function wordAt(wordId: string, text: string, x: number, width = 30): OcrWord {
+  return { wordId, text, boundingBox: boxAt(x, width), confidence: 0.99, lineIndex: 0, breakType: null };
+}
+
+/** Builds one OcrLine from words the caller has already positioned. */
+function lineFromWords(lineIndex: number, wordSpecs: Array<{ word: OcrWord }>): OcrLine {
+  let text = "";
+  const words: OcrLine["words"] = [];
+  for (const { word } of wordSpecs) {
+    if (text.length > 0) text += " ";
+    const start = text.length;
+    text += word.text;
+    words.push({ word: { ...word, lineIndex }, start, end: text.length });
+  }
+  return { lineIndex, text, words };
+}
+
+describe("ledger: FIX 15.2 — space-separated quantity/price never collapses across a column gap", () => {
+  it("a quantity in a far-left column and a price in a far-right column split into two tokens, never glued", () => {
+    resetAmountIdCounterForTests();
+    // Two ordinary rows establish the receipt's own price column (far
+    // right, ~X=500) as the corroborating signal.
+    const row1 = lineFromWords(0, [{ word: wordAt("L0W0", "Widget", 10) }, { word: wordAt("L0W1", "45.00", 500) }]);
+    const row2 = lineFromWords(1, [{ word: wordAt("L1W0", "Gadget", 10) }, { word: wordAt("L1W1", "12.00", 500) }]);
+    // The bug row: a quantity "3" far left (same column as the item names)
+    // and a price "130.00" far right (same column as the other prices) —
+    // exactly the V&RO Bengaluru shape.
+    const row3 = lineFromWords(2, [{ word: wordAt("L2W0", "3", 10) }, { word: wordAt("L2W1", "130.00", 500) }]);
+    const ledger = buildLedgerFromOcr([row1, row2, row3]);
+
+    assert(!ledger.some((e) => e.value === 3130), "the quantity and price must never collapse into 3130.00");
+    assert(ledger.some((e) => e.value === 130 && e.lineIndex === 2), "the real price 130.00 must survive as its own entry");
+    assert(!ledger.some((e) => e.value === 3 && e.lineIndex === 2), "the bare quantity 3 must not become a phantom ledger entry (it fails findMoneyTokens' own bare-integer rule)");
+  });
+
+  it("a large quantity and a small price still split — never a magnitude rule", () => {
+    resetAmountIdCounterForTests();
+    const row1 = lineFromWords(0, [{ word: wordAt("L0W0", "Widget", 10) }, { word: wordAt("L0W1", "45.00", 500) }]);
+    const row2 = lineFromWords(1, [{ word: wordAt("L1W0", "10", 10) }, { word: wordAt("L1W1", "225.00", 500) }]);
+    const ledger = buildLedgerFromOcr([row1, row2]);
+    assert(!ledger.some((e) => e.value === 10225), "quantity 10 + price 225.00 must never glue into 10225.00, regardless of which number is larger");
+    assert(ledger.some((e) => e.value === 225 && e.lineIndex === 1));
+  });
+
+  it("two digit groups printed in the SAME column, corroborated by other same-column values elsewhere, stay merged as one genuine thousands-grouped number", () => {
+    resetAmountIdCounterForTests();
+    // Several other, unrelated prices landing in the same right-edge band
+    // (~135-145, with the small natural variation real digit widths
+    // produce) as the "3"/"130.00" digit groups below — real,
+    // multi-point corroborating column evidence, each from a genuinely
+    // separate line (a single identical-X pair alone isn't enough signal
+    // to distinguish "one column" from "coincidence" — the same reasoning
+    // columns.ts itself applies).
+    const row1 = lineFromWords(0, [{ word: wordAt("L0W0", "Widget", 90) }, { word: wordAt("L0W1", "45.00", 118, 20) }]);
+    const row2 = lineFromWords(1, [{ word: wordAt("L1W0", "Gizmo", 90) }, { word: wordAt("L1W1", "9.00", 122, 18) }]);
+    const row3 = lineFromWords(2, [{ word: wordAt("L2W0", "Sprocket", 90) }, { word: wordAt("L2W1", "12.50", 116, 24) }]);
+    // "3" and "130.00" printed immediately adjacent, both inside that same
+    // column band — a genuine "3.130,00"-shaped figure with a space
+    // instead of a thousands dot.
+    const row4 = lineFromWords(3, [{ word: wordAt("L3W0", "3", 100, 8) }, { word: wordAt("L3W1", "130.00", 110, 30) }]);
+    const ledger = buildLedgerFromOcr([row1, row2, row3, row4]);
+    assert(ledger.some((e) => e.value === 3130), "two digit groups in the same column, with corroborating same-column evidence, must merge into one grouped number");
+  });
+
+  it("with zero other decimal-shaped evidence anywhere on the receipt, a space-grouped run is split, not silently trusted", () => {
+    resetAmountIdCounterForTests();
+    const row = lineFromWords(0, [{ word: wordAt("L0W0", "3", 10) }, { word: wordAt("L0W1", "130.00", 500) }]);
+    const ledger = buildLedgerFromOcr([row]);
+    assert(!ledger.some((e) => e.value === 3130), "no column corroboration at all — never merge on faith");
+  });
+});

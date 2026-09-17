@@ -23,6 +23,8 @@ import type { Assignment, StructureBlock } from "./schema.ts";
 import { computeEligibleAmountIds, resolveAmountReference } from "./schema.ts";
 import type { RawCharge, RawItem, RawPayload, RawUnresolvedLine } from "./types.ts";
 import { reconcile as computeCalculatedSubtotal, toMinor } from "./reconcile.ts";
+import type { SummaryRole, SummaryRoleAssignment } from "./coverage.ts";
+import { claimedValueHasUnitPriceAnnotation } from "./coverage.ts";
 
 // ─── Ownership validation ───────────────────────────────────────────────────
 
@@ -265,10 +267,37 @@ export function resolveClosure(
   return { valueMinor: distinctValuesMinor[0], winnerId: preferred.c.id };
 }
 
+/** Maps validate.ts's own charge-kind vocabulary (classifyKnownCharge's
+ *  chargeKind strings) onto coverage.ts's SummaryRole — kept here, next to
+ *  where chargeKind is produced, rather than in coverage.ts. */
+const CHARGE_KIND_TO_SUMMARY_ROLE: Record<string, Exclude<SummaryRole, "UNRESOLVED" | "SUBTOTAL" | "GRAND_TOTAL">> = {
+  tax: "TAX",
+  service: "SERVICE_CHARGE",
+  tip: "TIP",
+  discount: "DISCOUNT",
+  delivery: "FEE",
+  bag: "FEE",
+};
+
 export interface AssembleResult {
   payload: RawPayload;
   /** Ledger entries no assignment ever referenced — surfaced, never dropped. */
   orphanCount: number;
+  /** FIX 15 — every summary financial role this function decided, keyed by
+   *  the amountId that backs it. Purely a record of decisions already made
+   *  above; computing it changes nothing about `payload` or `orphanCount`.
+   *  Consumed by coverage.ts's classifySummaryCoverage/
+   *  findSummaryDuplicateRoles/determineSummaryValidity — never by the
+   *  public envelope. */
+  summaryRoleAssignments: SummaryRoleAssignment[];
+  /** FIX 23 — every item where the deterministic unit-price-annotation
+   *  rule overrode GPT's own `priceKind` (GPT said something other than
+   *  "lineTotal", but an adjacent annotation proved the claimed value IS
+   *  the line total). Purely diagnostic — quantifies how often GPT's
+   *  priceKind disagrees with the verified arithmetic, and by which item,
+   *  so a block that disagrees on EVERY run is visible rather than
+   *  averaged away. */
+  priceKindOverrides: Array<{ blockId: string; name: string | null }>;
 }
 
 export function buildFinalPayload(
@@ -286,6 +315,7 @@ export function buildFinalPayload(
   const charges: RawCharge[] = [];
   const unresolvedLines: RawUnresolvedLine[] = [];
   const printedFields: Record<string, number | undefined> = {};
+  const priceKindOverrides: Array<{ blockId: string; name: string | null }> = [];
 
   const itemBlocks = blocks.filter((b) => b.kind === "item");
   const modifierBlocks = blocks.filter((b) => b.kind === "modifier");
@@ -330,7 +360,19 @@ export function buildFinalPayload(
     // unitPrice null) is what prevents that, since reconcile() only
     // multiplies unitPrice by quantity, never baseLineTotal. The same
     // printed occurrence can never be treated as both at once.
-    const isLineTotal = item.priceKind === "lineTotal";
+    //
+    // FIX 23 — GPT's own priceKind is IGNORED, not merely outvoted, when a
+    // deterministic override proves the claimed value is a line total: an
+    // adjacent (same-or-next-line) candidate whose value * quantity
+    // reconstructs it exactly, with quantity verified in exact minor-unit
+    // arithmetic, never assumed (see claimedValueHasUnitPriceAnnotation's
+    // comment). One-directional — this can only push priceKind TOWARD
+    // lineTotal, never away from it, so a correct GPT "lineTotal" is
+    // simply confirmed, never disturbed.
+    const gptSaysLineTotal = item.priceKind === "lineTotal";
+    const overriddenToLineTotal = !gptSaysLineTotal && quantity > 1 && entry !== null && claimedValueHasUnitPriceAnnotation(entry, quantity, ledger);
+    if (overriddenToLineTotal) priceKindOverrides.push({ blockId: item.blockId, name: item.name });
+    const isLineTotal = gptSaysLineTotal || overriddenToLineTotal;
     const value = entry ? entry.value : null;
 
     items.push({
@@ -351,6 +393,7 @@ export function buildFinalPayload(
   // becomes a total/subtotal CLOSURE CANDIDATE instead of being trusted or
   // discarded by name — resolved below, once every candidate is known.
   const totalCandidates: TotalCandidate[] = [];
+  const summaryRoleAssignments: SummaryRoleAssignment[] = [];
   for (const summary of summaryBlocks) {
     const v = validationByBlock.get(summary.blockId);
     const entry = v?.entry ?? null;
@@ -360,6 +403,8 @@ export function buildFinalPayload(
     if (known) {
       if (known.printedField) printedFields[known.printedField] = entry.value;
       charges.push({ id: summary.blockId, name: summary.name ?? known.chargeKind, amount: entry.value, kind: known.chargeKind });
+      const role = CHARGE_KIND_TO_SUMMARY_ROLE[known.chargeKind];
+      if (role) summaryRoleAssignments.push({ amountId: entry.amountId, role });
       continue;
     }
 
@@ -411,13 +456,95 @@ export function buildFinalPayload(
     winningIds.add(subtotalResolution.winnerId);
   }
 
+  // FIX 15.1 — a single occurrence may win BOTH the subtotal and the total
+  // role only when nothing LARGER is left unclaimed in the summary region.
+  // Root cause (Mademoiselle Raw Bar & Grill): totalResolution and
+  // subtotalResolution are each computed independently, against the SAME
+  // candidate pool — nothing stops them returning the same winnerId, and
+  // when the receipt's total coincidentally matches item-sum (no charge
+  // block was recognized), the shared winner silently absorbed both roles
+  // while the REAL tax (5.85) and REAL total (50.85) sat unclaimed in
+  // totalCandidates, never surfaced as contradicting the coincidence —
+  // reconcile() came back true on the wrong number.
+  //
+  // FIX 15.3B — the original condition ("refuse if ANY unclaimed decimal
+  // remains") also rejected a real, distinct failure class: a tax-inclusive
+  // receipt (Portuguese/German VAT-included pricing) whose informal rate
+  // breakdown table (e.g. "9% / 16% / ..." rows) is genuinely never claimed
+  // by any block, has nothing to do with the total, and is always SMALLER
+  // than it — three real receipts (Quebra Mar, Ramires, Sulbarreiro),
+  // previously stable and correct, regressed to refused/unresolved under
+  // that stricter rule. The distinguishing structural fact, with no name,
+  // merchant, or language involved: a printed total is, by construction,
+  // the largest figure on the receipt (subtotal plus zero-or-positive
+  // charges, since a genuine reduction still prints as a smaller LINE ITEM,
+  // never as an unclaimed larger figure). An unclaimed value LARGER than
+  // the shared winner is therefore positive evidence the role assignment
+  // itself is wrong (exactly Mademoiselle: 50.85 > 45.00) — an unclaimed
+  // value smaller than or equal to it is exactly what an informational
+  // breakdown of a tax-inclusive total looks like, and must not block the
+  // coincidence on its own.
+  //
+  // "Unclaimed" still means genuinely unclaimed — a bare ledger-fallback
+  // entry (`ledger_`-prefixed id) that no block or assignment ever
+  // referenced. A candidate that DOES come from a real summary block is not
+  // "left to claim" in the same sense (GPT's own segmentation recognized it
+  // as summary content), but as of FIX 17 Part 1 it is NOT given any role
+  // on that basis alone either — it falls through to the loop below and
+  // surfaces as UNRESOLVED, exactly like a ledger_ orphan would, since
+  // having a block only proves territory, never a financial role (see that
+  // loop's own comment for the FALSE_VALID this used to permit).
+  const totalWinnerId = totalResolution && !("ambiguous" in totalResolution) ? totalResolution.winnerId : null;
+  const subtotalWinnerId = subtotalResolution && !("ambiguous" in subtotalResolution) ? subtotalResolution.winnerId : null;
+
+  if (subtotalWinnerId !== null && totalWinnerId !== null && subtotalWinnerId === totalWinnerId) {
+    const winner = totalCandidates.find((c) => c.id === subtotalWinnerId)!;
+    const unclaimedOrphans = totalCandidates.filter((c) => c.id !== subtotalWinnerId && c.id.startsWith("ledger_"));
+    // Strictly larger, not "larger or equal": an unclaimed value EQUAL to
+    // the winner is an echo/duplicate print of the same total, not evidence
+    // that a bigger, real total was missed. Note: after FIX 17 Part 1, any
+    // OTHER non-winning candidate (this ledger_ check or not) ends up
+    // UNRESOLVED regardless of whether this branch refuses or permits — the
+    // choice below still matters for the DIAGNOSTIC shape (a duplicate-role
+    // claim vs. a clean single winner plus unresolved leftovers), but safety
+    // no longer depends on it alone.
+    const largerOrphan = unclaimedOrphans.find((c) => c.entry.value > winner.entry.value);
+    if (largerOrphan) {
+      // Refused: something LARGER in the summary region is still unclaimed
+      // — never assume it's compatible with the shared winner. Recorded as
+      // a genuine duplicate-role claim so findSummaryDuplicateRoles
+      // surfaces it and the receipt is treated as unresolved, not silently
+      // accepted.
+      summaryRoleAssignments.push({ amountId: winner.entry.amountId, role: "SUBTOTAL" });
+      summaryRoleAssignments.push({ amountId: winner.entry.amountId, role: "GRAND_TOTAL" });
+    } else {
+      // Nothing LARGER to explain — a genuinely tax/charge-free receipt, or
+      // a tax-inclusive one whose informational breakdown is all smaller.
+      summaryRoleAssignments.push({ amountId: winner.entry.amountId, role: "GRAND_TOTAL" });
+    }
+  } else {
+    if (subtotalWinnerId !== null) {
+      const w = totalCandidates.find((c) => c.id === subtotalWinnerId)!;
+      summaryRoleAssignments.push({ amountId: w.entry.amountId, role: "SUBTOTAL" });
+    }
+    if (totalWinnerId !== null) {
+      const w = totalCandidates.find((c) => c.id === totalWinnerId)!;
+      summaryRoleAssignments.push({ amountId: w.entry.amountId, role: "GRAND_TOTAL" });
+    }
+  }
+
+  const winningAmountIds = new Set<string>([
+    ...(subtotalWinnerId !== null ? [totalCandidates.find((c) => c.id === subtotalWinnerId)!.entry.amountId] : []),
+    ...(totalWinnerId !== null ? [totalCandidates.find((c) => c.id === totalWinnerId)!.entry.amountId] : []),
+  ]);
+
   // Every candidate that didn't win either role is surfaced, not dropped —
-  // whether it failed to close at all, or closed but lost an ambiguous tie
-  // against a different value. A ledger-derived candidate that DID win is
-  // now "claimed" (it became the total/subtotal), so it must not also fall
-  // through the orphan pass below as unclaimed evidence.
+  // whether it failed to close at all, or was refused by the check above. A
+  // ledger-derived candidate that DID win is now "claimed" (it became the
+  // total/subtotal), so it must not also fall through the orphan pass below
+  // as unclaimed evidence.
   for (const c of totalCandidates) {
-    if (winningIds.has(c.id)) {
+    if (winningAmountIds.has(c.entry.amountId)) {
       claimedAmountIds.add(c.entry.amountId);
       continue;
     }
@@ -428,6 +555,23 @@ export function buildFinalPayload(
       text: c.lineIndex !== undefined ? lines[c.lineIndex] : "",
       lineIndex: c.lineIndex,
     });
+    // FIX 17 Part 1 — this candidate came from a real summary BLOCK, not a
+    // bare ledger_ fallback, but that is proof the block-territory EXISTS,
+    // never proof of what its financial role is. The FIX 15.3 exception
+    // that assigned NON_CHARGE_INFORMATIONAL here purely because "it has a
+    // block and didn't win" was a deterministic FALSE_VALID hole: the exact
+    // same 45.00/5.85/50.85 figures that FIX 15.1 correctly refuses when
+    // 5.85/50.85 arrive as bare ledger_ orphans sail straight through
+    // uncontested the moment GPT happens to segment them into their own
+    // blocks — a coin flip of GPT's non-deterministic segmentation (FIX 13)
+    // deciding a safety outcome. No positive evidence of "informational"
+    // exists here (see docs/design/summary-closure-identity-graph.md's
+    // negative-result section — base×rate=charge is structurally identical
+    // whether the charge is disclosed detail or a real, uncounted addition
+    // to the total, and no generic signal distinguishes them). Left
+    // deliberately unassigned — classifySummaryCoverage reports it
+    // UNRESOLVED, the same honest "we don't know" as a ledger_ orphan gets.
+    // Still surfaced above via unresolvedLines, never silently dropped.
   }
 
   // Unclassified/quantity blocks that still ended up with an assigned amount
@@ -474,5 +618,5 @@ export function buildFinalPayload(
     printedTotal: printedFields.printedTotal ?? null,
   };
 
-  return { payload, orphanCount };
+  return { payload, orphanCount, summaryRoleAssignments, priceKindOverrides };
 }

@@ -32,7 +32,9 @@
   },
   "exclude": [
     "node_modules",
-    "supabase/functions"
+    "supabase/functions",
+    "scripts/debug-parse-receipt.ts",
+    "scripts/fetch-vision-fixture.ts"
   ],
   "include": [
     "**/*.ts",

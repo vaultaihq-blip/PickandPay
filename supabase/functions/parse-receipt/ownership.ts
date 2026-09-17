@@ -59,6 +59,13 @@ export interface OwnershipResult {
    *  text, and a different line was found instead — surfaced for logging,
    *  never receipt content. */
   anchorCorrected: boolean;
+  /** FIX 25 Part 2 — this block's claimed value crossed order with another
+   *  block's (see detectCrossings). Distinct from a generic `confident:
+   *  false` DP ambiguity: a crossing is a direct logical contradiction
+   *  (reading order disagrees with claimed-value order), not merely two
+   *  close candidates — surfaced separately so the caller/diagnostics can
+   *  tell the two apart. Never true when amountId is null. */
+  crossingDetected: boolean;
 }
 
 // ─── Anchor-line correction ─────────────────────────────────────────────────
@@ -234,13 +241,15 @@ const AMBIGUITY_MARGIN = 3;
 const RESIDUAL_SIGMA_MULTIPLIER = 6;
 
 function monotonicMatch(
-  blocks: Array<{ blockId: string; nameY: number; proposedAmountId: string | null; eligible: (candidateIndex: number) => boolean }>,
+  blocks: Array<{ blockId: string; kind: PriceBlockInput["kind"]; nameY: number; proposedAmountId: string | null; eligible: (candidateIndex: number) => boolean }>,
   candidates: LedgerEntry[],
   angle: number,
   drift: DriftFit | null,
   unmatchedBlockPenalty: number,
   maxPlausibleDistance: number,
-  residualStdDev: number | null
+  residualStdDev: number | null,
+  itemsRegionEnd: number,
+  summaryBoundaryPenalty: number
 ): OwnershipResult[] {
   const n = blocks.length;
   const m = candidates.length;
@@ -267,7 +276,18 @@ function monotonicMatch(
     // modifier) — leaving it an orphan is the honest outcome, not handing
     // it to whichever block happens to be next in reading order.
     if (residualLimit !== null && d > residualLimit) return Infinity;
-    return d;
+    // FIX 25 Part 1 — an item/modifier block reaching a candidate at or
+    // past itemsRegionEnd pays a strong penalty, same pattern as
+    // unmatchedBlockPenalty: never infinite (Mad God has a real, correct
+    // claim past the boundary when its own summary label appears early in
+    // read order while item content still follows — a hard wall would
+    // break it), but calibrated high enough that a legitimate in-region
+    // candidate always wins when one exists (see the calibration note on
+    // SUMMARY_BOUNDARY_PENALTY below). Summary blocks are exempt — their
+    // own values legitimately live at or past this boundary.
+    const crossesBoundary =
+      (blocks[i].kind === "item" || blocks[i].kind === "modifier") && candidates[j].lineIndex >= itemsRegionEnd;
+    return crossesBoundary ? d + summaryBoundaryPenalty : d;
   };
 
   const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
@@ -319,7 +339,7 @@ function monotonicMatch(
   for (let bi = 0; bi < n; bi++) {
     const matchedJ = matchedBlockToCandidate.get(bi);
     if (matchedJ === undefined) {
-      results.push({ blockId: blocks[bi].blockId, amountId: null, confident: false, anchorCorrected: false });
+      results.push({ blockId: blocks[bi].blockId, amountId: null, confident: false, anchorCorrected: false, crossingDetected: false });
       continue;
     }
     const costs = candidates.map((_, cj) => cost(bi, cj));
@@ -332,9 +352,53 @@ function monotonicMatch(
       amountId: confident ? candidates[matchedJ].amountId : null,
       confident,
       anchorCorrected: false,
+      crossingDetected: false,
     });
   }
   return results;
+}
+
+/**
+ * FIX 25 Part 2 — a post-hoc, whole-result check: reading order (by each
+ * block's own anchor Y) must agree with claimed-value order (by each
+ * claimed entry's own Y), for EVERY item/modifier block that ended up with
+ * ANY amountId at all, confident or not, from EITHER pass. This is the gap
+ * monotonicMatch's own no-crossing guarantee never covered: it only
+ * protects blocks that entered the SECOND pass (see its own header
+ * comment). A block resolved by the FIRST pass's "same line, one
+ * candidate" fast path (Hollywood Cafe's exact shape: a genuinely
+ * row-aligned but semantically swapped OCR line — the price column sits
+ * one row off from the name column, so "SODA"'s row is where Cheese
+ * Steak's real price landed) never passes through the DP at all, so its
+ * match is never checked against anyone else's.
+ *
+ * Ties in VALUE are irrelevant — only the ORDER of each block's OWN
+ * claimed-value position is compared, never the value itself, so Mad
+ * God's repeated-value items (three "16.95"s on three different,
+ * correctly-increasing lines) never trigger this.
+ *
+ * Returns the set of blockIds involved in at least one crossing. The
+ * caller never tries to decide which of the two is right — both are
+ * demoted to unresolved (see the caller's own comment).
+ */
+function detectCrossings(
+  claims: Array<{ blockId: string; nameY: number; amountId: string | null }>,
+  ledgerByAmountId: Map<string, LedgerEntry>,
+  angle: number
+): Set<string> {
+  const withValue = claims
+    .filter((c): c is { blockId: string; nameY: number; amountId: string } => c.amountId !== null && ledgerByAmountId.has(c.amountId))
+    .map((c) => ({ blockId: c.blockId, nameY: c.nameY, valueY: entryNormalY(ledgerByAmountId.get(c.amountId)!, angle) }))
+    .sort((a, b) => a.nameY - b.nameY);
+
+  const crossed = new Set<string>();
+  for (let i = 1; i < withValue.length; i++) {
+    if (withValue[i].valueY < withValue[i - 1].valueY) {
+      crossed.add(withValue[i - 1].blockId);
+      crossed.add(withValue[i].blockId);
+    }
+  }
+  return crossed;
 }
 
 // ─── Public entry point ─────────────────────────────────────────────────────
@@ -342,7 +406,13 @@ function monotonicMatch(
 export function computeGeometricOwnership(
   blocks: PriceBlockInput[],
   ledger: LedgerEntry[],
-  lines: OcrLine[]
+  lines: OcrLine[],
+  /** FIX 25 Part 1 — the items/summary boundary (computeItemsRegionEnd's own
+   *  return value; Infinity when no summary block exists at all, which
+   *  naturally makes the boundary penalty below inert). Defaults to
+   *  Infinity so every existing caller/test keeps its prior behavior
+   *  unchanged unless it opts in. */
+  itemsRegionEnd: number = Infinity
 ): OwnershipResult[] {
   if (blocks.length === 0) return [];
 
@@ -355,6 +425,20 @@ export function computeGeometricOwnership(
   // pixel constant, so they hold regardless of source image resolution.
   const unmatchedBlockPenalty = spacing * 4;
   const maxPlausibleDistance = spacing * 3;
+  // FIX 25 Part 1 — calibrated against all 11 corpus fixtures (see the
+  // measurement report for the exact table and the calibration trace that
+  // caught the first, wrong value here). MUST stay strictly LESS than
+  // unmatchedBlockPenalty: a penalty at or above unmatchedBlockPenalty
+  // makes crossing the boundary lose to skipping UNCONDITIONALLY,
+  // regardless of match quality — an absolute wall in disguise, not "loses
+  // to a legitimate alternative, wins over nothing" as required. Half of
+  // unmatchedBlockPenalty leaves real headroom: a close, well-supported
+  // match (Mad God's shape — a genuine claim a few lines past the
+  // boundary with no in-region alternative at all) still beats skipping,
+  // while a far, unsupported reach (Buca di Beppo's shape — the Subtotal/
+  // Total sitting many lines away with a real, closer in-region price
+  // going unused) loses to skipping just as before.
+  const summaryBoundaryPenalty = unmatchedBlockPenalty / 2;
 
   const anchors = new Map<string, { line: number; corrected: boolean }>();
   for (const b of blocks) anchors.set(b.blockId, correctAnchorLine(b, lines));
@@ -384,7 +468,7 @@ export function computeGeometricOwnership(
     const onLine = ledger.filter((e) => e.lineIndex === anchor.line && !claimed.has(e.amountId) && /[.,]\d{2}$/.test(e.rawText));
     if (onLine.length === 1) {
       claimed.add(onLine[0].amountId);
-      results.set(b.blockId, { blockId: b.blockId, amountId: onLine[0].amountId, confident: true, anchorCorrected: anchor.corrected });
+      results.set(b.blockId, { blockId: b.blockId, amountId: onLine[0].amountId, confident: true, anchorCorrected: anchor.corrected, crossingDetected: false });
     } else {
       remaining.push(b);
     }
@@ -419,7 +503,7 @@ export function computeGeometricOwnership(
         const owner = lineOwnership.get(candidates[candidateIndex].lineIndex);
         return owner === undefined || isSameFamily(b.blockId, owner, blocks);
       };
-      return { blockId: b.blockId, nameY, proposedAmountId: b.proposedAmountId, anchorCorrected: anchor.corrected, eligible };
+      return { blockId: b.blockId, kind: b.kind, nameY, proposedAmountId: b.proposedAmountId, anchorCorrected: anchor.corrected, eligible };
     })
     .sort((x, y) => x.nameY - y.nameY);
 
@@ -430,7 +514,9 @@ export function computeGeometricOwnership(
     drift,
     unmatchedBlockPenalty,
     maxPlausibleDistance,
-    residualStdDev
+    residualStdDev,
+    itemsRegionEnd,
+    summaryBoundaryPenalty
   );
   // FIX 8.1 — the ambiguous-fallback path below (falling back to GPT's own
   // proposedAmountId when the geometric layer isn't confident) used to hand
@@ -475,20 +561,44 @@ export function computeGeometricOwnership(
         // back to GPT's own proposal rather than leaving it unresolved, but
         // never mark it confident: the caller must still treat this as
         // suspicious and eligible for targeted verification.
-        results.set(r.blockId, { blockId: r.blockId, amountId: proposed, confident: false, anchorCorrected: meta.anchorCorrected });
+        results.set(r.blockId, { blockId: r.blockId, amountId: proposed, confident: false, anchorCorrected: meta.anchorCorrected, crossingDetected: false });
       } else {
         // Already owned elsewhere, or another block wants the same value —
         // neither block "deserves" it more than the other; both stay
         // unresolved and honestly suspicious rather than one silently
         // winning a coin flip decided by processing order.
-        results.set(r.blockId, { blockId: r.blockId, amountId: null, confident: false, anchorCorrected: meta.anchorCorrected });
+        results.set(r.blockId, { blockId: r.blockId, amountId: null, confident: false, anchorCorrected: meta.anchorCorrected, crossingDetected: false });
       }
     } else {
       results.set(r.blockId, { ...r, anchorCorrected: meta?.anchorCorrected ?? false });
     }
   }
 
+  // FIX 25 Part 2 — crossing check over the FULL, final result set (both
+  // passes combined). Never attempts to pick the "right" one of a crossed
+  // pair — see detectCrossings's own comment. amountId is nulled (not just
+  // marked unconfident) so a crossing-affected value is fully excluded from
+  // arithmetic downstream (buildFinalPayload/reconcile), guaranteeing the
+  // receipt is flagged rather than silently accepted with swapped values —
+  // production still gets a chance to resolve it via targeted verification
+  // (findOwnershipAmbiguous already covers any confident:false result with
+  // a non-null amountId; this is confident:false with amountId:null, so
+  // it surfaces as a genuine items-region gap instead).
+  const ledgerByAmountId = new Map(ledger.map((e) => [e.amountId, e]));
+  const orderedClaims = needing
+    .filter((b) => b.kind === "item" || b.kind === "modifier")
+    .map((b) => {
+      const anchor = anchors.get(b.blockId)!;
+      const nameY = wordsNormalY(lines[anchor.line]?.words.map((wo) => wo.word) ?? [], angle);
+      return { blockId: b.blockId, nameY, amountId: results.get(b.blockId)?.amountId ?? null };
+    });
+  const crossed = detectCrossings(orderedClaims, ledgerByAmountId, angle);
+  for (const blockId of crossed) {
+    const r = results.get(blockId);
+    if (r) results.set(blockId, { ...r, amountId: null, confident: false, crossingDetected: true });
+  }
+
   return blocks.map(
-    (b) => results.get(b.blockId) ?? { blockId: b.blockId, amountId: null, confident: true, anchorCorrected: false }
+    (b) => results.get(b.blockId) ?? { blockId: b.blockId, amountId: null, confident: true, anchorCorrected: false, crossingDetected: false }
   );
 }
