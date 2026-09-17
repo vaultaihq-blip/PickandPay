@@ -87,7 +87,7 @@ function textOverlapScore(a: string, b: string): number {
  * this is what eliminates the "block claims a real but wrong line" error
  * class regardless of what caused the wrong claim.
  */
-function correctAnchorLine(block: PriceBlockInput, lines: OcrLine[]): { line: number; corrected: boolean } {
+export function correctAnchorLine(block: PriceBlockInput, lines: OcrLine[]): { line: number; corrected: boolean } {
   const claimed = block.lineIndices.filter((i) => i >= 0 && i < lines.length);
   const firstClaimed = claimed.length > 0 ? claimed[0] : 0;
   if (!block.name) return { line: firstClaimed, corrected: false };
@@ -399,6 +399,147 @@ function detectCrossings(
     }
   }
   return crossed;
+}
+
+// ─── FIX 27 — constant column offset, arbitrated by the printed subtotal ──
+//
+// FIX 26 measured a name→value offset AFTER correctAnchorLine and found it
+// always collapses to 0, whether the match is right or wrong — correction
+// relocates a block to wherever its OWN name text is, then the first-pass
+// same-line rule grabs whatever decimal sits on that same (now-correct)
+// line, so the offset from the corrected anchor can never distinguish a
+// genuine same-line print from a value that is really the NEXT item's price
+// printed one row early. Proven against the real Hollywood Cafe fixture
+// (see ownership.test.ts's DC test and this round's report): the signal
+// exists only in the RAW OCR shape, before any block's value is decided —
+// a bare monetary value with no descriptive text on its own line, followed
+// by a run of name+value lines, ending in a bare descriptive line with no
+// value at all. Detecting that shape decides nothing by itself; only the
+// printed subtotal — independent testimony already on the page, derived
+// from neither hypothesis — decides which reading (as printed, H0, or
+// shifted back one position, H1) is adopted.
+
+/** A line's shape, from its own OCR text and whatever ledger entries (any
+ *  kind — item, modifier, or otherwise) sit on it — never from what any
+ *  block claims, since a block's OWN claimed line can itself be wrong (the
+ *  GPT off-by-one that made correctAnchorLine necessary in the first
+ *  place). Deliberately independent of block claims for exactly that
+ *  reason. */
+type LineShape = "VALUE_ONLY" | "NAME_ONLY" | "MIXED" | "OTHER";
+
+function lineHasDecimalValue(lineIndex: number, ledger: LedgerEntry[]): boolean {
+  return ledger.some((e) => e.lineIndex === lineIndex && /[.,]\d{2}$/.test(e.rawText));
+}
+
+function classifyLineShape(lineIndex: number, lines: OcrLine[], ledger: LedgerEntry[]): LineShape {
+  const hasValue = lineHasDecimalValue(lineIndex, ledger);
+  const hasLetters = /[a-zA-Z]/.test(lines[lineIndex]?.text ?? "");
+  if (hasValue && !hasLetters) return "VALUE_ONLY";
+  if (!hasValue && hasLetters) return "NAME_ONLY";
+  if (hasValue && hasLetters) return "MIXED";
+  return "OTHER";
+}
+
+export interface ConstantOffsetRun {
+  startLine: number;
+  endLine: number;
+  /** item/modifier blocks affected, in physical (corrected-anchor) order —
+   *  every one of them currently owns the value that really belongs to the
+   *  NEXT block in this run. */
+  blockIds: string[];
+  /** H1's proposed amountId per affected block: the k-th block in the run
+   *  (by corrected anchor) paired with the k-th decimal value found across
+   *  the run's lines (by lineIndex) — a pure positional zip, not a re-run
+   *  of any distance/territory search. Null when the run's name count and
+   *  value count don't match 1:1 — a malformed run is never forced into a
+   *  guess; the caller simply has nothing to offer for it. */
+  h1AmountIds: Map<string, string | null> | null;
+}
+
+/**
+ * Step 1 (FIX 27): find every maximal run, within the items region and at
+ * or after the first item/modifier block's own earliest claimed line
+ * (never the receipt header — "AM Dining Rm" is NAME_ONLY too, and has
+ * nothing to do with this), matching VALUE_ONLY, then zero or more MIXED,
+ * then NAME_ONLY. Detection alone decides nothing — see the caller for
+ * Step 2's arbitration against the printed subtotal.
+ */
+export function detectConstantOffsetRuns(
+  blocks: PriceBlockInput[],
+  ledger: LedgerEntry[],
+  lines: OcrLine[],
+  itemsRegionEnd: number
+): ConstantOffsetRun[] {
+  const itemLikeBlocks = blocks.filter((b) => b.kind === "item" || b.kind === "modifier");
+  if (itemLikeBlocks.length === 0) return [];
+
+  const firstItemLine = Math.min(
+    ...itemLikeBlocks.map((b) => (b.lineIndices.length > 0 ? Math.min(...b.lineIndices) : Infinity))
+  );
+  if (!Number.isFinite(firstItemLine)) return [];
+
+  // Corrected anchors are used here ONLY to know which physical line each
+  // block's name really sits on — reliable line IDENTITY, not the offset
+  // measurement FIX 26 showed is dead. A block's own raw-reported line can
+  // itself be wrong (independent of the print-offset bug), so identity
+  // still needs correcting; only measuring "distance from this corrected
+  // line" is the dead signal, and nothing here does that.
+  const blockByAnchorLine = new Map<number, string>();
+  for (const b of itemLikeBlocks) {
+    const { line } = correctAnchorLine(b, lines);
+    if (!blockByAnchorLine.has(line)) blockByAnchorLine.set(line, b.blockId);
+  }
+
+  // A line is claimed by whichever block's OWN raw (uncorrected) lineIndices
+  // lists it — this is what a normal multi-line item (name on one line,
+  // its own price on the very next) already looks like: the price line is
+  // legitimately part of the item's OWN reported span, not an orphan. Only
+  // a candidate leading value with NO such owner — or whose only owner ends
+  // up IN this same run anyway (Hollywood Cafe: GPT's own off-by-one claim
+  // still names the very block the run reassigns) — is treated as the
+  // genuine "unclaimed value before the chain" signal Step 1 is after.
+  // Without this, a plain, correctly-printed two-line-per-item receipt
+  // (CY) reads as a false positive on every consecutive item boundary —
+  // confirmed by direct construction before this guard was added.
+  const rawLineOwner = new Map<number, string>();
+  for (const b of itemLikeBlocks) {
+    for (const li of b.lineIndices) if (!rawLineOwner.has(li)) rawLineOwner.set(li, b.blockId);
+  }
+
+  const runs: ConstantOffsetRun[] = [];
+  const end = Math.min(itemsRegionEnd, lines.length);
+  let i = firstItemLine;
+  while (i < end) {
+    if (classifyLineShape(i, lines, ledger) === "VALUE_ONLY") {
+      let j = i + 1;
+      while (j < end && classifyLineShape(j, lines, ledger) === "MIXED") j += 1;
+      if (j < end && classifyLineShape(j, lines, ledger) === "NAME_ONLY") {
+        const blockIds: string[] = [];
+        for (let li = i + 1; li <= j; li++) {
+          const bId = blockByAnchorLine.get(li);
+          if (bId) blockIds.push(bId);
+        }
+        const values = ledger
+          .filter((e) => e.lineIndex >= i && e.lineIndex < j && /[.,]\d{2}$/.test(e.rawText))
+          .sort((a, b) => a.lineIndex - b.lineIndex);
+        const blockIdSet = new Set(blockIds);
+        const anyValueAlreadyOwnedOutsideRun = values.some((v) => {
+          const owner = rawLineOwner.get(v.lineIndex);
+          return owner !== undefined && !blockIdSet.has(owner);
+        });
+        const countsMatch = blockIds.length > 0 && blockIds.length === values.length;
+        const h1AmountIds =
+          !anyValueAlreadyOwnedOutsideRun && countsMatch
+            ? new Map(blockIds.map((id, idx) => [id, values[idx].amountId] as const))
+            : null;
+        runs.push({ startLine: i, endLine: j, blockIds, h1AmountIds });
+        i = j + 1;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return runs;
 }
 
 // ─── Public entry point ─────────────────────────────────────────────────────

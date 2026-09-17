@@ -77,7 +77,7 @@ import {
   OCR_CONFIDENCE_THRESHOLD,
   type SuspiciousEvidence,
 } from "./validate.ts";
-import { computeGeometricOwnership, type PriceBlockInput } from "./ownership.ts";
+import { computeGeometricOwnership, detectConstantOffsetRuns, type PriceBlockInput } from "./ownership.ts";
 import { filterToAuthoritativeColumn } from "./columns.ts";
 import {
   computeItemsRegionEnd,
@@ -89,7 +89,7 @@ import {
   findSummaryDuplicateRoles,
   determineSummaryValidity,
 } from "./coverage.ts";
-import { reconcile, toMajor } from "./reconcile.ts";
+import { reconcile, toMajor, toMinor } from "./reconcile.ts";
 
 const PARSER_VERSION = "ocr-grounded-v1";
 
@@ -560,6 +560,78 @@ serve(async (req: Request) => {
       if (owned) block.amountId = owned.amountId;
     }
 
+    // ── FIX 27 — constant column offset, arbitrated by the printed subtotal.
+    // Step 1 (detectConstantOffsetRuns, ownership.ts) finds the shape in the
+    // raw OCR alone; it decides nothing on its own. Step 2 here builds
+    // exactly two whole-receipt hypotheses (H0 = as already assigned above,
+    // H1 = every detected run shifted back one position) and lets the
+    // PRINTED subtotal — a named summary block's own geometrically-resolved
+    // value, never the arithmetic-closure-derived printedSubtotal/
+    // calculatedSubtotal — decide between them in exact minor-unit
+    // arithmetic. No subtotal resolved this way, no arbitration: H0 stands.
+    let offsetFormDetected = false;
+    let offsetHypothesisAdopted: "H0" | "H1" | "AMBIGUOUS" = "H0";
+    {
+      const offsetRuns = detectConstantOffsetRuns(ownershipInputs, matchingLedger, ocr.lines, itemsRegionEnd);
+      offsetFormDetected = offsetRuns.length > 0;
+      const viableRuns = offsetRuns.filter((r) => r.h1AmountIds !== null);
+      // Deliberately NOT validate.ts's own bare /subtotal/ regex (a
+      // tie-breaker only there, never load-bearing) — "SUB-TOTAL" (a real,
+      // common printed form, Hollywood Cafe included) fails it outright.
+      // Punctuation/whitespace-stripped before matching here since this
+      // check IS load-bearing (it gates whether Step 2 runs at all).
+      const namedSubtotalBlock = blocks.find(
+        (b) => b.kind === "summary" && /subtotal/.test((b.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))
+      );
+      const namedSubtotalOwnership = namedSubtotalBlock ? ownershipByBlock.get(namedSubtotalBlock.blockId) : undefined;
+      const printedSubtotalEntry =
+        namedSubtotalOwnership?.confident && namedSubtotalOwnership.amountId
+          ? ledger.find((e) => e.amountId === namedSubtotalOwnership.amountId) ?? null
+          : null;
+      const arbitrationTargetMinor = printedSubtotalEntry ? toMinor(printedSubtotalEntry.value, currency) : null;
+
+      if (viableRuns.length > 0 && arbitrationTargetMinor !== null) {
+        const affectedBlockIds = new Set(viableRuns.flatMap((r) => r.blockIds));
+        const h1AmountIdByBlock = new Map<string, string | null>();
+        for (const r of viableRuns) {
+          for (const [blockId, amountId] of r.h1AmountIds!) h1AmountIdByBlock.set(blockId, amountId);
+        }
+
+        const h0Assignments = assignmentsFromBlocks(blocks);
+        const h0Validations = validateAssignments(blocks, h0Assignments, ledger);
+        const h0Assembled = buildFinalPayload(merchant, currency, lines, blocks, h0Validations, ledger);
+        const h0SumMinor = reconcile(h0Assembled.payload).calculatedSubtotalMinor;
+
+        const h1Blocks = blocks.map((b) =>
+          affectedBlockIds.has(b.blockId) ? { ...b, amountId: h1AmountIdByBlock.get(b.blockId) ?? null } : b
+        );
+        const h1Assignments = assignmentsFromBlocks(h1Blocks);
+        const h1Validations = validateAssignments(h1Blocks, h1Assignments, ledger);
+        const h1Assembled = buildFinalPayload(merchant, currency, lines, h1Blocks, h1Validations, ledger);
+        const h1SumMinor = reconcile(h1Assembled.payload).calculatedSubtotalMinor;
+
+        const h0Closes = h0SumMinor === arbitrationTargetMinor;
+        const h1Closes = h1SumMinor === arbitrationTargetMinor;
+
+        if (h1Closes && !h0Closes) {
+          offsetHypothesisAdopted = "H1";
+          for (const block of blocks) {
+            if (affectedBlockIds.has(block.blockId)) block.amountId = h1AmountIdByBlock.get(block.blockId) ?? null;
+          }
+        } else if (h0Closes && h1Closes) {
+          // Both readings close on the same independent fact — neither is
+          // preferred by a magnitude or name tie-break (see FIX 25.2's
+          // detectCrossings for the same principle). Marked ambiguous and
+          // left unresolved, never guessed.
+          offsetHypothesisAdopted = "AMBIGUOUS";
+          for (const block of blocks) {
+            if (affectedBlockIds.has(block.blockId)) block.amountId = null;
+          }
+        }
+        // Neither closes: H0 stands untouched, offsetHypothesisAdopted stays "H0".
+      }
+    }
+
     // ── Deterministic validation ─────────────────────────────────────────────
     let assignments = assignmentsFromBlocks(blocks);
     let validations = validateAssignments(blocks, assignments, ledger);
@@ -742,6 +814,12 @@ serve(async (req: Request) => {
         priceKindOverrides: priceKindOverrides.map((o) => o.name),
         crossingsDetected,
         summaryBoundaryPenalties,
+        // FIX 27 — did the raw-OCR constant-offset shape exist at all
+        // (offsetFormDetected), and which hypothesis the printed subtotal
+        // arbitrated (offsetHypothesisAdopted: H0/H1/AMBIGUOUS). Purely
+        // diagnostic; the actual reassignment already happened above.
+        offsetFormDetected,
+        offsetHypothesisAdopted,
         unresolvedLoadBearingCount: validity.unresolvedLoadBearingCount,
         genuineOwnershipMissCount: validity.unresolvedLoadBearingCount,
         duplicateOwnershipCount: validity.duplicateOwnershipCount,

@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, assert, assertEqual } from "./harness";
-import { computeGeometricOwnership, type PriceBlockInput } from "../ownership";
+import { computeGeometricOwnership, detectConstantOffsetRuns, type PriceBlockInput } from "../ownership";
 import type { LedgerEntry } from "../ledger";
 import { buildLedgerFromOcr } from "../ledger";
 import type { OcrLine, OcrWord, BoundingBox } from "../ocr";
 import { normalizeVisionResponse } from "../ocr";
 import { computeItemsRegionEnd } from "../coverage";
 import { validateAssignments, buildFinalPayload } from "../validate";
-import { reconcile } from "../reconcile";
+import { reconcile, toMinor } from "../reconcile";
+import { assignmentsFromBlocks, type StructureBlock } from "../schema";
 
 // ─── Fixture builders — plain upright (angle 0) geometry unless a test
 // specifically needs drift, since rotation-independence is already covered
@@ -638,5 +639,313 @@ describe("ownership: FIX 25 Part 2 — crossing detection over the full result s
       true,
       "EMPIRICAL RESULT, not the hoped-for outcome: this round's own deciding condition (this reproduction must stop reconciling) is NOT met — see CQ for the traced root cause"
     );
+  });
+});
+
+// ─── FIX 27 — constant column offset, arbitrated by the printed subtotal ───
+//
+// Mirrors index.ts's own Step 1 (detectConstantOffsetRuns) + Step 2
+// (exactly two hypotheses, arbitrated by a NAMED summary block's own
+// geometrically-resolved value — never the arithmetic-closure-derived
+// printedSubtotal/calculatedSubtotal) exactly, so these tests exercise the
+// real production logic, not a parallel reimplementation.
+function runOffsetArbitration(
+  blocks: PriceBlockInput[],
+  ledger: LedgerEntry[],
+  lines: OcrLine[],
+  currency: string
+): { formDetected: boolean; hypothesisAdopted: "H0" | "H1" | "AMBIGUOUS"; finalBlocks: StructureBlock[] } {
+  const itemsRegionEnd = computeItemsRegionEnd(blocks as unknown as StructureBlock[]);
+  const ownership = computeGeometricOwnership(blocks, ledger, lines, itemsRegionEnd);
+  const ownershipByBlock = new Map(ownership.map((r) => [r.blockId, r]));
+  const structureBlocks: StructureBlock[] = blocks.map((b) => {
+    const o = ownershipByBlock.get(b.blockId);
+    return {
+      blockId: b.blockId,
+      kind: b.kind,
+      lineIndices: b.lineIndices,
+      name: b.name,
+      parentBlockId: b.parentBlockId,
+      amountId: o?.amountId ?? null,
+      quantity: 1,
+      priceKind: "lineTotal",
+    };
+  });
+
+  const offsetRuns = detectConstantOffsetRuns(blocks, ledger, lines, itemsRegionEnd);
+  const formDetected = offsetRuns.length > 0;
+  const viableRuns = offsetRuns.filter((r) => r.h1AmountIds !== null);
+  const namedSubtotalBlock = structureBlocks.find(
+    (b) => b.kind === "summary" && /subtotal/.test((b.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))
+  );
+  const namedSubtotalOwnership = namedSubtotalBlock ? ownershipByBlock.get(namedSubtotalBlock.blockId) : undefined;
+  const printedSubtotalEntry =
+    namedSubtotalOwnership?.confident && namedSubtotalOwnership.amountId
+      ? ledger.find((e) => e.amountId === namedSubtotalOwnership.amountId) ?? null
+      : null;
+  const arbitrationTargetMinor = printedSubtotalEntry ? toMinor(printedSubtotalEntry.value, currency) : null;
+
+  let hypothesisAdopted: "H0" | "H1" | "AMBIGUOUS" = "H0";
+  let finalBlocks = structureBlocks;
+
+  if (viableRuns.length > 0 && arbitrationTargetMinor !== null) {
+    const affectedBlockIds = new Set(viableRuns.flatMap((r) => r.blockIds));
+    const h1AmountIdByBlock = new Map<string, string | null>();
+    for (const r of viableRuns) for (const [blockId, amountId] of r.h1AmountIds!) h1AmountIdByBlock.set(blockId, amountId);
+
+    const h0Assignments = assignmentsFromBlocks(structureBlocks);
+    const h0Validations = validateAssignments(structureBlocks, h0Assignments, ledger);
+    const h0Assembled = buildFinalPayload(null, currency, [], structureBlocks, h0Validations, ledger);
+    const h0SumMinor = reconcile(h0Assembled.payload).calculatedSubtotalMinor;
+
+    const h1Blocks = structureBlocks.map((b) =>
+      affectedBlockIds.has(b.blockId) ? { ...b, amountId: h1AmountIdByBlock.get(b.blockId) ?? null } : b
+    );
+    const h1Assignments = assignmentsFromBlocks(h1Blocks);
+    const h1Validations = validateAssignments(h1Blocks, h1Assignments, ledger);
+    const h1Assembled = buildFinalPayload(null, currency, [], h1Blocks, h1Validations, ledger);
+    const h1SumMinor = reconcile(h1Assembled.payload).calculatedSubtotalMinor;
+
+    const h0Closes = h0SumMinor === arbitrationTargetMinor;
+    const h1Closes = h1SumMinor === arbitrationTargetMinor;
+
+    if (h1Closes && !h0Closes) {
+      hypothesisAdopted = "H1";
+      finalBlocks = h1Blocks;
+    } else if (h0Closes && h1Closes) {
+      hypothesisAdopted = "AMBIGUOUS";
+      finalBlocks = structureBlocks.map((b) => (affectedBlockIds.has(b.blockId) ? { ...b, amountId: null } : b));
+    }
+  }
+
+  return { formDetected, hypothesisAdopted, finalBlocks };
+}
+
+describe("ownership: FIX 27 — constant column offset, arbitrated by the printed subtotal", () => {
+  it("DC — Hollywood Cafe real fixture: the shape is detected, H1 closes to 25.22 against the printed subtotal, H0 does not, H1 is adopted", () => {
+    // Same real block array as CQ (GPT's own off-by-one lineIndices for
+    // this receipt), plus a realistic proposedAmountId for FRD ONION so it
+    // resolves normally (its own value is already correct and untouched by
+    // this mechanism — only SODA/STEAK/AMERICAN CHS sit in the detected
+    // run). This is the test that decides the round.
+    const { ocr, ledger } = loadRealFixture("vision-hollywoodcafe-en.json");
+    const blocks: PriceBlockInput[] = [
+      { blockId: "SODA", kind: "item", lineIndices: [6], name: "SODA", parentBlockId: null, proposedAmountId: null },
+      { blockId: "STEAK", kind: "item", lineIndices: [7], name: "CHEESE STEAK", parentBlockId: null, proposedAmountId: null },
+      { blockId: "AMCHS", kind: "modifier", lineIndices: [8], name: "AMERICAN CHS", parentBlockId: "STEAK", proposedAmountId: null },
+      { blockId: "FRDONION", kind: "modifier", lineIndices: [9], name: "FRD ONION", parentBlockId: "STEAK", proposedAmountId: "A5" },
+      { blockId: "CHIX", kind: "item", lineIndices: [10], name: "Chix Cheesesteak", parentBlockId: null, proposedAmountId: null },
+      { blockId: "SUBTOTAL", kind: "summary", lineIndices: [11], name: "SUB-TOTAL", parentBlockId: null, proposedAmountId: null },
+    ];
+    const { formDetected, hypothesisAdopted, finalBlocks } = runOffsetArbitration(blocks, ledger, ocr.lines, "USD");
+    assertEqual(formDetected, true);
+    assertEqual(hypothesisAdopted, "H1");
+
+    const finalAssignments = assignmentsFromBlocks(finalBlocks);
+    const finalValidations = validateAssignments(finalBlocks, finalAssignments, ledger);
+    const { payload } = buildFinalPayload("Hollywood Cafe", "USD", ocr.lines.map((l) => l.text), finalBlocks, finalValidations, ledger);
+    const reconciliation = reconcile(payload);
+    assertEqual(reconciliation.calculatedSubtotalMinor, 2522, "the five items must sum to exactly the printed 25.22");
+
+    const valueByName = new Map<string, number | null>();
+    for (const item of payload.items) valueByName.set(item.name, item.baseLineTotal ?? item.unitPrice);
+    for (const item of payload.items) {
+      for (const m of item.modifiers ?? []) valueByName.set(m.name, m.price);
+    }
+    assertEqual(valueByName.get("SODA"), 2.49);
+    assertEqual(valueByName.get("CHEESE STEAK"), 10.49);
+    assertEqual(valueByName.get("AMERICAN CHS"), 1.0);
+    assertEqual(valueByName.get("FRD ONION"), 0.75);
+    assertEqual(valueByName.get("Chix Cheesesteak"), 10.49);
+  });
+
+  it("DD — the FIX 24 reproduction, updated to the TRUE constant-offset shape (not the old 'clean swap' FIX 26 disproved): H1 corrects it, and it reconciles on the CORRECT total, never the wrong one", () => {
+    const lines: OcrLine[] = [
+      makeLine(0, [makeWord("v0", "2.49", 300, 0)]),
+      makeLine(1, [makeWord("n1", "SODA", 0, 20), makeWord("v1", "10.49", 300, 20)]),
+      makeLine(2, [makeWord("n2", "CHEESESTEAK", 0, 40)]),
+      makeLine(3, [makeWord("st", "Subtotal", 0, 60), makeWord("stv", "12.98", 300, 60)]),
+    ];
+    const ledger: LedgerEntry[] = [entry("A1", 2.49, 0, 0), entry("A2", 10.49, 1, 20), entry("A3", 12.98, 3, 60)];
+    const blocks: PriceBlockInput[] = [
+      { blockId: "SODA", kind: "item", lineIndices: [0], name: "SODA", parentBlockId: null, proposedAmountId: null },
+      { blockId: "STEAK", kind: "item", lineIndices: [1], name: "CHEESESTEAK", parentBlockId: null, proposedAmountId: null },
+      { blockId: "SUB", kind: "summary", lineIndices: [3], name: "Subtotal", parentBlockId: null, proposedAmountId: null },
+    ];
+    const { hypothesisAdopted, finalBlocks } = runOffsetArbitration(blocks, ledger, lines, "USD");
+    assertEqual(hypothesisAdopted, "H1");
+    const finalAssignments = assignmentsFromBlocks(finalBlocks);
+    const finalValidations = validateAssignments(finalBlocks, finalAssignments, ledger);
+    const { payload } = buildFinalPayload(null, "USD", [], finalBlocks, finalValidations, ledger);
+    const reconciliation = reconcile(payload);
+    assertEqual(
+      reconciliation.reconciles,
+      true,
+      "the WRONG (H0) structure never reaches reconciliation — H1 corrects it first, so this reconciles on the RIGHT total (12.98), not the old FALSE_VALID one"
+    );
+    assertEqual(payload.items.find((i) => i.name === "SODA")?.baseLineTotal, 2.49);
+    assertEqual(payload.items.find((i) => i.name === "CHEESESTEAK")?.baseLineTotal, 10.49);
+  });
+
+  it("CY — a normal, correctly two-line-per-item receipt (name on one line, its own price on the very next, for every item) is never marked — consistency is not a constant offset", () => {
+    // Confirmed by direct construction to be a real false-positive risk
+    // before the raw-line-ownership guard (below, in ownership.ts) was
+    // added: without it, "Beta"/"Gamma" here would each be silently
+    // reassigned the PREVIOUS item's price. GPT reports each item's own
+    // multi-line span (both the name line and its own price line) — that
+    // reported span is exactly what marks the price line as already
+    // explained, not orphaned.
+    const lines: OcrLine[] = [
+      makeLine(0, [makeWord("n1", "Alpha", 0, 0)]),
+      makeLine(1, [makeWord("v1", "5.00", 300, 20)]),
+      makeLine(2, [makeWord("n2", "Beta", 0, 40)]),
+      makeLine(3, [makeWord("v2", "7.00", 300, 60)]),
+      makeLine(4, [makeWord("n3", "Gamma", 0, 80)]),
+      makeLine(5, [makeWord("v3", "9.00", 300, 100)]),
+      makeLine(6, [makeWord("st", "Total", 0, 120), makeWord("stv", "21.00", 300, 120)]),
+    ];
+    const ledger: LedgerEntry[] = [entry("A1", 5.0, 1, 20), entry("A2", 7.0, 3, 60), entry("A3", 9.0, 5, 100), entry("A4", 21.0, 6, 120)];
+    const blocks: PriceBlockInput[] = [
+      { blockId: "alpha", kind: "item", lineIndices: [0, 1], name: "Alpha", parentBlockId: null, proposedAmountId: null },
+      { blockId: "beta", kind: "item", lineIndices: [2, 3], name: "Beta", parentBlockId: null, proposedAmountId: null },
+      { blockId: "gamma", kind: "item", lineIndices: [4, 5], name: "Gamma", parentBlockId: null, proposedAmountId: null },
+      { blockId: "total", kind: "summary", lineIndices: [6], name: "Total", parentBlockId: null, proposedAmountId: null },
+    ];
+    const { hypothesisAdopted, finalBlocks } = runOffsetArbitration(blocks, ledger, lines, "USD");
+    assertEqual(hypothesisAdopted, "H0", "a plain multi-line-per-item receipt must never be reassigned");
+    assertEqual(finalBlocks.find((b) => b.blockId === "beta")?.amountId, "A2", "Beta must keep its OWN price, never Alpha's");
+    assertEqual(finalBlocks.find((b) => b.blockId === "gamma")?.amountId, "A3", "Gamma must keep its OWN price, never Beta's");
+  });
+
+  it("CZ — Augustiner real fixture: the 'HELLES 0,5L' unit-price line does trigger Step 1 (the round's own prediction that it would not is wrong, reported honestly), but the reassignment is inert — H1 offers the SAME value the block already has, and H0 stands", () => {
+    // Real blocks, exactly as GPT reported them for this receipt. Traced:
+    // "3 x 11,50" (line14) then "33,60" (line15, VALUE_ONLY) then
+    // "Currywurst + Pommes 34,502" (line16 — OCR-garbled quantity glued to
+    // the price, no valid decimal token survives, so this line reads as
+    // NAME_ONLY) forms a real Step-1 shape. But Currywurst's own block
+    // already claims line15 as part of its OWN reported span — the guard
+    // that protects CY does NOT reject this one, because the only owner
+    // of that value (Currywurst's own block) IS the block being
+    // "reassigned", so H1 hands it back the exact value it already had.
+    const { ocr, ledger } = loadRealFixture("vision-augustiner-de.json");
+    const blocks: PriceBlockInput[] = [
+      { blockId: "b0", kind: "item", lineIndices: [12, 13], name: "HELLES 0,5L", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b1", kind: "item", lineIndices: [14, 15], name: "Currywurst + Pommes", parentBlockId: null, proposedAmountId: "A10" },
+      { blockId: "b2", kind: "item", lineIndices: [17], name: "Leberkäs", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b3", kind: "item", lineIndices: [18], name: "Weisswürste", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b4", kind: "item", lineIndices: [19], name: "Brez'n", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b5", kind: "item", lineIndices: [20, 21], name: "Aqua Panna 0,75L", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b6", kind: "summary", lineIndices: [22], name: "Total", parentBlockId: null, proposedAmountId: null },
+    ];
+    const itemsRegionEnd = computeItemsRegionEnd(blocks as unknown as StructureBlock[]);
+    const ownership = computeGeometricOwnership(blocks, ledger, ocr.lines, itemsRegionEnd);
+    const h0Currywurst = ownership.find((r) => r.blockId === "b1")!.amountId;
+
+    const { formDetected, hypothesisAdopted, finalBlocks } = runOffsetArbitration(blocks, ledger, ocr.lines, "EUR");
+    assertEqual(formDetected, true, "EMPIRICAL RESULT: Step 1 does detect a shape here, contradicting the round's own prediction — reported, not hidden");
+    // Whatever hypothesisAdopted ends up being (this receipt's own "Total"
+    // — not "Subtotal" — never satisfies the named-subtotal precondition
+    // at all, so it must stay H0), Currywurst's value must be UNCHANGED.
+    assertEqual(hypothesisAdopted, "H0", "no named 'subtotal' block exists on this receipt (only 'Total') — Step 2 never runs");
+    assertEqual(finalBlocks.find((b) => b.blockId === "b1")?.amountId, h0Currywurst, "even if arbitration ran, the reassignment is a same-value no-op");
+  });
+
+  it("DA — Mad God real fixture: repeated-name/repeated-price items (Truffle x3, Kids x3) never trigger Step 1", () => {
+    const { ocr, ledger } = loadRealFixture("vision-madgod-pt.json");
+    // A representative slice around one real Truffle occurrence — every
+    // line in this receipt's item region is MIXED (name and price share a
+    // line), so no VALUE_ONLY line exists anywhere for Step 1 to anchor on.
+    const blocks: PriceBlockInput[] = [
+      { blockId: "b1", kind: "item", lineIndices: [17], name: "Cerveja Heineken", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b2", kind: "item", lineIndices: [20], name: "Scary", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b3", kind: "item", lineIndices: [23], name: "Project", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b4", kind: "item", lineIndices: [26], name: "Kiss of Death", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b5", kind: "item", lineIndices: [29], name: "Shroom of doom", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b6", kind: "item", lineIndices: [39], name: "Truffle", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b7", kind: "summary", lineIndices: [41], name: "Subtotal", parentBlockId: null, proposedAmountId: null },
+    ];
+    const { formDetected } = runOffsetArbitration(blocks, ledger, ocr.lines, "EUR");
+    assertEqual(formDetected, false, "every line in this slice is MIXED — no VALUE_ONLY/NAME_ONLY chain exists to detect");
+  });
+
+  it("DE — Buca di Beppo real fixture (CR's own block array): no viable reassignment despite FIX 25's known unresolved-modifier shape", () => {
+    const { ocr, ledger } = loadRealFixture("vision-bucadibeppo-en.json");
+    const blocks: PriceBlockInput[] = [
+      { blockId: "b1", kind: "unclassified", lineIndices: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], name: null, parentBlockId: null, proposedAmountId: null },
+      { blockId: "b2", kind: "item", lineIndices: [15], name: "Iced Tea", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b3", kind: "item", lineIndices: [16], name: "Sm Garlic Bread", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b4", kind: "item", lineIndices: [17], name: "9oz Buca Chianti", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b5", kind: "item", lineIndices: [18], name: "G1 Buca Chianti", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b6", kind: "item", lineIndices: [19], name: "Sm Chop Antipasto Salad", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b7", kind: "item", lineIndices: [20], name: "Lg Supremo Pizza", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b15", kind: "unclassified", lineIndices: [28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43], name: null, parentBlockId: null, proposedAmountId: null },
+      { blockId: "b16", kind: "summary", lineIndices: [44, 45, 46, 47, 48], name: "Subtotal", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b17", kind: "summary", lineIndices: [45, 46, 47, 48], name: "Tax", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b18", kind: "summary", lineIndices: [48, 49, 50, 51, 52, 53], name: "Total", parentBlockId: null, proposedAmountId: null },
+    ];
+    const { hypothesisAdopted } = runOffsetArbitration(blocks, ledger, ocr.lines, "USD");
+    assertEqual(hypothesisAdopted, "H0");
+  });
+
+  it("DF — the shape is detected but neither hypothesis closes against the printed subtotal: H0 stands, nothing changes", () => {
+    const lines: OcrLine[] = [
+      makeLine(0, [makeWord("v0", "0.00", 300, 0)]),
+      makeLine(1, [makeWord("n1", "Alpha", 0, 20), makeWord("v1", "5.00", 300, 20)]),
+      makeLine(2, [makeWord("n2", "Beta", 0, 40)]),
+      makeLine(3, [makeWord("st", "Subtotal", 0, 60), makeWord("stv", "99.99", 300, 60)]),
+    ];
+    const ledger: LedgerEntry[] = [entry("A1", 0.0, 0, 0), entry("A2", 5.0, 1, 20), entry("A3", 99.99, 3, 60)];
+    const blocks: PriceBlockInput[] = [
+      { blockId: "Alpha", kind: "item", lineIndices: [0], name: "Alpha", parentBlockId: null, proposedAmountId: null },
+      { blockId: "Beta", kind: "item", lineIndices: [2], name: "Beta", parentBlockId: null, proposedAmountId: null },
+      { blockId: "SUB", kind: "summary", lineIndices: [3], name: "Subtotal", parentBlockId: null, proposedAmountId: null },
+    ];
+    const { formDetected, hypothesisAdopted, finalBlocks } = runOffsetArbitration(blocks, ledger, lines, "USD");
+    assertEqual(formDetected, true);
+    assertEqual(hypothesisAdopted, "H0");
+    // H0's OWN baseline (unrelated to this test) already corrects Alpha's
+    // anchor to line1 (its real name text) and grabs that line's own value
+    // (A2, 5.00) via the pre-existing same-line first pass — exactly the
+    // Hollywood Cafe mechanism. What THIS test verifies is that H0 is left
+    // untouched by FIX 27 when neither hypothesis closes, not what H0's
+    // own value happens to be.
+    assertEqual(finalBlocks.find((b) => b.blockId === "Alpha")?.amountId, "A2");
+    assertEqual(finalBlocks.find((b) => b.blockId === "Beta")?.amountId, null);
+  });
+
+  it("DG — the shape is detected and BOTH hypotheses close against the printed subtotal (a zero-valued leading orphan makes H1's sum identical to H0's): ambiguous, nothing is chosen", () => {
+    const lines: OcrLine[] = [
+      makeLine(0, [makeWord("v0", "0.00", 300, 0)]),
+      makeLine(1, [makeWord("n1", "Alpha", 0, 20), makeWord("v1", "5.00", 300, 20)]),
+      makeLine(2, [makeWord("n2", "Beta", 0, 40)]),
+      makeLine(3, [makeWord("st", "Subtotal", 0, 60), makeWord("stv", "5.00", 300, 60)]),
+    ];
+    const ledger: LedgerEntry[] = [entry("A1", 0.0, 0, 0), entry("A2", 5.0, 1, 20), entry("A3", 5.0, 3, 60)];
+    const blocks: PriceBlockInput[] = [
+      { blockId: "Alpha", kind: "item", lineIndices: [0], name: "Alpha", parentBlockId: null, proposedAmountId: null },
+      { blockId: "Beta", kind: "item", lineIndices: [2], name: "Beta", parentBlockId: null, proposedAmountId: null },
+      { blockId: "SUB", kind: "summary", lineIndices: [3], name: "Subtotal", parentBlockId: null, proposedAmountId: null },
+    ];
+    const { formDetected, hypothesisAdopted, finalBlocks } = runOffsetArbitration(blocks, ledger, lines, "USD");
+    assertEqual(formDetected, true);
+    assertEqual(hypothesisAdopted, "AMBIGUOUS");
+    assertEqual(finalBlocks.find((b) => b.blockId === "Alpha")?.amountId, null, "neither side is guessed to be right");
+    assertEqual(finalBlocks.find((b) => b.blockId === "Beta")?.amountId, null);
+  });
+
+  it("DH — no printed subtotal block exists on the receipt: Step 2 never runs, H0 stands even though the shape is detected", () => {
+    const lines: OcrLine[] = [
+      makeLine(0, [makeWord("v0", "0.00", 300, 0)]),
+      makeLine(1, [makeWord("n1", "Alpha", 0, 20), makeWord("v1", "5.00", 300, 20)]),
+      makeLine(2, [makeWord("n2", "Beta", 0, 40)]),
+    ];
+    const ledger: LedgerEntry[] = [entry("A1", 0.0, 0, 0), entry("A2", 5.0, 1, 20)];
+    const blocks: PriceBlockInput[] = [
+      { blockId: "Alpha", kind: "item", lineIndices: [0], name: "Alpha", parentBlockId: null, proposedAmountId: null },
+      { blockId: "Beta", kind: "item", lineIndices: [2], name: "Beta", parentBlockId: null, proposedAmountId: null },
+    ];
+    const { formDetected, hypothesisAdopted } = runOffsetArbitration(blocks, ledger, lines, "USD");
+    assertEqual(formDetected, true);
+    assertEqual(hypothesisAdopted, "H0", "no named subtotal block at all — arbitration must not run");
   });
 });

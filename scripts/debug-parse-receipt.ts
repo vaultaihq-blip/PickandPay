@@ -88,9 +88,9 @@ import {
   STRUCTURE_AND_ASSIGNMENT_SYSTEM_PROMPT,
   TARGETED_VERIFICATION_SYSTEM_PROMPT,
 } from "../supabase/functions/parse-receipt/prompts";
-import { computeGeometricOwnership, type PriceBlockInput } from "../supabase/functions/parse-receipt/ownership";
+import { computeGeometricOwnership, detectConstantOffsetRuns, type PriceBlockInput } from "../supabase/functions/parse-receipt/ownership";
 import { filterToAuthoritativeColumn } from "../supabase/functions/parse-receipt/columns";
-import { reconcile, toMajor } from "../supabase/functions/parse-receipt/reconcile";
+import { reconcile, toMajor, toMinor } from "../supabase/functions/parse-receipt/reconcile";
 import {
   computeItemsRegionEnd,
   findStructuralGaps,
@@ -527,6 +527,62 @@ async function main() {
   }
   console.log(`Geometric ownership: ${ownershipResults.filter((r) => r.confident).length}/${ownershipResults.length} confident, ${ownershipResults.filter((r) => r.anchorCorrected).length} anchor-corrected`);
 
+  // FIX 27 — kept in sync with index.ts: constant column offset, arbitrated
+  // by the printed subtotal. See ownership.ts's own header comment on this.
+  let offsetFormDetected = false;
+  let offsetHypothesisAdopted: "H0" | "H1" | "AMBIGUOUS" = "H0";
+  {
+    const offsetRuns = detectConstantOffsetRuns(ownershipInputs, matchingLedger, ocr.lines, itemsRegionEnd);
+    offsetFormDetected = offsetRuns.length > 0;
+    const viableRuns = offsetRuns.filter((r) => r.h1AmountIds !== null);
+    const namedSubtotalBlock = blocks.find(
+      (b) => b.kind === "summary" && /subtotal/.test((b.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))
+    );
+    const namedSubtotalOwnership = namedSubtotalBlock ? ownershipByBlock.get(namedSubtotalBlock.blockId) : undefined;
+    const printedSubtotalEntry =
+      namedSubtotalOwnership?.confident && namedSubtotalOwnership.amountId
+        ? ledger.find((e) => e.amountId === namedSubtotalOwnership.amountId) ?? null
+        : null;
+    const arbitrationTargetMinor = printedSubtotalEntry ? toMinor(printedSubtotalEntry.value, currency) : null;
+
+    if (viableRuns.length > 0 && arbitrationTargetMinor !== null) {
+      const affectedBlockIds = new Set(viableRuns.flatMap((r) => r.blockIds));
+      const h1AmountIdByBlock = new Map<string, string | null>();
+      for (const r of viableRuns) {
+        for (const [blockId, amountId] of r.h1AmountIds!) h1AmountIdByBlock.set(blockId, amountId);
+      }
+
+      const h0Assignments = assignmentsFromBlocks(blocks);
+      const h0Validations = validateAssignments(blocks, h0Assignments, ledger);
+      const h0Assembled = buildFinalPayload(merchant, currency, lines, blocks, h0Validations, ledger);
+      const h0SumMinor = reconcile(h0Assembled.payload).calculatedSubtotalMinor;
+
+      const h1Blocks = blocks.map((b) =>
+        affectedBlockIds.has(b.blockId) ? { ...b, amountId: h1AmountIdByBlock.get(b.blockId) ?? null } : b
+      );
+      const h1Assignments = assignmentsFromBlocks(h1Blocks);
+      const h1Validations = validateAssignments(h1Blocks, h1Assignments, ledger);
+      const h1Assembled = buildFinalPayload(merchant, currency, lines, h1Blocks, h1Validations, ledger);
+      const h1SumMinor = reconcile(h1Assembled.payload).calculatedSubtotalMinor;
+
+      const h0Closes = h0SumMinor === arbitrationTargetMinor;
+      const h1Closes = h1SumMinor === arbitrationTargetMinor;
+
+      if (h1Closes && !h0Closes) {
+        offsetHypothesisAdopted = "H1";
+        for (const block of blocks) {
+          if (affectedBlockIds.has(block.blockId)) block.amountId = h1AmountIdByBlock.get(block.blockId) ?? null;
+        }
+      } else if (h0Closes && h1Closes) {
+        offsetHypothesisAdopted = "AMBIGUOUS";
+        for (const block of blocks) {
+          if (affectedBlockIds.has(block.blockId)) block.amountId = null;
+        }
+      }
+    }
+  }
+  console.log(`Constant-offset arbitration: formDetected=${offsetFormDetected}, hypothesisAdopted=${offsetHypothesisAdopted}`);
+
   let assignments = assignmentsFromBlocks(blocks);
   let validations: AssignmentValidation[] = validateAssignments(blocks, assignments, ledger);
   validations = validations.map((v) => {
@@ -700,6 +756,8 @@ async function main() {
     priceKindOverrides,
     crossingsDetected,
     summaryBoundaryPenalties,
+    offsetFormDetected,
+    offsetHypothesisAdopted,
 
     // 4. Every semantic block produced by GPT.
     blocks: blocks.map((b) => ({
@@ -779,6 +837,10 @@ async function main() {
       // check. summaryBoundaryPenalties: item/modifier blocks that still
       // claimed a value past itemsRegionEnd (Mad God's shape).
       `crossingsDetected=${crossingsDetected}, summaryBoundaryPenalties=${summaryBoundaryPenalties}, ` +
+      // FIX 27 — offsetFormDetected: was the raw-OCR constant-offset shape
+      // found at all. offsetHypothesisAdopted: which of H0/H1/AMBIGUOUS the
+      // printed subtotal arbitrated to.
+      `offsetFormDetected=${offsetFormDetected}, offsetHypothesisAdopted=${offsetHypothesisAdopted}, ` +
       // FIX 22 Part 1 — retryFired=false means structuralGap never exceeded
       // the threshold in the first place; gapBefore is null in that case.
       `retryFired=${report.structureRetryFired}, gapBefore=${report.structuralGapCountBeforeRetry}, ` +
