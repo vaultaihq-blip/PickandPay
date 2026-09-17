@@ -78,6 +78,7 @@ import {
   type SuspiciousEvidence,
 } from "./validate.ts";
 import { computeGeometricOwnership, detectConstantOffsetRuns, type PriceBlockInput } from "./ownership.ts";
+import { resolveTotalWitness } from "./totalWitness.ts";
 import { filterToAuthoritativeColumn } from "./columns.ts";
 import {
   computeItemsRegionEnd,
@@ -560,6 +561,13 @@ serve(async (req: Request) => {
       if (owned) block.amountId = owned.amountId;
     }
 
+    // ── FIX 31 — independent evidence for the printed grand total (label in
+    // the raw OCR text, then typographic emphasis — see totalWitness.ts's
+    // own header for the full design and the corpus measurement behind it).
+    // Computed once, from the real OCR lines and full ledger, and handed to
+    // every buildFinalPayload call below unchanged.
+    const totalWitness = resolveTotalWitness(ocr.lines, ledger, itemsRegionEnd);
+
     // ── FIX 27 — constant column offset, arbitrated by the printed subtotal.
     // Step 1 (detectConstantOffsetRuns, ownership.ts) finds the shape in the
     // raw OCR alone; it decides nothing on its own. Step 2 here builds
@@ -599,7 +607,7 @@ serve(async (req: Request) => {
 
         const h0Assignments = assignmentsFromBlocks(blocks);
         const h0Validations = validateAssignments(blocks, h0Assignments, ledger);
-        const h0Assembled = buildFinalPayload(merchant, currency, lines, blocks, h0Validations, ledger);
+        const h0Assembled = buildFinalPayload(merchant, currency, lines, blocks, h0Validations, ledger, totalWitness);
         const h0SumMinor = reconcile(h0Assembled.payload).calculatedSubtotalMinor;
 
         const h1Blocks = blocks.map((b) =>
@@ -607,7 +615,7 @@ serve(async (req: Request) => {
         );
         const h1Assignments = assignmentsFromBlocks(h1Blocks);
         const h1Validations = validateAssignments(h1Blocks, h1Assignments, ledger);
-        const h1Assembled = buildFinalPayload(merchant, currency, lines, h1Blocks, h1Validations, ledger);
+        const h1Assembled = buildFinalPayload(merchant, currency, lines, h1Blocks, h1Validations, ledger, totalWitness);
         const h1SumMinor = reconcile(h1Assembled.payload).calculatedSubtotalMinor;
 
         const h0Closes = h0SumMinor === arbitrationTargetMinor;
@@ -674,7 +682,7 @@ serve(async (req: Request) => {
     // arithmetic never upgrades an unverified value, and FAILING arithmetic
     // must not be waved through just because each value looked fine in
     // isolation. ──────────────────────────────────────────────────────────────
-    let assembled = buildFinalPayload(merchant, currency, lines, blocks, validations, ledger);
+    let assembled = buildFinalPayload(merchant, currency, lines, blocks, validations, ledger, totalWitness);
     let reconciliation = reconcile(assembled.payload);
 
     // ── Second-round escalation — reconciliation failure is itself a
@@ -695,12 +703,12 @@ serve(async (req: Request) => {
         verificationResolved += applied.resolvedCount;
         verificationUnresolved += applied.unresolvedCount;
         validations = validateAssignments(blocks, assignments, ledger);
-        assembled = buildFinalPayload(merchant, currency, lines, blocks, validations, ledger);
+        assembled = buildFinalPayload(merchant, currency, lines, blocks, validations, ledger, totalWitness);
         reconciliation = reconcile(assembled.payload);
       }
     }
 
-    const { payload, orphanCount, summaryRoleAssignments, priceKindOverrides } = assembled;
+    const { payload, orphanCount, summaryRoleAssignments, priceKindOverrides, totalWitness: appliedTotalWitness } = assembled;
     payload.date = date;
 
     // ── Second coverage audit (post-ownership) + final validity ─────────────
@@ -820,6 +828,11 @@ serve(async (req: Request) => {
         // diagnostic; the actual reassignment already happened above.
         offsetFormDetected,
         offsetHypothesisAdopted,
+        // FIX 31 — which witness (if any) actually decided printedTotal this
+        // run, and whether typography agreed with it. Null when neither
+        // witness found a candidate (pre-FIX-31 closure-only path applied).
+        totalWitness: appliedTotalWitness?.source ?? null,
+        totalWitnessAgreement: appliedTotalWitness?.agreement ?? null,
         unresolvedLoadBearingCount: validity.unresolvedLoadBearingCount,
         genuineOwnershipMissCount: validity.unresolvedLoadBearingCount,
         duplicateOwnershipCount: validity.duplicateOwnershipCount,

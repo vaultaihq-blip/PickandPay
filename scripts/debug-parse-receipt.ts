@@ -89,6 +89,7 @@ import {
   TARGETED_VERIFICATION_SYSTEM_PROMPT,
 } from "../supabase/functions/parse-receipt/prompts";
 import { computeGeometricOwnership, detectConstantOffsetRuns, type PriceBlockInput } from "../supabase/functions/parse-receipt/ownership";
+import { resolveTotalWitness } from "../supabase/functions/parse-receipt/totalWitness";
 import { filterToAuthoritativeColumn } from "../supabase/functions/parse-receipt/columns";
 import { reconcile, toMajor, toMinor } from "../supabase/functions/parse-receipt/reconcile";
 import {
@@ -527,6 +528,11 @@ async function main() {
   }
   console.log(`Geometric ownership: ${ownershipResults.filter((r) => r.confident).length}/${ownershipResults.length} confident, ${ownershipResults.filter((r) => r.anchorCorrected).length} anchor-corrected`);
 
+  // FIX 31 — kept in sync with index.ts: independent evidence for the
+  // printed grand total. See totalWitness.ts's own header comment.
+  const totalWitness = resolveTotalWitness(ocr.lines, ledger, itemsRegionEnd);
+  console.log(`Total witness: ${totalWitness ? `${totalWitness.source} -> ${totalWitness.value} (agreement=${totalWitness.agreement})` : "none"}`);
+
   // FIX 27 — kept in sync with index.ts: constant column offset, arbitrated
   // by the printed subtotal. See ownership.ts's own header comment on this.
   let offsetFormDetected = false;
@@ -554,7 +560,7 @@ async function main() {
 
       const h0Assignments = assignmentsFromBlocks(blocks);
       const h0Validations = validateAssignments(blocks, h0Assignments, ledger);
-      const h0Assembled = buildFinalPayload(merchant, currency, lines, blocks, h0Validations, ledger);
+      const h0Assembled = buildFinalPayload(merchant, currency, lines, blocks, h0Validations, ledger, totalWitness);
       const h0SumMinor = reconcile(h0Assembled.payload).calculatedSubtotalMinor;
 
       const h1Blocks = blocks.map((b) =>
@@ -562,7 +568,7 @@ async function main() {
       );
       const h1Assignments = assignmentsFromBlocks(h1Blocks);
       const h1Validations = validateAssignments(h1Blocks, h1Assignments, ledger);
-      const h1Assembled = buildFinalPayload(merchant, currency, lines, h1Blocks, h1Validations, ledger);
+      const h1Assembled = buildFinalPayload(merchant, currency, lines, h1Blocks, h1Validations, ledger, totalWitness);
       const h1SumMinor = reconcile(h1Assembled.payload).calculatedSubtotalMinor;
 
       const h0Closes = h0SumMinor === arbitrationTargetMinor;
@@ -607,7 +613,7 @@ async function main() {
     console.log(`Suspicious round 1 skipped (no image available under --fixture): ${suspicious.length} would have been checked`);
   }
 
-  let assembled = buildFinalPayload(merchant, currency, lines, blocks, validations, ledger);
+  let assembled = buildFinalPayload(merchant, currency, lines, blocks, validations, ledger, totalWitness);
   let reconciliation = reconcile(assembled.payload);
   console.log(`Reconciliation (round 1): reconciles=${reconciliation.reconciles}, calculatedSubtotal=${toMajor(reconciliation.calculatedSubtotalMinor, currency)}, printedSubtotal=${reconciliation.printedSubtotalMinor === null ? null : toMajor(reconciliation.printedSubtotalMinor, currency)}`);
 
@@ -622,13 +628,13 @@ async function main() {
       verificationRound2 = { readings, suspects: reconSuspects };
       applyVerificationResults(ledger, assignments, reconSuspects, readings);
       validations = validateAssignments(blocks, assignments, ledger);
-      assembled = buildFinalPayload(merchant, currency, lines, blocks, validations, ledger);
+      assembled = buildFinalPayload(merchant, currency, lines, blocks, validations, ledger, totalWitness);
       reconciliation = reconcile(assembled.payload);
       console.log(`Reconciliation (round 2): reconciles=${reconciliation.reconciles}, calculatedSubtotal=${toMajor(reconciliation.calculatedSubtotalMinor, currency)}`);
     }
   }
 
-  const { payload, orphanCount, summaryRoleAssignments, priceKindOverrides } = assembled;
+  const { payload, orphanCount, summaryRoleAssignments, priceKindOverrides, totalWitness: appliedTotalWitness } = assembled;
   payload.date = date;
 
   // Kept in sync with index.ts (FIX 7 + FIX 15): post-ownership coverage,
@@ -758,6 +764,8 @@ async function main() {
     summaryBoundaryPenalties,
     offsetFormDetected,
     offsetHypothesisAdopted,
+    totalWitness: appliedTotalWitness?.source ?? null,
+    totalWitnessAgreement: appliedTotalWitness?.agreement ?? null,
 
     // 4. Every semantic block produced by GPT.
     blocks: blocks.map((b) => ({
@@ -841,6 +849,9 @@ async function main() {
       // found at all. offsetHypothesisAdopted: which of H0/H1/AMBIGUOUS the
       // printed subtotal arbitrated to.
       `offsetFormDetected=${offsetFormDetected}, offsetHypothesisAdopted=${offsetHypothesisAdopted}, ` +
+      // FIX 31 — which witness decided printedTotal (label/typography/none)
+      // and whether the other one agreed.
+      `totalWitness=${report.totalWitness}, totalWitnessAgreement=${report.totalWitnessAgreement}, ` +
       // FIX 22 Part 1 — retryFired=false means structuralGap never exceeded
       // the threshold in the first place; gapBefore is null in that case.
       `retryFired=${report.structureRetryFired}, gapBefore=${report.structuralGapCountBeforeRetry}, ` +

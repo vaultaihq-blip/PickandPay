@@ -25,6 +25,7 @@ import type { RawCharge, RawItem, RawPayload, RawUnresolvedLine } from "./types.
 import { reconcile as computeCalculatedSubtotal, toMinor } from "./reconcile.ts";
 import type { SummaryRole, SummaryRoleAssignment } from "./coverage.ts";
 import { claimedValueHasUnitPriceAnnotation } from "./coverage.ts";
+import type { TotalWitnessResult } from "./totalWitness.ts";
 
 // ─── Ownership validation ───────────────────────────────────────────────────
 
@@ -298,6 +299,10 @@ export interface AssembleResult {
    *  so a block that disagrees on EVERY run is visible rather than
    *  averaged away. */
   priceKindOverrides: Array<{ blockId: string; name: string | null }>;
+  /** FIX 31 — which witness (if any) identified the grand total independently
+   *  of item-sum closure, and whether typography agreed. Null when neither
+   *  witness found anything (pre-FIX-31 closure-only behavior applied). */
+  totalWitness: TotalWitnessResult | null;
 }
 
 export function buildFinalPayload(
@@ -306,7 +311,14 @@ export function buildFinalPayload(
   lines: string[],
   blocks: StructureBlock[],
   validations: AssignmentValidation[],
-  ledger: LedgerEntry[]
+  ledger: LedgerEntry[],
+  /** FIX 31 — optional, backward-compatible: every pre-existing call site
+   *  and test omits this and keeps exact prior behavior (closure decides
+   *  the total). Computed by the caller (index.ts) from the real OCR lines,
+   *  since this function only ever received flattened `lines: string[]` —
+   *  see totalWitness.ts's own header for why the witnesses need full
+   *  OcrLine word/bounding-box data that a plain string array can't carry. */
+  totalWitness: TotalWitnessResult | null = null
 ): AssembleResult {
   const validationByBlock = new Map(validations.map((v) => [v.blockId, v]));
   const claimedAmountIds = new Set(validations.filter((v) => v.amountId !== null).map((v) => v.amountId));
@@ -443,7 +455,19 @@ export function buildFinalPayload(
     chargesMinor += c.kind === "discount" ? -m : m;
   }
 
-  const totalResolution = resolveClosure(totalCandidates, itemSumMinor + chargesMinor, currency, "total");
+  // FIX 31 — the witness, when it names a candidate that's actually present
+  // in this summary region, decides the total OUTRIGHT — closure is never
+  // consulted to pick between witness and arithmetic; it only still runs
+  // (unchanged, below) for the SUBTOTAL role, and as itemSum+charges
+  // continues to feed `reconcile()`'s own independent check downstream.
+  // When the witness's amountId isn't among this receipt's own candidates
+  // at all (should not normally happen — the witness ledger IS this
+  // receipt's ledger — kept as a defensive fallback, never trusted
+  // blindly), behavior is exactly what it was before FIX 31.
+  const witnessCandidate = totalWitness ? totalCandidates.find((c) => c.entry.amountId === totalWitness.amountId) : undefined;
+  const totalResolution: ClosureResolution | { ambiguous: true; distinctValuesMinor: number[] } | null = witnessCandidate
+    ? { valueMinor: toMinor(witnessCandidate.entry.value, currency) ?? 0, winnerId: witnessCandidate.id }
+    : resolveClosure(totalCandidates, itemSumMinor + chargesMinor, currency, "total");
   const subtotalResolution = resolveClosure(totalCandidates, itemSumMinor, currency, "subtotal");
 
   const winningIds = new Set<string>();
@@ -618,5 +642,5 @@ export function buildFinalPayload(
     printedTotal: printedFields.printedTotal ?? null,
   };
 
-  return { payload, orphanCount, summaryRoleAssignments, priceKindOverrides };
+  return { payload, orphanCount, summaryRoleAssignments, priceKindOverrides, totalWitness: witnessCandidate ? totalWitness : null };
 }
