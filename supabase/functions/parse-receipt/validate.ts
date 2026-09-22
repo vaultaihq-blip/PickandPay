@@ -26,6 +26,8 @@ import { reconcile as computeCalculatedSubtotal, toMinor } from "./reconcile.ts"
 import type { SummaryRole, SummaryRoleAssignment } from "./coverage.ts";
 import { claimedValueHasUnitPriceAnnotation } from "./coverage.ts";
 import type { TotalWitnessResult } from "./totalWitness.ts";
+import type { ColumnRoles } from "./columns.ts";
+import { nearestInBand } from "./columns.ts";
 
 // ─── Ownership validation ───────────────────────────────────────────────────
 
@@ -75,7 +77,7 @@ export interface SuspiciousEvidence {
   amountId?: string;
   lineIndex?: number;
   blockId?: string;
-  reason: "ownership_invalid" | "low_confidence" | "reconciliation_failed" | "ownership_ambiguous";
+  reason: "ownership_invalid" | "low_confidence" | "reconciliation_failed" | "ownership_ambiguous" | "arithmetic_contradiction";
 }
 
 /**
@@ -174,6 +176,52 @@ export function findReconciliationSuspects(
     const block = blockById.get(v.blockId);
     if (!isLoadBearing(block, v.amountId)) continue;
     suspects.push({ amountId: v.amountId, blockId: v.blockId, lineIndex: v.entry?.lineIndex, reason: "reconciliation_failed" });
+  }
+
+  return suspects;
+}
+
+/**
+ * FIX 35 Part 4 — a claimed line-total value whose own row ALSO prints a
+ * quantity and a unit price (columns.ts's detectColumnRoles + nearestInBand
+ * — the identical row-pairing rule Part 2's row-arithmetic proof already
+ * uses) is checked against them: quantity * unitPrice must equal the
+ * claimed total exactly. When it doesn't, this is a contradiction between
+ * two PRINTED sources on the same receipt — never silently corrected
+ * in-place (a misread "34,502" for a true "34,50" is exactly this shape:
+ * OCR confidence alone (84%) didn't flag it, but the arithmetic does) —
+ * surfaced as suspicious evidence so the existing targeted-verification
+ * pass (runTargetedVerification) re-reads that zone of the image. If
+ * re-reading confirms the corrected value, it's used; if it can't
+ * (--fixture runs, or the re-read is itself inconclusive), the line stays
+ * unresolved rather than trusting either printed figure blindly.
+ *
+ * Never fires without BOTH bands present, and never for a claim whose
+ * quantity/unit price weren't found within nearestInBand's own row window —
+ * a receipt with only one combined value column (most of this corpus) has
+ * nothing for this check to compare against, and correctly stays silent.
+ */
+export function findArithmeticContradictions(
+  validations: AssignmentValidation[],
+  columnRoles: ColumnRoles,
+  ledger: LedgerEntry[]
+): SuspiciousEvidence[] {
+  if (!columnRoles.quantity || !columnRoles.unitPrice) return [];
+  const byAmountId = new Map(ledger.map((e) => [e.amountId, e]));
+  const suspects: SuspiciousEvidence[] = [];
+
+  for (const v of validations) {
+    if (v.amountId === null || !v.existsInLedger || !v.ownershipValid || !v.entry) continue;
+    const claimed = v.entry;
+    const qty = nearestInBand(claimed, columnRoles.quantity, byAmountId);
+    const unit = nearestInBand(claimed, columnRoles.unitPrice, byAmountId);
+    if (!qty || !unit) continue;
+
+    const expectedMinor = Math.round(Math.round(qty.value * 100) * unit.value);
+    const claimedMinor = Math.round(claimed.value * 100);
+    if (expectedMinor !== claimedMinor) {
+      suspects.push({ amountId: v.amountId, blockId: v.blockId, lineIndex: claimed.lineIndex, reason: "arithmetic_contradiction" });
+    }
   }
 
   return suspects;

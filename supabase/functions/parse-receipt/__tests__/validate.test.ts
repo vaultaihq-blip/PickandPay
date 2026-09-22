@@ -13,18 +13,23 @@ import {
   determineSummaryValidity,
   applyProvenNonAdditive,
   applyProvenAdditiveCharge,
+  applyItemsRegionSaturation,
   type SummaryRoleAssignment,
   type ColumnContext,
+  type CoverageEntry,
 } from "../coverage";
 import {
   validateAssignments,
   findSuspiciousEvidence,
   findReconciliationSuspects,
+  findArithmeticContradictions,
   buildFinalPayload,
   OCR_CONFIDENCE_THRESHOLD,
   type AssignmentValidation,
 } from "../validate";
 import type { TotalWitnessResult } from "../totalWitness";
+import { detectColumnRoles, type ColumnRoles } from "../columns";
+import type { OcrLine, OcrWord } from "../ocr";
 
 function entry(
   overrides: Partial<LedgerEntry> & { amountId: string; value: number; lineIndex: number }
@@ -2466,5 +2471,276 @@ describe("validate/coverage: FIX 34 — proven additive charge, the mirror of FI
       "wrong label — this is really a VAT disclosure row, not the missing charge — but the shown total and the split still come out numerically correct: valid=true with the wrong structure, exactly the residual risk named in the FIX 34 report"
     );
     assertEqual(summaryValidity.valid, true, "numerically valid — the residual risk is about WHICH line gets the charge label, never about the total being wrong");
+  });
+});
+
+// ─── FIX 35 — column roles in the items region ─────────────────────────────
+
+/** Builds a synthetic OcrLine[] from a ledger — one word per entry, grouped
+ *  by lineIndex — the same shape detectColumnRoles needs for its own
+ *  angle/percentage-adjacent lookups. Angle is always 0 in these fixtures
+ *  (atX's own convention), so this only needs to carry bounding boxes. */
+function linesFromLedger(ledger: LedgerEntry[]): OcrLine[] {
+  const byLine = new Map<number, LedgerEntry[]>();
+  for (const e of ledger) {
+    if (!byLine.has(e.lineIndex)) byLine.set(e.lineIndex, []);
+    byLine.get(e.lineIndex)!.push(e);
+  }
+  const lines: OcrLine[] = [];
+  for (const [lineIndex, entries] of byLine) {
+    lines.push({
+      lineIndex,
+      text: entries.map((e) => e.rawText).join(" "),
+      words: entries.map((e) => ({
+        word: { wordId: e.wordId, text: e.rawText, boundingBox: e.boundingBox, confidence: e.ocrConfidence, lineIndex: e.lineIndex } as OcrWord,
+        start: 0,
+        end: e.rawText.length,
+      })),
+    });
+  }
+  return lines;
+}
+
+function sulbarreiroShaped() {
+  // Real values (FIX 35 report): Mn DoubleChees 3.48/3.48, Cola Zero Mn
+  // 1.27/1.27 (both close by exact adjacent-line echo, FIX 19/21 — already
+  // proven before this fix exists), Double Chees 5.20/0.00 (the menu-
+  // included item — unit and total genuinely differ, echo never fires),
+  // HM Hamburguer 1.93 and Um Bongo 1.29 (Happy Meal "1P" components — a
+  // unit price printed, no total at all — no block ever claims one).
+  const ledger: LedgerEntry[] = [
+    atX({ amountId: "U1", value: 3.48, lineIndex: 20 }, 200),
+    atX({ amountId: "T1", value: 3.48, lineIndex: 21 }, 900),
+    atX({ amountId: "U2", value: 1.27, lineIndex: 22 }, 200),
+    atX({ amountId: "T2", value: 1.27, lineIndex: 23 }, 900),
+    atX({ amountId: "U3", value: 5.2, lineIndex: 24 }, 200),
+    atX({ amountId: "T3", value: 0, lineIndex: 25 }, 900),
+    atX({ amountId: "U4", value: 1.93, lineIndex: 29 }, 200),
+    atX({ amountId: "U5", value: 1.29, lineIndex: 30 }, 200),
+  ];
+  const blocks: StructureBlock[] = [
+    { blockId: "B1", kind: "item", lineIndices: [20, 21], parentBlockId: null, name: "Mn DoubleChees", amountId: "T1", quantity: 1, priceKind: "lineTotal" },
+    { blockId: "B2", kind: "item", lineIndices: [22, 23], parentBlockId: null, name: "Cola Zero Mn", amountId: "T2", quantity: 1, priceKind: "lineTotal" },
+    { blockId: "B3", kind: "item", lineIndices: [24, 25], parentBlockId: null, name: "Double Chees", amountId: "T3", quantity: 1, priceKind: "lineTotal" },
+    { blockId: "B4", kind: "item", lineIndices: [29], parentBlockId: null, name: "HM Hamburguer", amountId: null, quantity: 1, priceKind: null },
+    { blockId: "B5", kind: "item", lineIndices: [30], parentBlockId: null, name: "Um Bongo 8 F", amountId: null, quantity: 1, priceKind: null },
+  ];
+  const assignments: Assignment[] = blocks.filter((b) => b.amountId !== null).map((b) => ({ blockId: b.blockId, amountId: b.amountId, quantity: b.quantity, priceKind: b.priceKind }));
+  const columnRoles: ColumnRoles = {
+    quantity: null,
+    unitPrice: { minX: 150, maxX: 250, memberIds: ["U1", "U2", "U3", "U4", "U5"] },
+    total: { minX: 850, maxX: 950, memberIds: ["T1", "T2", "T3"] },
+  };
+  return { ledger, blocks, assignments, columnRoles };
+}
+
+describe("coverage: FIX 35 Part 3 — items-region saturation, the mirror of FIX 32", () => {
+  it("ES — Sulbarreiro-shaped: the TOTAL column sums to 8.25 (here 4.75, a smaller reproduction of the same shape), the leftover unit prices become non-additive, and items-region validity holds", () => {
+    const { ledger, blocks, assignments, columnRoles } = sulbarreiroShaped();
+    const itemsRegionEnd = computeItemsRegionEnd(blocks);
+    let coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, null, null, columnRoles);
+    const ledgerByAmountId = new Map(ledger.map((e) => [e.amountId, e]));
+
+    const { coverage: saturated, result } = applyItemsRegionSaturation(
+      coverage,
+      columnRoles,
+      ledgerByAmountId,
+      "label",
+      475, // 3.48 + 1.27 + 0.00, in minor units
+      (value: number) => Math.round(value * 100)
+    );
+    coverage = saturated;
+
+    assertEqual(result.applied, true);
+    assertEqual(result.count, 3, "U3 (5.20), U4 (1.93), U5 (1.29) — the three unit prices no echo or Regra A/B already resolved");
+    assertEqual(coverage.find((c) => c.amountId === "U3")?.state, "ITEMS_PROVEN_NON_ADDITIVE");
+    assertEqual(coverage.find((c) => c.amountId === "U4")?.state, "ITEMS_PROVEN_NON_ADDITIVE");
+    assertEqual(coverage.find((c) => c.amountId === "U5")?.state, "ITEMS_PROVEN_NON_ADDITIVE");
+
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const validity = determineValidity(findStructuralGaps(blocks, ledger, itemsRegionEnd), coverage, findDuplicateOwnership(assignments), validations, true);
+    assertEqual(validity.unresolvedLoadBearingCount, 0);
+    assertEqual(validity.valid, true);
+  });
+
+  it("ET — Sulbarreiro-shaped: Double Chees' claimed total stays 0.00, never overwritten by its own 5.20 unit price — Part 3 reclassifies coverage state, it never touches a value", () => {
+    const { ledger, blocks, assignments, columnRoles } = sulbarreiroShaped();
+    const itemsRegionEnd = computeItemsRegionEnd(blocks);
+    let coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, null, null, columnRoles);
+    const ledgerByAmountId = new Map(ledger.map((e) => [e.amountId, e]));
+    const { coverage: saturated } = applyItemsRegionSaturation(coverage, columnRoles, ledgerByAmountId, "label", 475, (v) => Math.round(v * 100));
+    coverage = saturated;
+
+    const t3 = coverage.find((c) => c.amountId === "T3");
+    assertEqual(t3?.state, "CLAIMED_BY_ITEM", "the claimed total entry itself is untouched by Part 3");
+    assertEqual(ledgerByAmountId.get("T3")?.value, 0, "Double Chees' own claimed value stays 0.00, never 5.20");
+    assertEqual(coverage.find((c) => c.amountId === "U3")?.state, "ITEMS_PROVEN_NON_ADDITIVE", "the 5.20 unit price is excused, not adopted as the item's value");
+  });
+
+  it("EU — Sulbarreiro-shaped: the Happy Meal '1P' components (unit price printed, no total at all) contribute zero without blocking — missing total counts as zero once the total column already explains the receipt", () => {
+    const { ledger, blocks, assignments, columnRoles } = sulbarreiroShaped();
+    const itemsRegionEnd = computeItemsRegionEnd(blocks);
+    let coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, null, null, columnRoles);
+    const ledgerByAmountId = new Map(ledger.map((e) => [e.amountId, e]));
+    const { coverage: saturated } = applyItemsRegionSaturation(coverage, columnRoles, ledgerByAmountId, "label", 475, (v) => Math.round(v * 100));
+    coverage = saturated;
+
+    assertEqual(coverage.find((c) => c.amountId === "U4")?.state, "ITEMS_PROVEN_NON_ADDITIVE", "HM Hamburguer's 1.93, no total ever claimed for it");
+    assertEqual(coverage.find((c) => c.amountId === "U5")?.state, "ITEMS_PROVEN_NON_ADDITIVE", "Um Bongo's 1.29, same shape");
+  });
+
+  it("EZ — the TOTAL column's sum does not match the independently-witnessed total → Part 3 never fires (a missing item price could otherwise masquerade as covered — FIX 34's own guard 2 reasoning, one region over)", () => {
+    const { ledger, blocks, assignments, columnRoles } = sulbarreiroShaped();
+    const itemsRegionEnd = computeItemsRegionEnd(blocks);
+    const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, null, null, columnRoles);
+    const ledgerByAmountId = new Map(ledger.map((e) => [e.amountId, e]));
+
+    const { coverage: unchanged, result } = applyItemsRegionSaturation(
+      coverage,
+      columnRoles,
+      ledgerByAmountId,
+      "label",
+      999, // does not match 475 — a real, wrongly-priced or missing item
+      (v) => Math.round(v * 100)
+    );
+    assertEqual(result.applied, false);
+    assertEqual(result.blockedBy, "sum_mismatch");
+    assertEqual(unchanged.find((c) => c.amountId === "U3")?.state, "UNRESOLVED", "unchanged — still blocking, correctly");
+  });
+
+  it("FA — a receipt with only ONE value column (no separate unit-price band) → Part 3 does not apply, nothing changes", () => {
+    const columnRoles: ColumnRoles = { quantity: null, unitPrice: null, total: { minX: 850, maxX: 950, memberIds: ["T1"] } };
+    const ledger: LedgerEntry[] = [atX({ amountId: "T1", value: 10, lineIndex: 1 }, 900), atX({ amountId: "X", value: 3, lineIndex: 5 }, 200)];
+    const coverage: CoverageEntry[] = [
+      { amountId: "T1", lineIndex: 1, state: "CLAIMED_BY_ITEM", claimedByBlockId: "B1" },
+      { amountId: "X", lineIndex: 5, state: "UNRESOLVED", claimedByBlockId: null },
+    ];
+    const ledgerByAmountId = new Map(ledger.map((e) => [e.amountId, e]));
+    const { coverage: unchanged, result } = applyItemsRegionSaturation(coverage, columnRoles, ledgerByAmountId, "label", 1000, (v) => Math.round(v * 100));
+    assertEqual(result.applied, false);
+    assertEqual(result.blockedBy, "no_separate_total_band");
+    assertEqual(unchanged.find((c) => c.amountId === "X")?.state, "UNRESOLVED");
+  });
+});
+
+describe("coverage: FIX 35 Part 1/2 — column roles and row arithmetic (Mad God-shaped)", () => {
+  // Exactly the round's own quoted lines:
+  //   1.00  Cerveja Heineken   2,75 e  23   2,75 e
+  //   3.00  Coca Cola Pressa   2,80 e  23   8,40 e
+  //   7.00  Cafe Delta         1,20 e  13   8,40 e
+  // Column X spacing chosen realistically (>=6x the within-column jitter,
+  // matching geometry.ts's own clustering threshold) — verified against
+  // this exact shape before writing these assertions.
+  function madGodShaped() {
+    const ledger: LedgerEntry[] = [
+      atX({ amountId: "Q1", value: 1, lineIndex: 0, rawText: "1.00" }, 100),
+      atX({ amountId: "U1", value: 2.75, lineIndex: 0, rawText: "2,75" }, 500),
+      atX({ amountId: "R1", value: 23, lineIndex: 0, rawText: "23" }, 700),
+      atX({ amountId: "T1", value: 2.75, lineIndex: 0, rawText: "2,75" }, 1000),
+
+      atX({ amountId: "Q2", value: 3, lineIndex: 1, rawText: "3.00" }, 102),
+      atX({ amountId: "U2", value: 2.8, lineIndex: 1, rawText: "2,80" }, 505),
+      atX({ amountId: "R2", value: 23, lineIndex: 1, rawText: "23" }, 703),
+      atX({ amountId: "T2", value: 8.4, lineIndex: 1, rawText: "8,40" }, 1005),
+
+      atX({ amountId: "Q3", value: 7, lineIndex: 2, rawText: "7.00" }, 98),
+      atX({ amountId: "U3", value: 1.2, lineIndex: 2, rawText: "1,20" }, 495),
+      atX({ amountId: "R3", value: 13, lineIndex: 2, rawText: "13" }, 697),
+      atX({ amountId: "T3", value: 8.4, lineIndex: 2, rawText: "8,40" }, 995),
+
+      // A fourth, unrelated occurrence: Cerveja Heineken again, at a
+      // DIFFERENT price (5.00) — EX's own case, never merged with row 1.
+      atX({ amountId: "Q4", value: 1, lineIndex: 3, rawText: "1.00" }, 101),
+      atX({ amountId: "U4", value: 5.0, lineIndex: 3, rawText: "5,00" }, 498),
+      atX({ amountId: "R4", value: 23, lineIndex: 3, rawText: "23" }, 701),
+      atX({ amountId: "T4", value: 5.0, lineIndex: 3, rawText: "5,00" }, 998),
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "B1", kind: "item", lineIndices: [0], parentBlockId: null, name: "Cerveja Heineken", amountId: null, quantity: null, priceKind: null },
+      { blockId: "B2", kind: "item", lineIndices: [1], parentBlockId: null, name: "Coca Cola Pressa", amountId: null, quantity: null, priceKind: null },
+      { blockId: "B3", kind: "item", lineIndices: [2], parentBlockId: null, name: "Cafe Delta", amountId: null, quantity: null, priceKind: null },
+      { blockId: "B4", kind: "item", lineIndices: [3], parentBlockId: null, name: "Cerveja Heineken", amountId: null, quantity: null, priceKind: null },
+    ];
+    const assignments: Assignment[] = [];
+    const lines = linesFromLedger(ledger);
+    const itemsRegionEnd = 4;
+    const columnRoles = detectColumnRoles(ledger, lines, itemsRegionEnd, new Set());
+    return { ledger, blocks, assignments, columnRoles, itemsRegionEnd };
+  }
+
+  it("EV — the '1.00' quantity is recognized as a quantity, never treated as a price", () => {
+    const { columnRoles } = madGodShaped();
+    assert(columnRoles.quantity !== null, "a quantity band must be detected at all");
+    assert(columnRoles.quantity!.memberIds.includes("Q1"), "Q1 (the first 1.00) belongs to the quantity band");
+    assert(!columnRoles.unitPrice!.memberIds.includes("Q1"), "never counted as a unit price");
+    assert(!columnRoles.total!.memberIds.includes("Q1"), "never counted as a total");
+  });
+
+  it("EW — 3.00 x 2.80 = 8.40 closes exactly; the row is proven (both the quantity and the unit price)", () => {
+    const { ledger, blocks, assignments, columnRoles, itemsRegionEnd } = madGodShaped();
+    const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, null, null, columnRoles);
+    assertEqual(coverage.find((c) => c.amountId === "Q2")?.state, "ROW_QUANTITY_PROVEN");
+    assertEqual(coverage.find((c) => c.amountId === "U2")?.state, "ROW_UNIT_PRICE_PROVEN");
+  });
+
+  it("EX — Cerveja Heineken at 2.75 (row 1) and at 5.00 (row 4) are two distinct, independently-proven occurrences, never merged into one", () => {
+    const { ledger, blocks, assignments, columnRoles, itemsRegionEnd } = madGodShaped();
+    const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, null, null, columnRoles);
+    assertEqual(coverage.find((c) => c.amountId === "U1")?.state, "ROW_UNIT_PRICE_PROVEN", "row 1's own 2.75, proven against row 1's own total");
+    assertEqual(coverage.find((c) => c.amountId === "U4")?.state, "ROW_UNIT_PRICE_PROVEN", "row 4's own 5.00, proven independently against row 4's own total — never averaged or reconciled against row 1's price");
+    assertEqual(ledger.find((e) => e.amountId === "U1")?.value, 2.75, "row 1's value is untouched by row 4 existing");
+    assertEqual(ledger.find((e) => e.amountId === "U4")?.value, 5.0, "row 4's value is untouched by row 1 existing");
+  });
+});
+
+describe("validate: FIX 35 Part 4 — arithmetic contradiction triggers verification", () => {
+  it("EY — Augustiner-shaped: printed '3 x 11,50' but the claimed total reads '34,502' (3 x 11.50 = 34.50) → flagged for targeted verification, never silently corrected", () => {
+    // parseAmbiguousNumber's own real behavior (verified directly, not
+    // assumed): a comma/dot followed by a 3-digit tail is read as a
+    // THOUSANDS separator, never a decimal point (the decimal rule only
+    // accepts a 1-2 digit tail) — "34,502" parses to 34502, not 34.502.
+    // Confirms this is a real, large misread the arithmetic must catch,
+    // not a sub-cent rounding difference confidence would plausibly miss.
+    const columnRoles: ColumnRoles = {
+      quantity: { minX: 50, maxX: 150, memberIds: ["Q"] },
+      unitPrice: { minX: 450, maxX: 550, memberIds: ["U"] },
+      total: { minX: 950, maxX: 1050, memberIds: ["T"] },
+    };
+    const ledger: LedgerEntry[] = [
+      atX({ amountId: "Q", value: 3, lineIndex: 0 }, 100),
+      atX({ amountId: "U", value: 11.5, lineIndex: 0 }, 500),
+      atX({ amountId: "T", value: 34502, lineIndex: 1, rawText: "34,502" }, 1000),
+    ];
+    const tEntry = ledger.find((e) => e.amountId === "T")!;
+    const validations: AssignmentValidation[] = [{ blockId: "B", amountId: "T", ownershipValid: true, existsInLedger: true, entry: tEntry }];
+    const suspects = findArithmeticContradictions(validations, columnRoles, ledger);
+    assertEqual(suspects.length, 1);
+    assertEqual(suspects[0].amountId, "T");
+    assertEqual(suspects[0].reason, "arithmetic_contradiction");
+  });
+
+  it("a claim that DOES close (3 x 11,50 = 34,50 exactly) is never flagged", () => {
+    const columnRoles: ColumnRoles = {
+      quantity: { minX: 50, maxX: 150, memberIds: ["Q"] },
+      unitPrice: { minX: 450, maxX: 550, memberIds: ["U"] },
+      total: { minX: 950, maxX: 1050, memberIds: ["T"] },
+    };
+    const ledger: LedgerEntry[] = [
+      atX({ amountId: "Q", value: 3, lineIndex: 0 }, 100),
+      atX({ amountId: "U", value: 11.5, lineIndex: 0 }, 500),
+      atX({ amountId: "T", value: 34.5, lineIndex: 1 }, 1000),
+    ];
+    const tEntry = ledger.find((e) => e.amountId === "T")!;
+    const validations: AssignmentValidation[] = [{ blockId: "B", amountId: "T", ownershipValid: true, existsInLedger: true, entry: tEntry }];
+    const suspects = findArithmeticContradictions(validations, columnRoles, ledger);
+    assertEqual(suspects.length, 0);
+  });
+
+  it("no quantity/unit-price bands at all (single value column) → never fires, nothing to compare", () => {
+    const columnRoles: ColumnRoles = { quantity: null, unitPrice: null, total: { minX: 950, maxX: 1050, memberIds: ["T"] } };
+    const ledger: LedgerEntry[] = [atX({ amountId: "T", value: 34.502, lineIndex: 1 }, 1000)];
+    const validations: AssignmentValidation[] = [{ blockId: "B", amountId: "T", ownershipValid: true, existsInLedger: true, entry: ledger[0] }];
+    const suspects = findArithmeticContradictions(validations, columnRoles, ledger);
+    assertEqual(suspects.length, 0);
   });
 });

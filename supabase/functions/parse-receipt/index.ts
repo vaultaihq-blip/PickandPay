@@ -73,13 +73,14 @@ import {
   findSuspiciousEvidence,
   findOwnershipAmbiguous,
   findReconciliationSuspects,
+  findArithmeticContradictions,
   buildFinalPayload,
   OCR_CONFIDENCE_THRESHOLD,
   type SuspiciousEvidence,
 } from "./validate.ts";
 import { computeGeometricOwnership, detectConstantOffsetRuns, type PriceBlockInput } from "./ownership.ts";
 import { resolveTotalWitness } from "./totalWitness.ts";
-import { filterToAuthoritativeColumn, detectAuthoritativeColumn, computeReadingAngle } from "./columns.ts";
+import { filterToAuthoritativeColumn, detectAuthoritativeColumn, computeReadingAngle, detectColumnRoles } from "./columns.ts";
 import {
   computeItemsRegionEnd,
   findStructuralGaps,
@@ -91,6 +92,7 @@ import {
   determineSummaryValidity,
   applyProvenNonAdditive,
   applyProvenAdditiveCharge,
+  applyItemsRegionSaturation,
 } from "./coverage.ts";
 import { reconcile, toMajor, toMinor } from "./reconcile.ts";
 
@@ -659,8 +661,21 @@ serve(async (req: Request) => {
       }
       return v;
     });
+    // FIX 35 — column roles (quantity/unit-price/total bands) in the items
+    // region, reused below both for Part 4's arithmetic-contradiction
+    // check (right here, round-1 suspicious evidence) and for Part 2/3's
+    // row-proof and saturation (classifyCoverage/applyItemsRegionSaturation,
+    // further down). Computed once, from the geometry alone — never
+    // recomputed after verification, since a value's own content changing
+    // never moves its bounding box.
+    const columnRoles = detectColumnRoles(ledger, ocr.lines, itemsRegionEnd, new Set());
+
     const suspiciousByBlock = new Map<string, SuspiciousEvidence>();
-    for (const s of [...findSuspiciousEvidence(blocks, validations), ...findOwnershipAmbiguous(ownershipResults)]) {
+    for (const s of [
+      ...findSuspiciousEvidence(blocks, validations),
+      ...findOwnershipAmbiguous(ownershipResults),
+      ...findArithmeticContradictions(validations, columnRoles, ledger),
+    ]) {
       if (s.blockId) suspiciousByBlock.set(s.blockId, s);
     }
     const suspicious = [...suspiciousByBlock.values()];
@@ -728,7 +743,7 @@ serve(async (req: Request) => {
     // against the real column band instead of never seeing it at all —
     // the gap FIX 19's own header names as still open.
     const columnContext = { band: detectAuthoritativeColumn(ledger, ocr.lines, new Set()), angle: computeReadingAngle(ocr.lines) };
-    const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, columnContext, validations);
+    let coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, columnContext, validations, columnRoles);
     const duplicateOwnership = findDuplicateOwnership(assignments);
 
     // FIX 15 — summary coverage, the same invariant extended to the summary
@@ -741,6 +756,37 @@ serve(async (req: Request) => {
     // begins without recomputing the formula twice.
     let summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, summaryRoleAssignments);
     const summaryDuplicateRoles = findSummaryDuplicateRoles(summaryRoleAssignments);
+    const ledgerByAmountIdForCharges = new Map(ledger.map((e) => [e.amountId, e]));
+
+    // ── FIX 35 Part 3 — items-region saturation, the mirror of FIX 32
+    // Part 2 one region over (see coverage.ts's applyItemsRegionSaturation
+    // for the three guards). Runs FIRST, before FIX 34/32's own summary-
+    // region rules — both of those gate on itemsRegionUnresolvedCount, and
+    // if Part 3 ran after them they would see the STALE, pre-saturation
+    // count and refuse even when the items region is now fully explained
+    // (caught empirically against the real Sulbarreiro corpus run: items
+    // region correctly reached 0 unresolved, but FIX 34/32 still reported
+    // provenBlockedBy=items_region_unresolved because they'd already run).
+    let itemsRegionSaturation: { applied: boolean; count: number; blockedBy: string | null } = {
+      applied: false,
+      count: 0,
+      blockedBy: null,
+    };
+    {
+      const grandTotalAssignment = summaryRoleAssignments.find((a) => a.role === "GRAND_TOTAL");
+      const grandTotalEntry = grandTotalAssignment ? ledgerByAmountIdForCharges.get(grandTotalAssignment.amountId) : undefined;
+      const totalValueMinor = grandTotalEntry ? toMinor(grandTotalEntry.value, currency) : null;
+      const { coverage: adjustedCoverage, result } = applyItemsRegionSaturation(
+        coverage,
+        columnRoles,
+        ledgerByAmountIdForCharges,
+        appliedTotalWitness?.source ?? null,
+        totalValueMinor,
+        (value: number) => toMinor(value, currency)
+      );
+      coverage = adjustedCoverage;
+      itemsRegionSaturation = result;
+    }
 
     // ── FIX 34 — proven additive charge, the mirror of FIX 32 Part 2 (see
     // coverage.ts's applyProvenAdditiveCharge for the full six-guard
@@ -749,7 +795,6 @@ serve(async (req: Request) => {
     // charge, the books may now balance exactly, and any VAT-rate leftovers
     // become FIX 32's job on the very next step ("first this rule, then the
     // other" — the two compose, never run in the other order).
-    const ledgerByAmountIdForCharges = new Map(ledger.map((e) => [e.amountId, e]));
     let itemSumPlusChargesMinorAfterAdditive = assembled.itemSumPlusChargesMinor;
     let provenAdditive: { applied: boolean; count: number; corroboratedByRate: boolean; blockedBy: string | null } = {
       applied: false,
@@ -949,6 +994,18 @@ serve(async (req: Request) => {
         provenAdditiveCount: provenAdditive.count,
         additiveCorroboratedByRate: provenAdditive.corroboratedByRate,
         provenAdditiveBlockedBy: provenAdditive.blockedBy,
+        // FIX 35 — which items-region column bands were identified
+        // (quantity/unit price/total), how many rows Part 2's arithmetic
+        // proved, and whether Part 3's saturation applied. Purely diagnostic.
+        columnRolesDetected: {
+          quantity: columnRoles.quantity !== null,
+          unitPrice: columnRoles.unitPrice !== null,
+          total: columnRoles.total !== null,
+        },
+        rowsArithmeticallyProven: validity.rowQuantityProvenCount + validity.rowUnitPriceProvenCount,
+        itemsRegionSaturated: itemsRegionSaturation.applied,
+        itemsRegionSaturationCount: itemsRegionSaturation.count,
+        itemsRegionSaturationBlockedBy: itemsRegionSaturation.blockedBy,
         unresolvedLoadBearingCount: validity.unresolvedLoadBearingCount,
         genuineOwnershipMissCount: validity.unresolvedLoadBearingCount,
         duplicateOwnershipCount: validity.duplicateOwnershipCount,

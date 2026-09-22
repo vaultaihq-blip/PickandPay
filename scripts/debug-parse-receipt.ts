@@ -79,6 +79,7 @@ import {
   findSuspiciousEvidence,
   findOwnershipAmbiguous,
   findReconciliationSuspects,
+  findArithmeticContradictions,
   buildFinalPayload,
   OCR_CONFIDENCE_THRESHOLD,
   type SuspiciousEvidence,
@@ -90,7 +91,7 @@ import {
 } from "../supabase/functions/parse-receipt/prompts";
 import { computeGeometricOwnership, detectConstantOffsetRuns, type PriceBlockInput } from "../supabase/functions/parse-receipt/ownership";
 import { resolveTotalWitness } from "../supabase/functions/parse-receipt/totalWitness";
-import { filterToAuthoritativeColumn, detectAuthoritativeColumn, computeReadingAngle } from "../supabase/functions/parse-receipt/columns";
+import { filterToAuthoritativeColumn, detectAuthoritativeColumn, computeReadingAngle, detectColumnRoles } from "../supabase/functions/parse-receipt/columns";
 import { reconcile, toMajor, toMinor } from "../supabase/functions/parse-receipt/reconcile";
 import {
   computeItemsRegionEnd,
@@ -102,6 +103,7 @@ import {
   findSummaryDuplicateRoles,
   determineSummaryValidity,
   applyProvenNonAdditive,
+  applyItemsRegionSaturation,
   applyProvenAdditiveCharge,
 } from "../supabase/functions/parse-receipt/coverage";
 
@@ -598,8 +600,17 @@ async function main() {
     if (owned?.confident && v.amountId === owned.amountId) return { ...v, ownershipValid: true };
     return v;
   });
+  // FIX 35 — kept in sync with index.ts: column roles, reused for Part 4's
+  // arithmetic-contradiction check here and Part 2/3's row-proof and
+  // saturation further down.
+  const columnRoles = detectColumnRoles(ledger, ocr.lines, itemsRegionEnd, new Set());
+
   const suspiciousByBlock = new Map<string, SuspiciousEvidence>();
-  for (const s of [...findSuspiciousEvidence(blocks, validations), ...findOwnershipAmbiguous(ownershipResults)]) {
+  for (const s of [
+    ...findSuspiciousEvidence(blocks, validations),
+    ...findOwnershipAmbiguous(ownershipResults),
+    ...findArithmeticContradictions(validations, columnRoles, ledger),
+  ]) {
     if (s.blockId) suspiciousByBlock.set(s.blockId, s);
   }
   const suspicious = [...suspiciousByBlock.values()];
@@ -647,15 +658,41 @@ async function main() {
   // geometry handed to coverage.ts so Regra A (descriptive numbers) can
   // test a candidate against the real column band.
   const columnContext = { band: detectAuthoritativeColumn(ledger, ocr.lines, new Set()), angle: computeReadingAngle(ocr.lines) };
-  const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, columnContext, validations);
+  let coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, columnContext, validations, columnRoles);
   const duplicateOwnership = findDuplicateOwnership(assignments);
   let summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, summaryRoleAssignments);
   const summaryDuplicateRoles = findSummaryDuplicateRoles(summaryRoleAssignments);
+  const ledgerByAmountIdForCharges = new Map(ledger.map((e) => [e.amountId, e]));
+
+  // FIX 35 Part 3 — kept in sync with index.ts: items-region saturation,
+  // the mirror of FIX 32 Part 2 one region over. Runs FIRST, before FIX
+  // 34/32's own summary-region rules — both gate on
+  // itemsRegionUnresolvedCount, and running Part 3 after them would leave
+  // them seeing the stale, pre-saturation count.
+  let itemsRegionSaturation: { applied: boolean; count: number; blockedBy: string | null } = {
+    applied: false,
+    count: 0,
+    blockedBy: null,
+  };
+  {
+    const grandTotalAssignment = summaryRoleAssignments.find((a) => a.role === "GRAND_TOTAL");
+    const grandTotalEntry = grandTotalAssignment ? ledgerByAmountIdForCharges.get(grandTotalAssignment.amountId) : undefined;
+    const totalValueMinor = grandTotalEntry ? toMinor(grandTotalEntry.value, currency) : null;
+    const { coverage: adjustedCoverage, result } = applyItemsRegionSaturation(
+      coverage,
+      columnRoles,
+      ledgerByAmountIdForCharges,
+      appliedTotalWitness?.source ?? null,
+      totalValueMinor,
+      (value: number) => toMinor(value, currency)
+    );
+    coverage = adjustedCoverage;
+    itemsRegionSaturation = result;
+  }
 
   // FIX 34 — kept in sync with index.ts: proven additive charge, the mirror
   // of FIX 32 Part 2. Runs BEFORE it — see coverage.ts's
   // applyProvenAdditiveCharge for the full six-guard rationale.
-  const ledgerByAmountIdForCharges = new Map(ledger.map((e) => [e.amountId, e]));
   let itemSumPlusChargesMinorAfterAdditive = assembled.itemSumPlusChargesMinor;
   let provenAdditive: { applied: boolean; count: number; corroboratedByRate: boolean; blockedBy: string | null } = {
     applied: false,
@@ -727,6 +764,7 @@ async function main() {
 
   const summaryValidity = determineSummaryValidity(summaryCoverage, summaryDuplicateRoles);
   const finalReconciles = reconciliation.reconciles && summaryValidity.valid;
+
   const validity = determineValidity(structuralGaps, coverage, duplicateOwnership, validations, finalReconciles);
 
   const patterns = detectSuspectedPatterns(blocks, ledger);
@@ -851,6 +889,15 @@ async function main() {
     provenAdditiveCount: provenAdditive.count,
     additiveCorroboratedByRate: provenAdditive.corroboratedByRate,
     provenAdditiveBlockedBy: provenAdditive.blockedBy,
+    columnRolesDetected: {
+      quantity: columnRoles.quantity !== null,
+      unitPrice: columnRoles.unitPrice !== null,
+      total: columnRoles.total !== null,
+    },
+    rowsArithmeticallyProven: validity.rowQuantityProvenCount + validity.rowUnitPriceProvenCount,
+    itemsRegionSaturated: itemsRegionSaturation.applied,
+    itemsRegionSaturationCount: itemsRegionSaturation.count,
+    itemsRegionSaturationBlockedBy: itemsRegionSaturation.blockedBy,
 
     // 4. Every semantic block produced by GPT.
     blocks: blocks.map((b) => ({

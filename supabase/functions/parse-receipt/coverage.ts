@@ -24,7 +24,7 @@ import type { LedgerEntry } from "./ledger.ts";
 import type { StructureBlock, Assignment } from "./schema.ts";
 import type { AssignmentValidation } from "./validate.ts";
 import type { ColumnBand } from "./geometry.ts";
-import { rightEdgeX } from "./columns.ts";
+import { rightEdgeX, nearestInBand, type ColumnRoles } from "./columns.ts";
 
 export type CoverageState =
   | "CLAIMED_BY_ITEM"
@@ -85,6 +85,30 @@ export type CoverageState =
    *  position or block membership (a "Preco: 0,00/Uni" comp/OFERTA line may
    *  not even have its own block — FIX 33's Ramires OFERTA case). */
   | "ZERO_VALUE"
+  /** FIX 35 Part 2 — a value in the items region's QUANTITY column band
+   *  (see columns.ts's detectColumnRoles), proven by exact row arithmetic:
+   *  quantity * the row's own unit-price value equals the row's own total
+   *  value, all three found by column role and line proximity, never by
+   *  which block the semantic pass happened to group them into. A quantity
+   *  printed with two decimals (Mad God's "1.00") looks exactly like a
+   *  price shape-wise; only this proof (or position, corroborating only)
+   *  tells them apart. */
+  | "ROW_QUANTITY_PROVEN"
+  /** FIX 35 Part 2 — the mirror of ROW_QUANTITY_PROVEN: a value in the
+   *  UNIT_PRICE column band, proven because quantity * this value equals
+   *  the row's own total (quantity defaults to 1, an implicit unit
+   *  multiplier, when no separate quantity band exists at all — most of
+   *  this corpus's own receipts print one combined figure, never a
+   *  separate quantity column). */
+  | "ROW_UNIT_PRICE_PROVEN"
+  /** FIX 35 Part 3 — the items-region mirror of PROVEN_NON_ADDITIVE: once
+   *  the authoritative TOTAL column's own sum already equals an
+   *  independently-witnessed printed total/subtotal exactly, every other
+   *  items-region band's UNRESOLVED values (unit prices, quantities, a
+   *  leaked rate column) are provably non-additive — the total column
+   *  already explains the whole receipt, so nothing else can be adding to
+   *  it. See applyItemsRegionSaturation's own header for the guards. */
+  | "ITEMS_PROVEN_NON_ADDITIVE"
   | "UNRESOLVED";
 
 export interface CoverageEntry {
@@ -407,6 +431,54 @@ function classifyDescriptiveNumber(
   return { blockId: owningBlock.blockId };
 }
 
+/**
+ * FIX 35 Part 2 — proves a QUANTITY- or UNIT_PRICE-band value by finding
+ * its own row's other two figures (by column role and line proximity —
+ * columns.ts's nearestInBand, never by which block the semantic pass
+ * happened to group lines into) and checking quantity * unitPrice = total
+ * in exact minor-unit arithmetic. "A line that closes is proven,
+ * independent of how the AI grouped it" — the whole point is reducing
+ * dependence on segmentation, the unstable part.
+ *
+ * No quantity band at all (most of this corpus's own receipts: one
+ * combined figure per line, no separate quantity column) — a UNIT_PRICE
+ * candidate is still provable alone, quantity defaulting to the implicit
+ * 1 a single-figure line always means.
+ */
+function classifyRowArithmetic(
+  entry: LedgerEntry,
+  columnRoles: ColumnRoles,
+  ledgerByAmountId: Map<string, LedgerEntry>
+): "ROW_QUANTITY_PROVEN" | "ROW_UNIT_PRICE_PROVEN" | null {
+  if (!columnRoles.total) return null;
+  const isQuantity = columnRoles.quantity?.memberIds.includes(entry.amountId) ?? false;
+  const isUnitPrice = columnRoles.unitPrice?.memberIds.includes(entry.amountId) ?? false;
+  if (!isQuantity && !isUnitPrice) return null;
+
+  const total = nearestInBand(entry, columnRoles.total, ledgerByAmountId);
+  if (!total) return null;
+  const totalMinor = Math.round(total.value * 100);
+
+  if (isQuantity) {
+    if (!columnRoles.unitPrice) return null; // a bare quantity alone proves nothing about the total
+    const unit = nearestInBand(entry, columnRoles.unitPrice, ledgerByAmountId);
+    if (!unit) return null;
+    if (Math.round(entry.value * unit.value * 100) === totalMinor) return "ROW_QUANTITY_PROVEN";
+    return null;
+  }
+
+  // isUnitPrice — quantity defaults to 1 (an implicit multiplier) when no
+  // separate quantity band exists, or when this specific row has none
+  // nearby (e.g. a quantity band exists for OTHER rows but this one's own
+  // quantity token was never captured — never silently assumed elsewhere,
+  // only here, where "no quantity printed" and "quantity printed as 1" are
+  // arithmetically indistinguishable in the first place).
+  const quantity = columnRoles.quantity ? nearestInBand(entry, columnRoles.quantity, ledgerByAmountId) : null;
+  const q = quantity ? quantity.value : 1;
+  if (Math.round(entry.value * q * 100) === totalMinor) return "ROW_UNIT_PRICE_PROVEN";
+  return null;
+}
+
 export function classifyCoverage(
   blocks: StructureBlock[],
   assignments: Assignment[],
@@ -426,7 +498,13 @@ export function classifyCoverage(
    *  debug-parse-receipt.ts) already computes `validations` for
    *  determineValidity and has it in scope here at no extra cost. See
    *  classifyDescriptiveNumber's own header for why this guard exists. */
-  validations: AssignmentValidation[] | null = null
+  validations: AssignmentValidation[] | null = null,
+  /** FIX 35 Part 1/2 — columns.ts's detectColumnRoles, optional and
+   *  defaulted to null for the same backward-compatibility reason as
+   *  columnContext/validations: with no roles, Part 2's row-arithmetic
+   *  proof never fires and classification falls through exactly as before
+   *  FIX 35. */
+  columnRoles: ColumnRoles | null = null
 ): CoverageEntry[] {
   const blockById = new Map(blocks.map((b) => [b.blockId, b]));
   const claimedBy = new Map<string, string>(); // amountId -> blockId
@@ -499,6 +577,16 @@ export function classifyCoverage(
       : null;
     if (descriptive) {
       entries.push({ amountId: entry.amountId, lineIndex: entry.lineIndex, state: "DESCRIPTIVE_NUMBER", claimedByBlockId: descriptive.blockId });
+      continue;
+    }
+
+    // FIX 35 Part 2 — row arithmetic, checked only once every earlier,
+    // stronger signal (echoes, Regra B, Regra A) has already had its say.
+    // Independent of block segmentation by design — see
+    // classifyRowArithmetic's own header.
+    const rowState = columnRoles ? classifyRowArithmetic(entry, columnRoles, ledgerByAmountId) : null;
+    if (rowState) {
+      entries.push({ amountId: entry.amountId, lineIndex: entry.lineIndex, state: rowState, claimedByBlockId: null });
     } else {
       entries.push({ amountId: entry.amountId, lineIndex: entry.lineIndex, state: "UNRESOLVED", claimedByBlockId: null });
     }
@@ -559,10 +647,17 @@ export interface ValidityResult {
   descriptiveNumberCount: number;
   /** FIX 33 Regra B — see ZERO_VALUE. Same shape as above. */
   zeroValueCount: number;
-  /** Genuine misses only, as of FIX 19/20/33 — a proven echo (exact or
-   *  multiplicative), a proven descriptive number, or a proven zero is no
-   *  longer UNRESOLVED, so this field's meaning narrows accordingly
-   *  without any change to its name or its role in `valid` below. */
+  /** FIX 35 Part 2 — see ROW_QUANTITY_PROVEN. Same shape as above. */
+  rowQuantityProvenCount: number;
+  /** FIX 35 Part 2 — see ROW_UNIT_PRICE_PROVEN. Same shape as above. */
+  rowUnitPriceProvenCount: number;
+  /** FIX 35 Part 3 — see ITEMS_PROVEN_NON_ADDITIVE. Same shape as above. */
+  itemsProvenNonAdditiveCount: number;
+  /** Genuine misses only, as of FIX 19/20/33/35 — a proven echo (exact or
+   *  multiplicative), a proven descriptive number, a proven zero, a proven
+   *  row, or a saturated items-region leftover is no longer UNRESOLVED, so
+   *  this field's meaning narrows accordingly without any change to its
+   *  name or its role in `valid` below. */
   unresolvedLoadBearingCount: number;
   duplicateOwnershipCount: number;
   ownershipInvalidCount: number;
@@ -580,6 +675,9 @@ export function determineValidity(
   const echoMultiplicativeCount = coverage.filter((c) => c.state === "ECHO_MULTIPLICATIVE_OF_CLAIMED_VALUE").length;
   const descriptiveNumberCount = coverage.filter((c) => c.state === "DESCRIPTIVE_NUMBER").length;
   const zeroValueCount = coverage.filter((c) => c.state === "ZERO_VALUE").length;
+  const rowQuantityProvenCount = coverage.filter((c) => c.state === "ROW_QUANTITY_PROVEN").length;
+  const rowUnitPriceProvenCount = coverage.filter((c) => c.state === "ROW_UNIT_PRICE_PROVEN").length;
+  const itemsProvenNonAdditiveCount = coverage.filter((c) => c.state === "ITEMS_PROVEN_NON_ADDITIVE").length;
   const unresolvedLoadBearingCount = coverage.filter((c) => c.state === "UNRESOLVED").length;
   const ownershipInvalidCount = validations.filter((v) => v.amountId !== null && !v.ownershipValid).length;
 
@@ -597,6 +695,9 @@ export function determineValidity(
     echoMultiplicativeCount,
     descriptiveNumberCount,
     zeroValueCount,
+    rowQuantityProvenCount,
+    rowUnitPriceProvenCount,
+    itemsProvenNonAdditiveCount,
     unresolvedLoadBearingCount,
     duplicateOwnershipCount: duplicates.length,
     ownershipInvalidCount,
@@ -1086,4 +1187,87 @@ export function applyProvenAdditiveCharge(
     coverage: newCoverage,
     result: { applied: true, count: winner.members.length, corroboratedByRate: winner.corroborated, blockedBy: null },
   };
+}
+
+// ─── FIX 35 Part 3 — items-region saturation, the mirror of FIX 32 ────────
+//
+// FIX 32 proved it for the summary region: if itemSum+charges already
+// equals an independently-witnessed total, no unclassified summary value
+// can be additive — there's no room left for it. This applies the exact
+// same proof one region over: if the authoritative TOTAL column's own sum
+// already equals that same independently-witnessed figure, no other
+// items-region band's value (a unit price, a quantity, a leaked rate
+// column) can be additive either — the total column already explains the
+// whole receipt.
+//
+// This is what unblocks Sulbarreiro: the TOTAL column sums to exactly
+// 8.25, matching the label-witnessed total exactly, so the leftover unit-
+// price-band values (3.48, 1.27, 5.20, 0.68, ...) stop blocking validity.
+//
+// Three guards:
+//   1. a total column exists AND is distinct from at least one other
+//      items-region band — with only one dense band at all (most of this
+//      corpus's own receipts), there is nothing else to saturate and
+//      nothing this rule could prove.
+//   2. the total column's own sum matches the independently-witnessed
+//      total EXACTLY, in minor units. This is the actual proof — the
+//      books already balance on the total column alone.
+//   3. that total came from a witness (label/typography), never from
+//      arithmetic closure — otherwise this measures its own premise,
+//      exactly the FIX 29 trap FIX 31 exists to avoid.
+//
+// A missing total column entry is never invented or assumed here — the
+// Happy Meal components' own missing totals simply mean fewer members in
+// the total band, and the sum either still closes (in which case those
+// items already correctly contribute nothing, no rule needed) or it
+// doesn't (guard 2 refuses, correctly — the guard 4 gap FIX 34 already
+// protects: a missing price could otherwise coincidentally look covered).
+export interface ItemsRegionSaturationResult {
+  applied: boolean;
+  /** How many items-region UNRESOLVED entries were reclassified. 0 when
+   *  `applied` is false. */
+  count: number;
+  blockedBy:
+    | "no_independent_total"
+    | "no_separate_total_band"
+    | "sum_mismatch"
+    | null;
+}
+
+export function applyItemsRegionSaturation(
+  coverage: CoverageEntry[],
+  columnRoles: ColumnRoles,
+  ledgerByAmountId: Map<string, LedgerEntry>,
+  /** Guard 3 — identical meaning to applyProvenNonAdditive's own parameter. */
+  totalWitnessSource: "label" | "typography" | null,
+  totalValueMinor: number | null,
+  toMinorFn: (value: number) => number | null
+): { coverage: CoverageEntry[]; result: ItemsRegionSaturationResult } {
+  const refuse = (blockedBy: ItemsRegionSaturationResult["blockedBy"]) => ({
+    coverage,
+    result: { applied: false, count: 0, blockedBy },
+  });
+
+  if (totalWitnessSource === null || totalValueMinor === null) return refuse("no_independent_total");
+  if (!columnRoles.total || (!columnRoles.quantity && !columnRoles.unitPrice)) return refuse("no_separate_total_band");
+
+  let sumMinor = 0;
+  for (const id of columnRoles.total.memberIds) {
+    const entry = ledgerByAmountId.get(id);
+    if (!entry) continue;
+    const m = toMinorFn(entry.value);
+    if (m === null) return refuse("sum_mismatch"); // an unrepresentable value — never guess the books balance
+    sumMinor += m;
+  }
+  if (sumMinor !== totalValueMinor) return refuse("sum_mismatch");
+
+  const totalIds = new Set(columnRoles.total.memberIds);
+  let count = 0;
+  const newCoverage = coverage.map((c) => {
+    if (c.state !== "UNRESOLVED" || totalIds.has(c.amountId)) return c;
+    count++;
+    return { ...c, state: "ITEMS_PROVEN_NON_ADDITIVE" as const };
+  });
+
+  return { coverage: newCoverage, result: { applied: true, count, blockedBy: null } };
 }
