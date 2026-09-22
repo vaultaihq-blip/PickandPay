@@ -23,7 +23,7 @@ import { CountdownModal } from "@/components/CountdownModal";
 import { useSessionMonitor } from "@/hooks/useSessionMonitor";
 import { formatCurrency } from "@/utils/formatter";
 import { supabase } from "@/lib/supabase";
-import { ReceiptItem, ItemSelection, SessionParticipant } from "@/types";
+import { ReceiptItem, ItemSelection, SessionParticipant, ParsedReceipt } from "@/types";
 import { isDeveloperUser } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
 import { TranslationKey } from "@/constants/translations";
@@ -654,13 +654,31 @@ export default function SessionLobbyScreen() {
       startFinalCountdown();
     };
 
+    // A participant who joined before the host finished scanning has
+    // receipt: null baked into their local store forever (join.tsx only
+    // reads receipt_data once, at join time). Nothing else in the lobby
+    // ever re-checks it, so "Select" renders an empty list even after the
+    // host finishes. This channel/poll is already here for `status` — reuse
+    // it to also carry the receipt across once it lands in the DB.
+    const handleReceiptData = (receiptData?: unknown) => {
+      if (!receiptData) return;
+      const sess = useSessionStore.getState().currentSession;
+      if (sess && !sess.receipt) {
+        useSessionStore.getState().setSession({
+          ...sess,
+          receipt: receiptData as ParsedReceipt,
+        });
+      }
+    };
+
     const fetchSessionStatus = async () => {
       const { data } = await supabase
         .from("sessions")
-        .select("status")
+        .select("status, receipt_data")
         .eq("id", id)
         .single();
       handleSessionStatus(data?.status as string | undefined);
+      handleReceiptData(data?.receipt_data);
     };
 
     fetchSessionStatus();
@@ -675,6 +693,7 @@ export default function SessionLobbyScreen() {
         filter: `id=eq.${id}`,
       }, (payload) => {
         handleSessionStatus(payload.new?.status as string | undefined);
+        handleReceiptData(payload.new?.receipt_data);
       })
       .subscribe();
 

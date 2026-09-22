@@ -14,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
@@ -235,6 +236,24 @@ export default function ScanScreen() {
     }
   };
 
+  // Re-encodes the picked/captured image with no-op operations — this alone
+  // bakes the file's EXIF Orientation tag into the actual pixel buffer and
+  // strips the tag. Without this, a photo taken sideways (a common phone
+  // photo of a receipt lying on a table) displays upright everywhere
+  // because viewers honour the EXIF tag, but the raw base64 sent to the
+  // server keeps the original rotated pixel layout — and Google Vision's
+  // OCR bounding boxes come back in that raw pixel space, not the tag-
+  // corrected one, corrupting line reconstruction downstream. Every image
+  // entry point must go through this before it's used for anything else.
+  const normalizeImageOrientation = async (uri: string) => {
+    const result = await ImageManipulator.manipulateAsync(uri, [], {
+      compress: 0.9,
+      format: ImageManipulator.SaveFormat.JPEG,
+      base64: true,
+    });
+    return { uri: result.uri, base64: result.base64 ? `data:image/jpeg;base64,${result.base64}` : result.uri };
+  };
+
   const handleCapture = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
@@ -249,8 +268,8 @@ export default function ScanScreen() {
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
-      const b64 = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-      setPendingImage(asset.uri, b64);
+      const normalized = await normalizeImageOrientation(asset.uri);
+      setPendingImage(normalized.uri, normalized.base64);
       router.push("/(app)/receipt-preview");
     }
   };
@@ -264,8 +283,8 @@ export default function ScanScreen() {
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
-      const b64 = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-      setPendingImage(asset.uri, b64);
+      const normalized = await normalizeImageOrientation(asset.uri);
+      setPendingImage(normalized.uri, normalized.base64);
       router.push("/(app)/receipt-preview");
     }
   };
