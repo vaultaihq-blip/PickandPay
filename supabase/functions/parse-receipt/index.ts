@@ -79,7 +79,7 @@ import {
 } from "./validate.ts";
 import { computeGeometricOwnership, detectConstantOffsetRuns, type PriceBlockInput } from "./ownership.ts";
 import { resolveTotalWitness } from "./totalWitness.ts";
-import { filterToAuthoritativeColumn } from "./columns.ts";
+import { filterToAuthoritativeColumn, detectAuthoritativeColumn, computeReadingAngle } from "./columns.ts";
 import {
   computeItemsRegionEnd,
   findStructuralGaps,
@@ -721,7 +721,13 @@ serve(async (req: Request) => {
     // one of them failing makes the receipt invalid regardless of the
     // others, and reconciliation is consulted only as one input among
     // several, never as a way to select or excuse an assignment.
-    const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd);
+    // FIX 33 — the same authoritative-column geometry FIX 11 already
+    // computes for ownership matching (matchingLedger, above), handed to
+    // coverage.ts so Regra A (descriptive numbers) can test a candidate
+    // against the real column band instead of never seeing it at all —
+    // the gap FIX 19's own header names as still open.
+    const columnContext = { band: detectAuthoritativeColumn(ledger, ocr.lines, new Set()), angle: computeReadingAngle(ocr.lines) };
+    const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, columnContext, validations);
     const duplicateOwnership = findDuplicateOwnership(assignments);
 
     // FIX 15 — summary coverage, the same invariant extended to the summary

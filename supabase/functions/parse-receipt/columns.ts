@@ -49,8 +49,22 @@ import { clusterByX } from "./geometry.ts";
  * column into two. The right edge is where a right-aligned column actually
  * aligns, regardless of how many digits any one entry has.
  */
-function rightEdgeX(entry: LedgerEntry, angle: number): number {
+export function rightEdgeX(entry: LedgerEntry, angle: number): number {
   return Math.max(...entry.boundingBox.vertices.map((v) => toReadingFrame(v.x, v.y, angle).normalX));
+}
+
+/**
+ * FIX 33 — the same dominantAngle computation candidatePoints already does
+ * internally, exposed on its own so a caller that needs BOTH the band (from
+ * detectAuthoritativeColumn) AND per-entry right-edge X (to test a specific
+ * value against that band, e.g. coverage.ts's Regra A) can get the angle
+ * without a second, possibly-divergent reimplementation. Never changes
+ * detectAuthoritativeColumn's own return shape — existing callers/tests are
+ * unaffected.
+ */
+export function computeReadingAngle(lines: OcrLine[]): number {
+  const allWords = lines.flatMap((l) => l.words.map((wo) => wo.word));
+  return dominantAngle(allWords);
 }
 
 /** Only decimal-formatted tokens are candidates for column analysis — a

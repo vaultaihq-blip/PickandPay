@@ -13,6 +13,7 @@ import {
   determineSummaryValidity,
   applyProvenNonAdditive,
   type SummaryRoleAssignment,
+  type ColumnContext,
 } from "../coverage";
 import {
   validateAssignments,
@@ -20,6 +21,7 @@ import {
   findReconciliationSuspects,
   buildFinalPayload,
   OCR_CONFIDENCE_THRESHOLD,
+  type AssignmentValidation,
 } from "../validate";
 import type { TotalWitnessResult } from "../totalWitness";
 
@@ -2016,5 +2018,153 @@ describe("validate/coverage: FIX 32 Part 2 — arithmetic saturation, with an in
     assertEqual(assembled.summaryRoleAssignments.find((a) => a.amountId === "TAX")?.role, "TAX", "recognized normally — the rule never even sees it as UNRESOLVED");
     assertEqual(saturation.count, 0, "nothing left to reclassify");
     assertEqual(summaryValidity.valid, true, "already valid through the ordinary path — this rule made no difference here");
+  });
+});
+
+// ─── FIX 33 — descriptive numbers, proved by the dish's own arithmetic ─────
+//
+// A synthetic ledger entry at a given reading-frame X, for band-membership
+// tests — with angle 0 (these fixtures are never rotated) rightEdgeX(e, 0)
+// reduces to the vertex's own x, so `x` here IS what isOutsideAuthoritativeBand
+// compares against the band.
+function atX(overrides: Partial<LedgerEntry> & { amountId: string; value: number; lineIndex: number }, x: number): LedgerEntry {
+  return entry({ ...overrides, boundingBox: { vertices: [{ x, y: 0 }] } });
+}
+
+describe("coverage: FIX 33 — descriptive numbers and zero values", () => {
+  it("ED — Quebra Mar, fixture-shaped: the '2.00' embedded in 'FINO 2.00€' becomes DESCRIPTIVE_NUMBER; 1 x 2,50 = 2,50 explains the dish", () => {
+    const ledger: LedgerEntry[] = [
+      atX({ amountId: "DESC", value: 2.0, lineIndex: 29 }, 100), // "1 Uni FINO 2.00€" — outside band
+      atX({ amountId: "TOTAL", value: 2.5, lineIndex: 31 }, 900), // claimed total — inside band
+      atX({ amountId: "ANNOT", value: 2.5, lineIndex: 32 }, 150), // "Preco: 2,50/uni" — adjacent to TOTAL's own line
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "FINO", kind: "item", lineIndices: [29, 30, 31], parentBlockId: null, name: "FINO", amountId: "TOTAL", quantity: 1, priceKind: "lineTotal" },
+    ];
+    const assignments: Assignment[] = [{ blockId: "FINO", amountId: "TOTAL", quantity: 1, priceKind: "lineTotal" }];
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const ctx: ColumnContext = { band: { minX: 850, maxX: 950, memberIds: ["TOTAL"] }, angle: 0 };
+    const coverage = classifyCoverage(blocks, assignments, ledger, computeItemsRegionEnd(blocks), ctx, validations);
+    assertEqual(coverage.find((c) => c.amountId === "DESC")?.state, "DESCRIPTIVE_NUMBER");
+  });
+
+  it("EE — Ramires, fixture-shaped: the '0,50' embedded in 'Luso 0,50' becomes DESCRIPTIVE_NUMBER; 1 x 1,80 = 1,80 explains the dish", () => {
+    const ledger: LedgerEntry[] = [
+      atX({ amountId: "DESC", value: 0.5, lineIndex: 36 }, 100), // "1 Uni Luso 0,50" — outside band
+      atX({ amountId: "TOTAL", value: 1.8, lineIndex: 38 }, 900), // claimed total — inside band
+      atX({ amountId: "ANNOT", value: 1.8, lineIndex: 39 }, 150), // "Preco: 1,80/Uni" — adjacent to TOTAL's own line
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "LUSO", kind: "item", lineIndices: [36, 37, 38, 39], parentBlockId: null, name: "Luso 0,50", amountId: "TOTAL", quantity: 1, priceKind: "lineTotal" },
+    ];
+    const assignments: Assignment[] = [{ blockId: "LUSO", amountId: "TOTAL", quantity: 1, priceKind: "lineTotal" }];
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const ctx: ColumnContext = { band: { minX: 850, maxX: 950, memberIds: ["TOTAL"] }, angle: 0 };
+    const coverage = classifyCoverage(blocks, assignments, ledger, computeItemsRegionEnd(blocks), ctx, validations);
+    assertEqual(coverage.find((c) => c.amountId === "DESC")?.state, "DESCRIPTIVE_NUMBER");
+  });
+
+  it("EF — Ramires, fixture-shaped: the OFERTA's '0,00' becomes ZERO_VALUE, even with no block claiming it at all (the real receipt's own shape — GPT never gave OFERTA its own block)", () => {
+    const ledger: LedgerEntry[] = [atX({ amountId: "ZERO", value: 0, lineIndex: 23 }, 100)];
+    const blocks: StructureBlock[] = []; // no block covers this line — matches the real Ramires OFERTA gap
+    const assignments: Assignment[] = [];
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const coverage = classifyCoverage(blocks, assignments, ledger, Infinity, null, validations);
+    assertEqual(coverage.find((c) => c.amountId === "ZERO")?.state, "ZERO_VALUE");
+  });
+
+  it("EG — a dish whose only printed price sits in the description zone, nothing in the value column, stays UNRESOLVED (condition 3 fails — it might be the real price)", () => {
+    const ledger: LedgerEntry[] = [atX({ amountId: "DESC", value: 5.0, lineIndex: 10 }, 100)];
+    const blocks: StructureBlock[] = [
+      { blockId: "B", kind: "item", lineIndices: [10], parentBlockId: null, name: "Mystery Dish", amountId: null, quantity: 1, priceKind: null },
+    ];
+    const assignments: Assignment[] = []; // the block claims nothing at all
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const ctx: ColumnContext = { band: { minX: 850, maxX: 950, memberIds: [] }, angle: 0 };
+    const coverage = classifyCoverage(blocks, assignments, ledger, Infinity, ctx, validations);
+    assertEqual(coverage.find((c) => c.amountId === "DESC")?.state, "UNRESOLVED");
+  });
+
+  it("EH — a dish with a descriptive-looking number but no arithmetic that closes stays UNRESOLVED (condition 4 fails)", () => {
+    const ledger: LedgerEntry[] = [
+      atX({ amountId: "DESC", value: 3.0, lineIndex: 10 }, 100),
+      atX({ amountId: "TOTAL", value: 9.99, lineIndex: 11 }, 900), // no annotation anywhere proves 1 x ? = 9.99
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "B", kind: "item", lineIndices: [10, 11], parentBlockId: null, name: "Dish 3.00", amountId: "TOTAL", quantity: 1, priceKind: "lineTotal" },
+    ];
+    const assignments: Assignment[] = [{ blockId: "B", amountId: "TOTAL", quantity: 1, priceKind: "lineTotal" }];
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const ctx: ColumnContext = { band: { minX: 850, maxX: 950, memberIds: ["TOTAL"] }, angle: 0 };
+    const coverage = classifyCoverage(blocks, assignments, ledger, Infinity, ctx, validations);
+    assertEqual(coverage.find((c) => c.amountId === "DESC")?.state, "UNRESOLVED");
+  });
+
+  it("EI — Sulbarreiro-shaped: a genuine extra price must not be dispensed just because the dish's (wrongly matched) claimed total has its OWN unrelated arithmetic proof — the claim's ownership must itself be valid", () => {
+    // Real bug, caught empirically against the real corpus fixture (FIX 33
+    // Passo 0.4 verification, sulbarreiro run3): "Double Chees" block
+    // geometrically mismatched to a value FOUR lines away (a different
+    // item's own "1.00" quantity marker, ownershipValid=false), which THAT
+    // value's own adjacent annotation then arithmetically "proved" —
+    // condition 4 alone cannot detect a bogus claimed total, only whether
+    // the total the block already claims is explained. Without the
+    // ownership-validity guard, the real 5.20 price — sitting on the dish's
+    // own name line for the same reason FIX 11's column-Y test already
+    // documents — would have been wrongly dispensed as descriptive.
+    const ledger: LedgerEntry[] = [
+      atX({ amountId: "REAL_PRICE", value: 5.2, lineIndex: 24 }, 100), // "1 Double Chees 5.20 13%" — the genuine, unclaimed price
+      atX({ amountId: "BOGUS_TOTAL", value: 1, lineIndex: 30 }, 900), // wrongly matched to a distant, unrelated line
+      atX({ amountId: "BOGUS_ANNOT", value: 1, lineIndex: 29 }, 100), // adjacent to BOGUS_TOTAL — proves 1 x 1 = 1, but for the WRONG dish
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "DISH", kind: "item", lineIndices: [24, 25], parentBlockId: null, name: "Double Chees", amountId: "BOGUS_TOTAL", quantity: 1, priceKind: "lineTotal" },
+    ];
+    const assignments: Assignment[] = [{ blockId: "DISH", amountId: "BOGUS_TOTAL", quantity: 1, priceKind: "lineTotal" }];
+    // Built by hand, not validateAssignments: asserting the exact real
+    // failure shape (a schema-valid but contextually-wrong pick) rather
+    // than depending on validateAssignments' own distance threshold.
+    const validations: AssignmentValidation[] = [
+      { blockId: "DISH", amountId: "BOGUS_TOTAL", ownershipValid: false, existsInLedger: true, entry: ledger[1] },
+    ];
+    const ctx: ColumnContext = { band: { minX: 850, maxX: 950, memberIds: ["BOGUS_TOTAL"] }, angle: 0 };
+    const coverage = classifyCoverage(blocks, assignments, ledger, Infinity, ctx, validations);
+    assertEqual(
+      coverage.find((c) => c.amountId === "REAL_PRICE")?.state,
+      "UNRESOLVED",
+      "the dish's own claim is already known contextually wrong — Regra A must never trust it as proof that REAL_PRICE has nowhere left to go"
+    );
+  });
+
+  it("EJ — Augustiner-shaped: a genuine multiplicative echo (8 x 4,20) is classified as an echo, never demoted to descriptive, regardless of column context", () => {
+    const ledger: LedgerEntry[] = [
+      atX({ amountId: "UNITPRICE", value: 4.2, lineIndex: 11 }, 100), // "8 x4,20" above the item name — outside band
+      atX({ amountId: "TOTAL", value: 33.6, lineIndex: 12 }, 900), // claimed total, inside band: 8 x 4.20 = 33.60
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "B", kind: "item", lineIndices: [11, 12], parentBlockId: null, name: "Bier", amountId: "TOTAL", quantity: 8, priceKind: "lineTotal" },
+    ];
+    const assignments: Assignment[] = [{ blockId: "B", amountId: "TOTAL", quantity: 8, priceKind: "lineTotal" }];
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const ctx: ColumnContext = { band: { minX: 850, maxX: 950, memberIds: ["TOTAL"] }, angle: 0 };
+    const coverage = classifyCoverage(blocks, assignments, ledger, Infinity, ctx, validations);
+    assertEqual(
+      coverage.find((c) => c.amountId === "UNITPRICE")?.state,
+      "ECHO_MULTIPLICATIVE_OF_CLAIMED_VALUE",
+      "echoes run before Regra A — a genuine unit-price echo must never be reclassified as merely descriptive"
+    );
+  });
+
+  it("without a columnContext, Regra A never fires — every prior test's exact pre-FIX-33 behavior is preserved", () => {
+    const ledger: LedgerEntry[] = [
+      atX({ amountId: "DESC", value: 2.0, lineIndex: 29 }, 100),
+      atX({ amountId: "TOTAL", value: 2.5, lineIndex: 31 }, 900),
+      atX({ amountId: "ANNOT", value: 2.5, lineIndex: 32 }, 150),
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "FINO", kind: "item", lineIndices: [29, 30, 31], parentBlockId: null, name: "FINO", amountId: "TOTAL", quantity: 1, priceKind: "lineTotal" },
+    ];
+    const assignments: Assignment[] = [{ blockId: "FINO", amountId: "TOTAL", quantity: 1, priceKind: "lineTotal" }];
+    const coverage = classifyCoverage(blocks, assignments, ledger, computeItemsRegionEnd(blocks));
+    assertEqual(coverage.find((c) => c.amountId === "DESC")?.state, "UNRESOLVED", "same shape as ED, but with no columnContext — must fall back to UNRESOLVED, not guess");
   });
 });

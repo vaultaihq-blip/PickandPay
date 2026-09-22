@@ -23,6 +23,8 @@
 import type { LedgerEntry } from "./ledger.ts";
 import type { StructureBlock, Assignment } from "./schema.ts";
 import type { AssignmentValidation } from "./validate.ts";
+import type { ColumnBand } from "./geometry.ts";
+import { rightEdgeX } from "./columns.ts";
 
 export type CoverageState =
   | "CLAIMED_BY_ITEM"
@@ -66,6 +68,23 @@ export type CoverageState =
    *  duplicate, not a product), and never when the product is merely
    *  close — zero tolerance, see findMultiplicativeEchoOwner. */
   | "ECHO_MULTIPLICATIVE_OF_CLAIMED_VALUE"
+  /** FIX 33 Regra A — a decimal-shaped occurrence OUTSIDE the authoritative
+   *  value column, on the same line as an ITEM block that already claims
+   *  its own total INSIDE that column, where quantity * a unit-price
+   *  annotation exactly reconstructs that claimed total. Not a guess that
+   *  the number is descriptive text (a VAT-rate table entry, a bottle size,
+   *  a printed promo price) — a proof that the dish's total needs no other
+   *  number to be fully explained, so this one cannot be an uncounted
+   *  charge: there is nowhere left for it to go. See
+   *  classifyDescriptiveNumber's own header for the four guards. */
+  | "DESCRIPTIVE_NUMBER"
+  /** FIX 33 Regra B — a decimal-shaped occurrence in the items region whose
+   *  value is EXACTLY zero. Unconditional: summing zero never changes any
+   *  total, so an unclassified zero can never hide a real, uncounted
+   *  charge — it is aritmeticamente impossible, independent of column
+   *  position or block membership (a "Preco: 0,00/Uni" comp/OFERTA line may
+   *  not even have its own block — FIX 33's Ramires OFERTA case). */
+  | "ZERO_VALUE"
   | "UNRESOLVED";
 
 export interface CoverageEntry {
@@ -250,11 +269,164 @@ export function claimedValueHasUnitPriceAnnotation(claimedEntry: LedgerEntry, qu
   });
 }
 
+// ─── FIX 33 — descriptive numbers, proved by the dish's own arithmetic ─────
+//
+// A printed line can carry a decimal-shaped number that is part of the
+// PRODUCT NAME or DESCRIPTION, never a price at all: a VAT rate disclosure
+// row (Quebra Mar's "FINO 2.00€" — "2.00" is EU tap-beer sizing, litres,
+// baked into the product name), a bottle size (Ramires' "Luso 0,50" —
+// 0,50 is the half-litre), a promo price crossed out in the name. FIX 11
+// already proved these sit OUTSIDE the authoritative value column
+// (columns.ts); this closes the loop columns.ts's own header names as
+// still open — that geometric fact was computed and then discarded, never
+// reaching classifyCoverage.
+//
+// The rule is never "guess this number is descriptive because it's out of
+// column" — an out-of-column number could still be a genuine,
+// mispositioned price. It only fires when the dish's total is ALREADY
+// proven complete without it: quantity * a unit-price annotation
+// reconstructs the dish's own claimed total exactly. Nothing is dispensed
+// on suspicion; only once there is nowhere left for it to go.
+export interface ColumnContext {
+  /** From columns.ts's detectAuthoritativeColumn — null only when the
+   *  receipt has no decimal-shaped candidates at all (no signal, so Regra A
+   *  never fires: it can never prove a value is OUTSIDE a band that was
+   *  never found). */
+  band: ColumnBand | null;
+  /** From columns.ts's computeReadingAngle — the same reading-frame
+   *  rotation detectAuthoritativeColumn itself used to build `band`, so a
+   *  caller's own rightEdgeX comparisons stay on the identical footing. */
+  angle: number;
+}
+
+function isOutsideAuthoritativeBand(entry: LedgerEntry, ctx: ColumnContext): boolean {
+  if (!ctx.band) return false; // no band detected — never guess an entry is outside one that doesn't exist
+  const x = rightEdgeX(entry, ctx.angle);
+  return x < ctx.band.minX || x > ctx.band.maxX;
+}
+
+/**
+ * FIX 33 Regra A condition 4 — does `claimedEntry` (an ITEM block's own
+ * claimed total, with that block's `quantity`) have a "Preco: X/Uni"-shaped
+ * unit-price annotation proving quantity * annotation === claimedEntry,
+ * exact minor-unit arithmetic?
+ *
+ * Two places that annotation is allowed to live, both required to stay
+ * safe:
+ *   1. the SAME or IMMEDIATELY ADJACENT line to `claimedEntry` — exactly
+ *      FIX 21/23's own existing rule (findEchoOwner /
+ *      claimedValueHasUnitPriceAnnotation), covers Quebra Mar's FINO
+ *      (annotation one line below its claimed total) and Ramires' Luso
+ *      (same shape).
+ *   2. ANYWHERE within the claiming block's OWN lineIndices — block
+ *      TERRITORY, not adjacency. FIX 21 deliberately replaced territory
+ *      with adjacency for findEchoOwner/findMultiplicativeEchoOwner
+ *      because those two search BLINDLY across every claim on the ledger
+ *      for an arbitrary orphan, and GPT's segmentation varies between
+ *      runs while OCR line adjacency doesn't. This function is different:
+ *      it is only ever asked about ONE block, already pinned down by
+ *      Regra A's own condition 3 — there is nothing left to segment, so
+ *      territory is exactly as stable here as adjacency is there.
+ *      Confirmed necessary, not merely convenient, by the real Ramires
+ *      Frango case (FIX 33 Passo 0.4 inventory): its own "Preco:
+ *      16,00/Uni" annotation prints THREE lines before its claimed total —
+ *      a MODIFIER line ("+3 Uni C/Batata") and an IVA-rate line sit
+ *      between — outside FIX 21's own +-1 adjacency window, even though
+ *      qty(1) x 16,00 = 16,00 closes exactly and both lines are printed as
+ *      part of the same dish (both inside the item block's own
+ *      lineIndices).
+ */
+function claimedTotalHasUnitPriceProof(
+  claimedEntry: LedgerEntry,
+  quantity: number | null,
+  block: StructureBlock,
+  ledger: LedgerEntry[]
+): boolean {
+  if (quantity === null || quantity < 1) return false;
+  const claimedMinor = Math.round(claimedEntry.value * 100);
+  const blockLines = new Set(block.lineIndices);
+  return ledger.some((e) => {
+    if (e.amountId === claimedEntry.amountId) return false;
+    if (!/[.,]\d{2}$/.test(e.rawText)) return false;
+    const adjacent = Math.abs(e.lineIndex - claimedEntry.lineIndex) <= 1;
+    const sameBlockTerritory = blockLines.has(e.lineIndex);
+    if (!adjacent && !sameBlockTerritory) return false;
+    return Math.round(e.value * 100) * quantity === claimedMinor;
+  });
+}
+
+/**
+ * FIX 33 Regra A — all four conditions, in order; the first to fail refuses
+ * (returns null) rather than guessing:
+ *   1. items region — enforced by the caller (classifyCoverage's own loop
+ *      already skips entries at/past itemsRegionEnd before calling this).
+ *   2. `entry` sits OUTSIDE the authoritative value column.
+ *   3. `entry`'s line belongs to an ITEM block ("prato") whose OWN
+ *      ownership is valid (never trust a claim ownership.ts itself already
+ *      flagged as contextually wrong — see the guard below) and that
+ *      already claims its own total, sitting INSIDE the authoritative
+ *      column (never demote a value next to a dish whose only "total" is
+ *      itself unproven).
+ *   4. that claimed total is fully explained by exact arithmetic — see
+ *      claimedTotalHasUnitPriceProof.
+ *
+ * The ownership-validity guard was added after a real Sulbarreiro corpus
+ * run (FIX 33 verification) exposed the gap: one run's "Double Chees"
+ * block geometrically mismatched to a value FOUR lines away (a different
+ * item's own "1.00" quantity, ownershipValid=false), which THAT value's
+ * own adjacent annotation then "proved" arithmetically — condition 4 alone
+ * cannot detect a bogus claimed total, because it only checks whether the
+ * total the block already claims IS explained, never whether the block
+ * was right to claim it in the first place. Without this guard, Double
+ * Chees' real, unclaimed 5.20 price (sitting on the item's own name line
+ * for an unrelated reason — see FIX 11's own column-Y test) would have
+ * been wrongly dispensed as descriptive.
+ */
+function classifyDescriptiveNumber(
+  entry: LedgerEntry,
+  blocks: StructureBlock[],
+  blockClaims: Map<string, string>,
+  ledgerByAmountId: Map<string, LedgerEntry>,
+  ledger: LedgerEntry[],
+  ctx: ColumnContext,
+  ownershipValidByBlockId: Map<string, boolean> | null
+): { blockId: string } | null {
+  if (!isOutsideAuthoritativeBand(entry, ctx)) return null; // condition 2
+
+  const owningBlock = blocks.find((b) => b.kind === "item" && b.lineIndices.includes(entry.lineIndex));
+  if (!owningBlock) return null; // condition 3a — not a dish's own line
+  if (ownershipValidByBlockId?.get(owningBlock.blockId) === false) return null; // condition 3b — the dish's own claim is already known contextually wrong
+  const claimedAmountId = blockClaims.get(owningBlock.blockId);
+  if (!claimedAmountId) return null; // condition 3c — the dish claims no total at all
+  const claimedEntry = ledgerByAmountId.get(claimedAmountId);
+  if (!claimedEntry) return null;
+  if (isOutsideAuthoritativeBand(claimedEntry, ctx)) return null; // condition 3d — the "total" itself is unproven
+
+  if (!claimedTotalHasUnitPriceProof(claimedEntry, owningBlock.quantity, owningBlock, ledger)) return null; // condition 4
+
+  return { blockId: owningBlock.blockId };
+}
+
 export function classifyCoverage(
   blocks: StructureBlock[],
   assignments: Assignment[],
   ledger: LedgerEntry[],
-  itemsRegionEnd: number
+  itemsRegionEnd: number,
+  /** FIX 33 — optional and defaulted to null so every existing call site
+   *  (every prior test, and any future caller that hasn't been taught
+   *  about column geometry) keeps its exact pre-FIX-33 behavior: with no
+   *  context, Regra A never fires (isOutsideAuthoritativeBand refuses
+   *  without a band) and classification falls through to UNRESOLVED
+   *  exactly as before. Regra B (ZERO_VALUE) needs no geometry and is
+   *  unconditional on this parameter. */
+  columnContext: ColumnContext | null = null,
+  /** FIX 33 — validateAssignments' own per-block ownershipValid, keyed by
+   *  blockId. Optional and defaulted to null for the same backward-
+   *  compatibility reason as columnContext; every real caller (index.ts,
+   *  debug-parse-receipt.ts) already computes `validations` for
+   *  determineValidity and has it in scope here at no extra cost. See
+   *  classifyDescriptiveNumber's own header for why this guard exists. */
+  validations: AssignmentValidation[] | null = null
 ): CoverageEntry[] {
   const blockById = new Map(blocks.map((b) => [b.blockId, b]));
   const claimedBy = new Map<string, string>(); // amountId -> blockId
@@ -265,6 +437,7 @@ export function classifyCoverage(
   }
   const ledgerByAmountId = new Map(ledger.map((e) => [e.amountId, e]));
   const claims = buildClaims(blocks, blockClaims, ledgerByAmountId); // FIX 21 — built once, shared by both echo finders
+  const ownershipValidByBlockId = validations ? new Map(validations.map((v) => [v.blockId, v.ownershipValid])) : null;
 
   const kindToState = (kind: StructureBlock["kind"]): CoverageState => {
     switch (kind) {
@@ -310,6 +483,22 @@ export function classifyCoverage(
         state: "ECHO_MULTIPLICATIVE_OF_CLAIMED_VALUE",
         claimedByBlockId: multiplicativeEchoOwner.blockId,
       });
+      continue;
+    }
+
+    // FIX 33 Regra B — unconditional, checked before Regra A: a genuine
+    // zero can never hide a real charge, regardless of column position or
+    // block membership (the OFERTA/comp case may have no block at all).
+    if (Math.round(entry.value * 100) === 0) {
+      entries.push({ amountId: entry.amountId, lineIndex: entry.lineIndex, state: "ZERO_VALUE", claimedByBlockId: null });
+      continue;
+    }
+
+    const descriptive = columnContext
+      ? classifyDescriptiveNumber(entry, blocks, blockClaims, ledgerByAmountId, ledger, columnContext, ownershipValidByBlockId)
+      : null;
+    if (descriptive) {
+      entries.push({ amountId: entry.amountId, lineIndex: entry.lineIndex, state: "DESCRIPTIVE_NUMBER", claimedByBlockId: descriptive.blockId });
     } else {
       entries.push({ amountId: entry.amountId, lineIndex: entry.lineIndex, state: "UNRESOLVED", claimedByBlockId: null });
     }
@@ -364,10 +553,16 @@ export interface ValidityResult {
    *  about a receipt's secondary-column format — and, like echoExactCount,
    *  never blocks `valid`. */
   echoMultiplicativeCount: number;
-  /** Genuine misses only, as of FIX 19/20 — a proven echo (exact or
-   *  multiplicative) is no longer UNRESOLVED, so this field's meaning
-   *  narrows accordingly without any change to its name or its role in
-   *  `valid` below. */
+  /** FIX 33 Regra A — see DESCRIPTIVE_NUMBER. Counted separately, never
+   *  blocks `valid`, same shape as echoExactCount/echoMultiplicativeCount:
+   *  it explains an occurrence, it never backs a new financial claim. */
+  descriptiveNumberCount: number;
+  /** FIX 33 Regra B — see ZERO_VALUE. Same shape as above. */
+  zeroValueCount: number;
+  /** Genuine misses only, as of FIX 19/20/33 — a proven echo (exact or
+   *  multiplicative), a proven descriptive number, or a proven zero is no
+   *  longer UNRESOLVED, so this field's meaning narrows accordingly
+   *  without any change to its name or its role in `valid` below. */
   unresolvedLoadBearingCount: number;
   duplicateOwnershipCount: number;
   ownershipInvalidCount: number;
@@ -383,6 +578,8 @@ export function determineValidity(
 ): ValidityResult {
   const echoExactCount = coverage.filter((c) => c.state === "ECHO_OF_CLAIMED_VALUE").length;
   const echoMultiplicativeCount = coverage.filter((c) => c.state === "ECHO_MULTIPLICATIVE_OF_CLAIMED_VALUE").length;
+  const descriptiveNumberCount = coverage.filter((c) => c.state === "DESCRIPTIVE_NUMBER").length;
+  const zeroValueCount = coverage.filter((c) => c.state === "ZERO_VALUE").length;
   const unresolvedLoadBearingCount = coverage.filter((c) => c.state === "UNRESOLVED").length;
   const ownershipInvalidCount = validations.filter((v) => v.amountId !== null && !v.ownershipValid).length;
 
@@ -398,6 +595,8 @@ export function determineValidity(
     structuralGapCount: structuralGaps.length,
     echoExactCount,
     echoMultiplicativeCount,
+    descriptiveNumberCount,
+    zeroValueCount,
     unresolvedLoadBearingCount,
     duplicateOwnershipCount: duplicates.length,
     ownershipInvalidCount,

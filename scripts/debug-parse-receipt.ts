@@ -90,7 +90,7 @@ import {
 } from "../supabase/functions/parse-receipt/prompts";
 import { computeGeometricOwnership, detectConstantOffsetRuns, type PriceBlockInput } from "../supabase/functions/parse-receipt/ownership";
 import { resolveTotalWitness } from "../supabase/functions/parse-receipt/totalWitness";
-import { filterToAuthoritativeColumn } from "../supabase/functions/parse-receipt/columns";
+import { filterToAuthoritativeColumn, detectAuthoritativeColumn, computeReadingAngle } from "../supabase/functions/parse-receipt/columns";
 import { reconcile, toMajor, toMinor } from "../supabase/functions/parse-receipt/reconcile";
 import {
   computeItemsRegionEnd,
@@ -642,7 +642,11 @@ async function main() {
   // both items-region and summary-region, combined into the same
   // finalReconciles/valid signal production computes. Reconciliation alone
   // is never sufficient — see coverage.ts's header comments.
-  const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd);
+  // FIX 33 — kept in sync with index.ts: the same authoritative-column
+  // geometry handed to coverage.ts so Regra A (descriptive numbers) can
+  // test a candidate against the real column band.
+  const columnContext = { band: detectAuthoritativeColumn(ledger, ocr.lines, new Set()), angle: computeReadingAngle(ocr.lines) };
+  const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd, columnContext, validations);
   const duplicateOwnership = findDuplicateOwnership(assignments);
   let summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, summaryRoleAssignments);
   const summaryDuplicateRoles = findSummaryDuplicateRoles(summaryRoleAssignments);
