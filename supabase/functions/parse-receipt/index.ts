@@ -89,6 +89,7 @@ import {
   classifySummaryCoverage,
   findSummaryDuplicateRoles,
   determineSummaryValidity,
+  applyProvenNonAdditive,
 } from "./coverage.ts";
 import { reconcile, toMajor, toMinor } from "./reconcile.ts";
 
@@ -731,8 +732,40 @@ serve(async (req: Request) => {
     // the same boundary buildFinalPayload used internally to build
     // `summaryRoleAssignments`, so both sides agree on where "summary"
     // begins without recomputing the formula twice.
-    const summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, summaryRoleAssignments);
+    let summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, summaryRoleAssignments);
     const summaryDuplicateRoles = findSummaryDuplicateRoles(summaryRoleAssignments);
+
+    // ── FIX 32 Part 2 — arithmetic saturation, now with an independent
+    // base (see coverage.ts's applyProvenNonAdditive for the full guard
+    // rationale — this is FIX 29's own idea, safe now that FIX 31 gives
+    // GRAND_TOTAL a source that never touches itemSum). Runs BEFORE
+    // determineSummaryValidity so a receipt whose books already balance
+    // against an independently-identified total never gets blocked by its
+    // own VAT-rate disclosure table.
+    let provenNonAdditive: { applied: boolean; count: number; blockedBy: string | null } = {
+      applied: false,
+      count: 0,
+      blockedBy: null,
+    };
+    {
+      const grandTotalAssignment = summaryRoleAssignments.find((a) => a.role === "GRAND_TOTAL");
+      const ledgerByAmountIdForSaturation = new Map(ledger.map((e) => [e.amountId, e]));
+      const grandTotalEntry = grandTotalAssignment ? ledgerByAmountIdForSaturation.get(grandTotalAssignment.amountId) : undefined;
+      const totalValueMinor = grandTotalEntry ? toMinor(grandTotalEntry.value, currency) : null;
+      const itemsRegionUnresolvedCount = coverage.filter((c) => c.state === "UNRESOLVED").length;
+      const { coverage: adjustedSummaryCoverage, result } = applyProvenNonAdditive(
+        summaryCoverage,
+        ledgerByAmountIdForSaturation,
+        appliedTotalWitness?.source ?? null,
+        totalValueMinor,
+        assembled.itemSumPlusChargesMinor,
+        itemsRegionUnresolvedCount,
+        (value: number) => toMinor(value, currency)
+      );
+      summaryCoverage = adjustedSummaryCoverage;
+      provenNonAdditive = result;
+    }
+
     const summaryValidity = determineSummaryValidity(summaryCoverage, summaryDuplicateRoles);
 
     // Arithmetic reconciliation AND summary coverage must both hold — this
@@ -833,6 +866,11 @@ serve(async (req: Request) => {
         // witness found a candidate (pre-FIX-31 closure-only path applied).
         totalWitness: appliedTotalWitness?.source ?? null,
         totalWitnessAgreement: appliedTotalWitness?.agreement ?? null,
+        // FIX 32 Part 2 — how many summary-region UNRESOLVED values were
+        // reclassified PROVEN_NON_ADDITIVE, and which guard refused when it
+        // didn't apply. Purely diagnostic.
+        provenNonAdditiveCount: provenNonAdditive.count,
+        provenNonAdditiveBlockedBy: provenNonAdditive.blockedBy,
         unresolvedLoadBearingCount: validity.unresolvedLoadBearingCount,
         genuineOwnershipMissCount: validity.unresolvedLoadBearingCount,
         duplicateOwnershipCount: validity.duplicateOwnershipCount,

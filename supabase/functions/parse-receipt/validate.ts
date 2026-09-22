@@ -271,7 +271,7 @@ export function resolveClosure(
 /** Maps validate.ts's own charge-kind vocabulary (classifyKnownCharge's
  *  chargeKind strings) onto coverage.ts's SummaryRole — kept here, next to
  *  where chargeKind is produced, rather than in coverage.ts. */
-const CHARGE_KIND_TO_SUMMARY_ROLE: Record<string, Exclude<SummaryRole, "UNRESOLVED" | "SUBTOTAL" | "GRAND_TOTAL">> = {
+const CHARGE_KIND_TO_SUMMARY_ROLE: Record<string, Exclude<SummaryRole, "UNRESOLVED" | "SUBTOTAL" | "GRAND_TOTAL" | "PROVEN_NON_ADDITIVE">> = {
   tax: "TAX",
   service: "SERVICE_CHARGE",
   tip: "TIP",
@@ -303,6 +303,12 @@ export interface AssembleResult {
    *  of item-sum closure, and whether typography agreed. Null when neither
    *  witness found anything (pre-FIX-31 closure-only behavior applied). */
   totalWitness: TotalWitnessResult | null;
+  /** FIX 32 — itemSum + recognized charges, in minor units, exactly as
+   *  already computed above for the (possibly witness-overridden)
+   *  totalResolution — exposed so coverage.ts's applyProvenNonAdditive can
+   *  test it against an INDEPENDENTLY identified total without
+   *  recomputing it a second, potentially-divergent way. */
+  itemSumPlusChargesMinor: number;
 }
 
 export function buildFinalPayload(
@@ -642,5 +648,12 @@ export function buildFinalPayload(
     printedTotal: printedFields.printedTotal ?? null,
   };
 
-  return { payload, orphanCount, summaryRoleAssignments, priceKindOverrides, totalWitness: witnessCandidate ? totalWitness : null };
+  return {
+    payload,
+    orphanCount,
+    summaryRoleAssignments,
+    priceKindOverrides,
+    totalWitness: witnessCandidate ? totalWitness : null,
+    itemSumPlusChargesMinor: itemSumMinor + chargesMinor,
+  };
 }

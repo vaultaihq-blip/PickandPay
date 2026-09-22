@@ -101,6 +101,7 @@ import {
   classifySummaryCoverage,
   findSummaryDuplicateRoles,
   determineSummaryValidity,
+  applyProvenNonAdditive,
 } from "../supabase/functions/parse-receipt/coverage";
 
 const MODEL = "gpt-4o-2024-08-06";
@@ -643,8 +644,31 @@ async function main() {
   // is never sufficient — see coverage.ts's header comments.
   const coverage = classifyCoverage(blocks, assignments, ledger, itemsRegionEnd);
   const duplicateOwnership = findDuplicateOwnership(assignments);
-  const summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, summaryRoleAssignments);
+  let summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, summaryRoleAssignments);
   const summaryDuplicateRoles = findSummaryDuplicateRoles(summaryRoleAssignments);
+
+  // FIX 32 Part 2 — kept in sync with index.ts: arithmetic saturation with
+  // an independent base. See coverage.ts's applyProvenNonAdditive.
+  let provenNonAdditive: { applied: boolean; count: number; blockedBy: string | null } = { applied: false, count: 0, blockedBy: null };
+  {
+    const grandTotalAssignment = summaryRoleAssignments.find((a) => a.role === "GRAND_TOTAL");
+    const ledgerByAmountIdForSaturation = new Map(ledger.map((e) => [e.amountId, e]));
+    const grandTotalEntry = grandTotalAssignment ? ledgerByAmountIdForSaturation.get(grandTotalAssignment.amountId) : undefined;
+    const totalValueMinor = grandTotalEntry ? toMinor(grandTotalEntry.value, currency) : null;
+    const itemsRegionUnresolvedCount = coverage.filter((c) => c.state === "UNRESOLVED").length;
+    const { coverage: adjustedSummaryCoverage, result } = applyProvenNonAdditive(
+      summaryCoverage,
+      ledgerByAmountIdForSaturation,
+      appliedTotalWitness?.source ?? null,
+      totalValueMinor,
+      assembled.itemSumPlusChargesMinor,
+      itemsRegionUnresolvedCount,
+      (value: number) => toMinor(value, currency)
+    );
+    summaryCoverage = adjustedSummaryCoverage;
+    provenNonAdditive = result;
+  }
+
   const summaryValidity = determineSummaryValidity(summaryCoverage, summaryDuplicateRoles);
   const finalReconciles = reconciliation.reconciles && summaryValidity.valid;
   const validity = determineValidity(structuralGaps, coverage, duplicateOwnership, validations, finalReconciles);
@@ -766,6 +790,8 @@ async function main() {
     offsetHypothesisAdopted,
     totalWitness: appliedTotalWitness?.source ?? null,
     totalWitnessAgreement: appliedTotalWitness?.agreement ?? null,
+    provenNonAdditiveCount: provenNonAdditive.count,
+    provenNonAdditiveBlockedBy: provenNonAdditive.blockedBy,
 
     // 4. Every semantic block produced by GPT.
     blocks: blocks.map((b) => ({
@@ -852,6 +878,7 @@ async function main() {
       // FIX 31 — which witness decided printedTotal (label/typography/none)
       // and whether the other one agreed.
       `totalWitness=${report.totalWitness}, totalWitnessAgreement=${report.totalWitnessAgreement}, ` +
+      `provenNonAdditiveCount=${report.provenNonAdditiveCount}, provenNonAdditiveBlockedBy=${report.provenNonAdditiveBlockedBy}, ` +
       // FIX 22 Part 1 — retryFired=false means structuralGap never exceeded
       // the threshold in the first place; gapBefore is null in that case.
       `retryFired=${report.structureRetryFired}, gapBefore=${report.structuralGapCountBeforeRetry}, ` +

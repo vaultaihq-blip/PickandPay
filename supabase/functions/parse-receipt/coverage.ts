@@ -458,7 +458,8 @@ export type SummaryRole =
   | "TIP"
   | "DISCOUNT"
   | "FEE"
-  | "UNRESOLVED";
+  | "UNRESOLVED"
+  | "PROVEN_NON_ADDITIVE";
 
 /** One decided role for one observed summary amountId. Built by
  *  validate.ts's buildFinalPayload from the exact same resolution it
@@ -467,7 +468,12 @@ export type SummaryRole =
  *  output. */
 export interface SummaryRoleAssignment {
   amountId: string;
-  role: Exclude<SummaryRole, "UNRESOLVED">;
+  /** PROVEN_NON_ADDITIVE is deliberately excluded here too — it is never a
+   *  per-occurrence decision buildFinalPayload makes (nothing "won" that
+   *  role), only a blanket reclassification applyProvenNonAdditive applies
+   *  afterward, over the whole UNRESOLVED set at once, and only when its
+   *  own four guards hold. See that function's header. */
+  role: Exclude<SummaryRole, "UNRESOLVED" | "PROVEN_NON_ADDITIVE">;
 }
 
 export interface SummaryCoverageEntry {
@@ -581,4 +587,98 @@ export function determineSummaryValidity(
     summaryUnresolvedAmountCount: unresolved,
     summaryDuplicateRoleAttemptCount: duplicates.length,
   };
+}
+
+// ─── FIX 32 Part 2 — arithmetic saturation, with an independent base ───────
+//
+// FIX 29 tried "if the item sum already equals the printed total, no
+// unclassified summary value can be a real, uncounted charge — summing
+// anything more would break an equality that already holds." The logic was
+// sound; the implementation was circular, because `GRAND_TOTAL` was ONLY
+// ever assigned to a candidate whose own value already equalled
+// itemSum + charges (validate.ts's resolveClosure) — the check re-derived
+// the exact fact it claimed to prove, so it could never distinguish Quebra
+// Mar's genuine VAT-rate table from the FIX 16 BP/BQ scenarios' real,
+// missing charge.
+//
+// FIX 31 gives GRAND_TOTAL a source that never touches itemSum at all — a
+// printed label or typographic emphasis, found in the raw OCR independent
+// of any arithmetic. With that, the equality this function checks is no
+// longer measuring its own premise: it is testing a claim (itemSum +
+// charges equals an INDEPENDENTLY identified total) that could fail, and
+// on BP/BQ's own shapes, does.
+//
+// Four guards, every one load-bearing — this function refuses (returns the
+// coverage UNCHANGED) unless every one holds:
+//   1. the total came from a witness (label/typography), never from
+//      closure — otherwise the equality below is circular again, exactly
+//      the FIX 29 trap.
+//   2. itemSum + recognized charges EXACTLY equals that independently
+//      identified total, in minor units, zero tolerance — this is the
+//      actual proof: the books already balance, so nothing more can fit.
+//   3. no UNRESOLVED summary value is LARGER than the total — this is what
+//      catches BP (a real, missing 50.85 charge sitting unclaimed) even
+//      when guard 2 might otherwise coincidentally hold on some other
+//      shape; a real total is never smaller than a real charge that
+//      belongs to it.
+//   4. no UNRESOLVED value anywhere in the ITEMS region — Sulbarreiro's
+//      six-to-nine stray decimals are real modifier prices an OCR-batched
+//      layout dropped, never decoration, and this function must never
+//      touch them; they keep blocking `valid` exactly as before, via the
+//      unrelated items-region coverage check this function doesn't run.
+export interface ProvenNonAdditiveResult {
+  applied: boolean;
+  /** How many summary-region UNRESOLVED entries were reclassified. 0 when
+   *  `applied` is false. */
+  count: number;
+  /** Which guard refused, when `applied` is false — null only when applied
+   *  is true. Purely diagnostic. */
+  blockedBy:
+    | "no_independent_total"
+    | "sum_mismatch"
+    | "larger_unresolved_value"
+    | "items_region_unresolved"
+    | null;
+}
+
+export function applyProvenNonAdditive(
+  summaryCoverage: SummaryCoverageEntry[],
+  ledgerByAmountId: Map<string, LedgerEntry>,
+  /** Guard 1 — null means the total was never identified at all, or was
+   *  identified by arithmetic closure (the circular case). Only "label" or
+   *  "typography" (see totalWitness.ts) count as independent. */
+  totalWitnessSource: "label" | "typography" | null,
+  totalValueMinor: number | null,
+  itemSumPlusChargesMinor: number,
+  /** Guard 4 — `determineValidity`'s own `unresolvedLoadBearingCount` for
+   *  the ITEMS region, computed by the caller exactly as it already was
+   *  before this function existed; never recomputed here. */
+  itemsRegionUnresolvedCount: number,
+  /** Same currency-to-minor-units convention as reconcile.ts's own toMinor
+   *  (100 per major unit, except a handful of zero-decimal currencies) —
+   *  needed here only to compare each unresolved entry's own value against
+   *  totalValueMinor on the same footing guard 2 already used. */
+  toMinorFn: (value: number) => number | null
+): { coverage: SummaryCoverageEntry[]; result: ProvenNonAdditiveResult } {
+  const refuse = (blockedBy: ProvenNonAdditiveResult["blockedBy"]) => ({
+    coverage: summaryCoverage,
+    result: { applied: false, count: 0, blockedBy },
+  });
+
+  if (totalWitnessSource === null || totalValueMinor === null) return refuse("no_independent_total");
+  if (itemSumPlusChargesMinor !== totalValueMinor) return refuse("sum_mismatch");
+
+  const unresolvedEntries = summaryCoverage.filter((c) => c.role === "UNRESOLVED");
+  const hasLargerOrphan = unresolvedEntries.some((c) => {
+    const entry = ledgerByAmountId.get(c.amountId);
+    if (!entry) return false;
+    const entryMinor = toMinorFn(entry.value);
+    return entryMinor !== null && entryMinor > totalValueMinor;
+  });
+  if (hasLargerOrphan) return refuse("larger_unresolved_value");
+
+  if (itemsRegionUnresolvedCount > 0) return refuse("items_region_unresolved");
+
+  const newCoverage = summaryCoverage.map((c) => (c.role === "UNRESOLVED" ? { ...c, role: "PROVEN_NON_ADDITIVE" as const } : c));
+  return { coverage: newCoverage, result: { applied: true, count: unresolvedEntries.length, blockedBy: null } };
 }

@@ -65,20 +65,42 @@ export interface TotalWitnessResult {
 // comment naming the receipt it came from — never a guess at what other
 // languages "probably" say.
 const EXCLUDE_PATTERNS = [
-  /sub[\s-]?total/i, // "Sub-total" / "Subtotal" (Buca di Beppo, Zoca, Pai)
-  /total\s+tax/i, // "Total Tax" (Hollywood Cafe)
+  /sub[\s-]?total/i, // "Sub-total" / "Subtotal" (Buca di Beppo, Zoca, Pai) — also catches Italian "Subtotale"
+  /total\s+tax/i, // "Total Tax" (Hollywood Cafe) — also catches "Total Tax Due"
   /total\s+incid/i, // "TOTAL INCIDENCIAS" (Quebra Mar, Ramires — VAT-rate table)
   /total\s+l[ií]quido/i, // "Total Liquido" (Sulbarreiro — net, not the amount paid)
   /total\s+iva\s+inclu/i, // "Total IVA Incluido X%" (Sulbarreiro — VAT breakdown)
   /total\s+items?\b/i, // "Total Items : 20" (VRO — item count, not currency)
   /net\s*(amount|umsatz)/i, // "Net Amount" (VRO), "Nettoumsatz" (Augustiner)
+  // FIX 32 — added alongside the label variants below, in the same
+  // proportion, per this module's own rule: no new label pattern without a
+  // matching exclusion for the false positive it's most likely to invite.
+  /total\s+amount\s+of\s+(tax|vat)/i, // "Total Amount of Tax" vs the new "Total Amount" label
+  /zwischensumme/i, // German subtotal, vs the new "Summe" label
+  /totale\s+iva/i, // Italian VAT breakdown, vs the new "Totale" label — same shape as "Total IVA Incluido"
 ];
 const TOTAL_LABEL_PATTERNS = [
-  /\btotal\b/i, // "Total", "TOTAL", "Total :" — the common case
+  /\btotal\b/i, // "Total", "TOTAL", "Total :", "Grand Total", "Total Due", "Total Amount", "Total a Pagar", "Valor Total", "Montante Total", "Total Factura", "Montant Total", "Total TTC", "Total à Payer", "Net Total", "Total Charge" — every ASCII variant containing the substring "total" is already covered by this one pattern; no separate entry needed per phrase.
   /\bamount\s+due\b/i,
   /\bbalance\s+due\b/i, // "Balance Due" (Buca di Beppo)
   /^bar\b/i, // "Bar 96,50" (Augustiner — this merchant's own printed total label)
   /\bamt\s+due\b/i,
+  // FIX 32 — measured against all 33 saved corpus captures before adoption
+  // (see the corpus report for the before/after table); none of these were
+  // observed directly in this corpus, so each is a plausible variant, not a
+  // confirmed one — exactly why this list stays auxiliary, never decisive,
+  // and typography still covers whatever a future receipt's language this
+  // list doesn't anticipate.
+  /\bamount\s+payable\b/i,
+  /\bpayment\s+due\b/i,
+  /\bvalor\s+a\s+pagar\b/i, // Portuguese/Spanish "Valor a Pagar" — doesn't contain "total"
+  /\bnet\s+[aà]\s+payer\b/i, // French "Net à Payer"
+  /\bgesamtbetrag\b/i, // German
+  /\bgesamtsumme\b/i, // German
+  /\bzu\s+zahlen\b/i, // German "Zu Zahlen"
+  /\bendbetrag\b/i, // German
+  /\bsumme\b/i, // German "Summe" — excluded from "Zwischensumme" above
+  /\btotale\b/i, // Italian "Totale" (word-boundary: does NOT match inside "Subtotale", already excluded above) — also covers "Importo Totale", "Totale da Pagare"
 ];
 
 function classifyLabelLine(text: string): "TOTAL_LABEL" | "EXCLUDED" | "NONE" {
