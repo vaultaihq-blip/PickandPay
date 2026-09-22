@@ -12,6 +12,7 @@ import {
   findSummaryDuplicateRoles,
   determineSummaryValidity,
   applyProvenNonAdditive,
+  applyProvenAdditiveCharge,
   type SummaryRoleAssignment,
   type ColumnContext,
 } from "../coverage";
@@ -2166,5 +2167,304 @@ describe("coverage: FIX 33 — descriptive numbers and zero values", () => {
     const assignments: Assignment[] = [{ blockId: "FINO", amountId: "TOTAL", quantity: 1, priceKind: "lineTotal" }];
     const coverage = classifyCoverage(blocks, assignments, ledger, computeItemsRegionEnd(blocks));
     assertEqual(coverage.find((c) => c.amountId === "DESC")?.state, "UNRESOLVED", "same shape as ED, but with no columnContext — must fall back to UNRESOLVED, not guess");
+  });
+});
+
+// ─── FIX 34 — proven additive charge, the mirror of FIX 32 ─────────────────
+//
+// Composes FIX 34 THEN FIX 32 in sequence ("first this rule, then the
+// other") — a separate helper from finalizeSummaryWithSaturation for the
+// same reason that one is separate from finalizeSummary: every pre-FIX-34
+// test must exercise its own exact prior sequence, unchanged.
+function finalizeSummaryWithAdditive(
+  currency: string,
+  blocks: StructureBlock[],
+  validations: ReturnType<typeof validateAssignments>,
+  ledger: LedgerEntry[],
+  totalWitness: TotalWitnessResult | null,
+  lines: string[] = []
+) {
+  const assembled = buildFinalPayload(null, currency, lines, blocks, validations, ledger, totalWitness);
+  const itemsRegionEnd = computeItemsRegionEnd(blocks);
+  const itemsCoverage = classifyCoverage(
+    blocks,
+    validations.map((v) => ({ blockId: v.blockId, amountId: v.amountId, quantity: null, priceKind: null })),
+    ledger,
+    itemsRegionEnd
+  );
+  const itemsRegionUnresolvedCount = itemsCoverage.filter((c) => c.state === "UNRESOLVED").length;
+
+  let summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, assembled.summaryRoleAssignments);
+  const summaryDuplicates = findSummaryDuplicateRoles(assembled.summaryRoleAssignments);
+
+  const ledgerByAmountId = new Map(ledger.map((e) => [e.amountId, e]));
+  const grandTotalAssignment = assembled.summaryRoleAssignments.find((a) => a.role === "GRAND_TOTAL");
+  const grandTotalEntry = grandTotalAssignment ? ledgerByAmountId.get(grandTotalAssignment.amountId) : undefined;
+  const totalValueMinor = grandTotalEntry ? toMinor(grandTotalEntry.value, currency) : null;
+
+  const { coverage: afterAdditive, result: additive } = applyProvenAdditiveCharge(
+    summaryCoverage,
+    ledgerByAmountId,
+    assembled.totalWitness?.source ?? null,
+    totalValueMinor,
+    assembled.itemSumPlusChargesMinor,
+    assembled.itemSumMinor,
+    itemsRegionUnresolvedCount,
+    lines,
+    (value: number) => toMinor(value, currency)
+  );
+  summaryCoverage = afterAdditive;
+
+  let itemSumPlusChargesMinorAfterAdditive = assembled.itemSumPlusChargesMinor;
+  if (additive.applied) {
+    const wonIds = new Set(afterAdditive.filter((c) => c.role === "PROVEN_ADDITIVE_CHARGE").map((c) => c.amountId));
+    let addedMinor = 0;
+    for (const id of wonIds) {
+      const e = ledgerByAmountId.get(id);
+      if (!e) continue;
+      const m = toMinor(e.value, currency);
+      if (m !== null) addedMinor += e.value < 0 ? -m : m;
+    }
+    itemSumPlusChargesMinorAfterAdditive += addedMinor;
+  }
+
+  const { coverage: afterSaturation, result: saturation } = applyProvenNonAdditive(
+    summaryCoverage,
+    ledgerByAmountId,
+    assembled.totalWitness?.source ?? null,
+    totalValueMinor,
+    itemSumPlusChargesMinorAfterAdditive,
+    itemsRegionUnresolvedCount,
+    (value: number) => toMinor(value, currency)
+  );
+  summaryCoverage = afterSaturation;
+
+  const summaryValidity = determineSummaryValidity(summaryCoverage, summaryDuplicates);
+  const reconciliation = reconcile(assembled.payload);
+  const finalReconciles = reconciliation.reconciles && summaryValidity.valid;
+  return { assembled, summaryCoverage, summaryValidity, additive, saturation, reconciliation, finalReconciles };
+}
+
+describe("validate/coverage: FIX 34 — proven additive charge, the mirror of FIX 32", () => {
+  it("EK — Pai, real fixture values (fix33-corpus-pai-run1.debug.json): the 55.60 Large Party surcharge becomes PROVEN_ADDITIVE_CHARGE; the books close at 376.97; valid = true", () => {
+    const ledger: LedgerEntry[] = [
+      entry({ amountId: "I1", value: 278, lineIndex: 1 }),
+      entry({ amountId: "A17", value: 278, lineIndex: 31 }), // Subtotal
+      entry({ amountId: "A18", value: 55.6, lineIndex: 32 }), // Large Party (20.00%) — UNRESOLVED before this fix
+      entry({ amountId: "A19", value: 43.37, lineIndex: 33 }), // Tax
+      entry({ amountId: "A20", value: 376.97, lineIndex: 34 }), // Total — witnessed by label (FIX 31)
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "ITEM", kind: "item", lineIndices: [1], parentBlockId: null, name: "Khao Soi Beef", amountId: "I1", quantity: 1, priceKind: "unit" },
+      { blockId: "b21", kind: "summary", lineIndices: [31], parentBlockId: null, name: "Subtotal", amountId: "A17", quantity: null, priceKind: null },
+      { blockId: "b22", kind: "summary", lineIndices: [32], parentBlockId: null, name: "Large Party (20.00%)", amountId: "A18", quantity: null, priceKind: null },
+      { blockId: "b23", kind: "summary", lineIndices: [33], parentBlockId: null, name: "Tax", amountId: "A19", quantity: null, priceKind: null },
+      { blockId: "b24", kind: "summary", lineIndices: [34], parentBlockId: null, name: "Total", amountId: "A20", quantity: null, priceKind: null },
+    ];
+    const assignments: Assignment[] = blocks.map((b) => ({ blockId: b.blockId, amountId: b.amountId, quantity: b.quantity, priceKind: b.priceKind }));
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const lines: string[] = [];
+    lines[32] = "Large Party (20.00%) $55.60"; // the real printed line — this is where guard 5's corroboration comes from
+    const { additive, summaryValidity, finalReconciles } = finalizeSummaryWithAdditive("USD", blocks, validations, ledger, witness("A20", 376.97), lines);
+    assertDeepEqual(additive, { applied: true, count: 1, corroboratedByRate: true, blockedBy: null });
+    assertEqual(summaryValidity.valid, true);
+    assertEqual(finalReconciles, true, "this is the test that decides the round");
+  });
+
+  it("EL — two different sets both close the same gap → ambiguous, nothing classified (guard 4)", () => {
+    const ledger: LedgerEntry[] = [
+      entry({ amountId: "I1", value: 100, lineIndex: 1 }),
+      entry({ amountId: "SUB", value: 100, lineIndex: 5 }),
+      entry({ amountId: "X", value: 30, lineIndex: 6 }),
+      entry({ amountId: "Y", value: 30, lineIndex: 7 }),
+      entry({ amountId: "TOT", value: 130, lineIndex: 8 }),
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "ITEM", kind: "item", lineIndices: [1], parentBlockId: null, name: "Widget", amountId: "I1", quantity: 1, priceKind: "unit" },
+      { blockId: "SUB", kind: "summary", lineIndices: [5], parentBlockId: null, name: "Subtotal", amountId: "SUB", quantity: null, priceKind: null },
+      { blockId: "X", kind: "summary", lineIndices: [6], parentBlockId: null, name: null, amountId: "X", quantity: null, priceKind: null },
+      { blockId: "Y", kind: "summary", lineIndices: [7], parentBlockId: null, name: null, amountId: "Y", quantity: null, priceKind: null },
+      { blockId: "TOT", kind: "summary", lineIndices: [8], parentBlockId: null, name: "Total", amountId: "TOT", quantity: null, priceKind: null },
+    ];
+    const assignments: Assignment[] = blocks.map((b) => ({ blockId: b.blockId, amountId: b.amountId, quantity: b.quantity, priceKind: b.priceKind }));
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const { additive, summaryCoverage } = finalizeSummaryWithAdditive("CAD", blocks, validations, ledger, witness("TOT", 130));
+    assertEqual(additive.applied, false);
+    assertEqual(additive.blockedBy, "ambiguous_closing_sets");
+    assertEqual(summaryCoverage.find((c) => c.amountId === "X")?.role, "UNRESOLVED");
+    assertEqual(summaryCoverage.find((c) => c.amountId === "Y")?.role, "UNRESOLVED");
+  });
+
+  it("EM — the difference closes exactly, but a value in the ITEMS region is still unresolved → does not fire (guard 2, Sulbarreiro's own shape)", () => {
+    const ledger: LedgerEntry[] = [
+      entry({ amountId: "I1", value: 45, lineIndex: 1 }),
+      entry({ amountId: "STRAY", value: 2.0, lineIndex: 2 }), // a real, uncounted items-region value
+      entry({ amountId: "SUB", value: 45, lineIndex: 5 }),
+      entry({ amountId: "SUR", value: 5.85, lineIndex: 6 }),
+      entry({ amountId: "TOT", value: 50.85, lineIndex: 7 }),
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "ITEM", kind: "item", lineIndices: [1], parentBlockId: null, name: "Widget", amountId: "I1", quantity: 1, priceKind: "unit" },
+      { blockId: "SUB", kind: "summary", lineIndices: [5], parentBlockId: null, name: "Subtotal", amountId: "SUB", quantity: null, priceKind: null },
+      { blockId: "SUR", kind: "summary", lineIndices: [6], parentBlockId: null, name: null, amountId: "SUR", quantity: null, priceKind: null },
+      { blockId: "TOT", kind: "summary", lineIndices: [7], parentBlockId: null, name: "Total", amountId: "TOT", quantity: null, priceKind: null },
+    ];
+    const assignments: Assignment[] = blocks.map((b) => ({ blockId: b.blockId, amountId: b.amountId, quantity: b.quantity, priceKind: b.priceKind }));
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const { additive, summaryCoverage } = finalizeSummaryWithAdditive("CAD", blocks, validations, ledger, witness("TOT", 50.85));
+    assertEqual(additive.applied, false);
+    assertEqual(additive.blockedBy, "items_region_unresolved");
+    assertEqual(summaryCoverage.find((c) => c.amountId === "SUR")?.role, "UNRESOLVED", "the sum would close exactly (45+5.85=50.85), but STRAY blocks it — a missing item price could coincidentally masquerade as a charge otherwise");
+  });
+
+  it("EN — the total was identified by closure instead of a witness → does not fire (guard 1)", () => {
+    const ledger: LedgerEntry[] = [
+      entry({ amountId: "I1", value: 278, lineIndex: 1 }),
+      entry({ amountId: "SUB", value: 278, lineIndex: 5 }),
+      entry({ amountId: "SUR", value: 55.6, lineIndex: 6 }),
+      entry({ amountId: "TAX", value: 43.37, lineIndex: 7 }),
+      entry({ amountId: "TOT", value: 376.97, lineIndex: 8 }),
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "ITEM", kind: "item", lineIndices: [1], parentBlockId: null, name: "Widget", amountId: "I1", quantity: 1, priceKind: "unit" },
+      { blockId: "SUB", kind: "summary", lineIndices: [5], parentBlockId: null, name: "Subtotal", amountId: "SUB", quantity: null, priceKind: null },
+      { blockId: "SUR", kind: "summary", lineIndices: [6], parentBlockId: null, name: null, amountId: "SUR", quantity: null, priceKind: null },
+      { blockId: "TAX", kind: "summary", lineIndices: [7], parentBlockId: null, name: "Tax", amountId: "TAX", quantity: null, priceKind: null },
+      { blockId: "TOT", kind: "summary", lineIndices: [8], parentBlockId: null, name: "Total", amountId: "TOT", quantity: null, priceKind: null },
+    ];
+    const assignments: Assignment[] = blocks.map((b) => ({ blockId: b.blockId, amountId: b.amountId, quantity: b.quantity, priceKind: b.priceKind }));
+    const validations = validateAssignments(blocks, assignments, ledger);
+    // No totalWitness passed — TOT can only win via resolveClosure, which
+    // needs itemSum+charges to ALREADY equal it (it doesn't: 321.37 !=
+    // 376.97), so TOT never wins GRAND_TOTAL here at all — measuring this
+    // rule's own premise would be exactly the FIX 29 circularity.
+    const { additive, summaryCoverage, summaryValidity } = finalizeSummaryWithAdditive("USD", blocks, validations, ledger, null);
+    assertEqual(additive.applied, false);
+    assertEqual(additive.blockedBy, "no_independent_total");
+    assertEqual(summaryCoverage.find((c) => c.amountId === "SUR")?.role, "UNRESOLVED");
+    assertEqual(summaryValidity.valid, false);
+  });
+
+  it("EO — a discount with its printed negative sign fills a negative gap; the same discount without a sign stays unresolved (guard S5, sign never inferred)", () => {
+    const buildLedger = (discountRaw: string, discountValue: number): LedgerEntry[] => [
+      entry({ amountId: "I1", value: 100, lineIndex: 1 }),
+      entry({ amountId: "SUB", value: 100, lineIndex: 5 }),
+      entry({ amountId: "DISC", value: discountValue, lineIndex: 6, rawText: discountRaw }),
+      entry({ amountId: "TOT", value: 80, lineIndex: 7 }),
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "ITEM", kind: "item", lineIndices: [1], parentBlockId: null, name: "Widget", amountId: "I1", quantity: 1, priceKind: "unit" },
+      { blockId: "SUB", kind: "summary", lineIndices: [5], parentBlockId: null, name: "Subtotal", amountId: "SUB", quantity: null, priceKind: null },
+      // Unnamed — never auto-recognized by classifyKnownCharge ("Desconto"
+      // would already be resolved before this rule ever runs); this
+      // isolates the sign-reading behavior this rule itself is responsible for.
+      { blockId: "DISC", kind: "summary", lineIndices: [6], parentBlockId: null, name: null, amountId: "DISC", quantity: null, priceKind: null },
+      { blockId: "TOT", kind: "summary", lineIndices: [7], parentBlockId: null, name: "Total", amountId: "TOT", quantity: null, priceKind: null },
+    ];
+    const assignments: Assignment[] = blocks.map((b) => ({ blockId: b.blockId, amountId: b.amountId, quantity: b.quantity, priceKind: b.priceKind }));
+
+    const signedLedger = buildLedger("-20.00", -20);
+    const signedValidations = validateAssignments(blocks, assignments, signedLedger);
+    const signed = finalizeSummaryWithAdditive("CAD", blocks, signedValidations, signedLedger, witness("TOT", 80));
+    assertDeepEqual(signed.additive, { applied: true, count: 1, corroboratedByRate: false, blockedBy: null });
+    assertEqual(signed.summaryCoverage.find((c) => c.amountId === "DISC")?.role, "PROVEN_ADDITIVE_CHARGE");
+
+    const unsignedLedger = buildLedger("20.00", 20);
+    const unsignedValidations = validateAssignments(blocks, assignments, unsignedLedger);
+    const unsigned = finalizeSummaryWithAdditive("CAD", blocks, unsignedValidations, unsignedLedger, witness("TOT", 80));
+    assertEqual(unsigned.additive.applied, false);
+    assertEqual(
+      unsigned.summaryCoverage.find((c) => c.amountId === "DISC")?.role,
+      "UNRESOLVED",
+      "an unsigned value must never be treated as a subtraction just because the gap itself is negative"
+    );
+  });
+
+  it("EP — an adjacent printed percentage contradicts the candidate's value → does not fire (guard 5)", () => {
+    const ledger: LedgerEntry[] = [
+      entry({ amountId: "I1", value: 278, lineIndex: 1 }),
+      entry({ amountId: "SUB", value: 278, lineIndex: 5 }),
+      entry({ amountId: "SUR", value: 55.6, lineIndex: 6 }), // still equals the gap...
+      entry({ amountId: "TOT", value: 333.6, lineIndex: 7 }), // ...gap = 333.60-278.00 = 55.60, no Tax this time
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "ITEM", kind: "item", lineIndices: [1], parentBlockId: null, name: "Widget", amountId: "I1", quantity: 1, priceKind: "unit" },
+      { blockId: "SUB", kind: "summary", lineIndices: [5], parentBlockId: null, name: "Subtotal", amountId: "SUB", quantity: null, priceKind: null },
+      // Printed 10%, but 278.00 * 10% = 27.80 != 55.60 — a genuine contradiction.
+      { blockId: "SUR", kind: "summary", lineIndices: [6], parentBlockId: null, name: "Large Party (10.00%)", amountId: "SUR", quantity: null, priceKind: null },
+      { blockId: "TOT", kind: "summary", lineIndices: [7], parentBlockId: null, name: "Total", amountId: "TOT", quantity: null, priceKind: null },
+    ];
+    const assignments: Assignment[] = blocks.map((b) => ({ blockId: b.blockId, amountId: b.amountId, quantity: b.quantity, priceKind: b.priceKind }));
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const lines: string[] = [];
+    lines[6] = "Large Party (10.00%) $55.60";
+    const { additive, summaryCoverage } = finalizeSummaryWithAdditive("USD", blocks, validations, ledger, witness("TOT", 333.6), lines);
+    assertEqual(additive.applied, false);
+    assertEqual(additive.blockedBy, "rate_contradiction");
+    assertEqual(summaryCoverage.find((c) => c.amountId === "SUR")?.role, "UNRESOLVED", "the sum closes exactly, but the printed percentage contradicts it — never classified on sum-closure alone once a rate is present");
+  });
+
+  it("EQ — filling the gap would require three values → never attempted (guard 3, by construction)", () => {
+    const ledger: LedgerEntry[] = [
+      entry({ amountId: "I1", value: 100, lineIndex: 1 }),
+      entry({ amountId: "SUB", value: 100, lineIndex: 5 }),
+      entry({ amountId: "A", value: 10, lineIndex: 6 }),
+      entry({ amountId: "B", value: 10, lineIndex: 7 }),
+      entry({ amountId: "C", value: 10, lineIndex: 8 }),
+      entry({ amountId: "TOT", value: 130, lineIndex: 9 }), // gap = 30: A+B+C closes it, no pair does (10+10=20)
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "ITEM", kind: "item", lineIndices: [1], parentBlockId: null, name: "Widget", amountId: "I1", quantity: 1, priceKind: "unit" },
+      { blockId: "SUB", kind: "summary", lineIndices: [5], parentBlockId: null, name: "Subtotal", amountId: "SUB", quantity: null, priceKind: null },
+      { blockId: "A", kind: "summary", lineIndices: [6], parentBlockId: null, name: null, amountId: "A", quantity: null, priceKind: null },
+      { blockId: "B", kind: "summary", lineIndices: [7], parentBlockId: null, name: null, amountId: "B", quantity: null, priceKind: null },
+      { blockId: "C", kind: "summary", lineIndices: [8], parentBlockId: null, name: null, amountId: "C", quantity: null, priceKind: null },
+      { blockId: "TOT", kind: "summary", lineIndices: [9], parentBlockId: null, name: "Total", amountId: "TOT", quantity: null, priceKind: null },
+    ];
+    const assignments: Assignment[] = blocks.map((b) => ({ blockId: b.blockId, amountId: b.amountId, quantity: b.quantity, priceKind: b.priceKind }));
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const { additive, summaryCoverage } = finalizeSummaryWithAdditive("CAD", blocks, validations, ledger, witness("TOT", 130));
+    assertEqual(additive.applied, false);
+    assertEqual(additive.blockedBy, "no_closing_set", "no single value or pair sums to the 30.00 gap — three would, but sets are capped at two, by construction");
+    assertEqual(summaryCoverage.find((c) => c.amountId === "A")?.role, "UNRESOLVED");
+    assertEqual(summaryCoverage.find((c) => c.amountId === "B")?.role, "UNRESOLVED");
+    assertEqual(summaryCoverage.find((c) => c.amountId === "C")?.role, "UNRESOLVED");
+  });
+
+  it("ER — residual risk (documented, not fixed): a real charge absent from OCR and a VAT-table row that coincides to the cent with the gap — the VAT row is wrongly classified as the charge", () => {
+    // The receipt truly has an extra charge the OCR never captured at all
+    // (no ledger entry represents it anywhere) — the total is genuinely
+    // 113.00 because of it. Separately, a real VAT-disclosure row (13.00,
+    // with its rate printed only in the block's own semantic NAME, never as
+    // a standalone "%" token in the raw OCR line text) sits UNRESOLVED and,
+    // by coincidence, equals the gap exactly. None of the six guards can
+    // tell these apart — guard 5 only refuses a CONTRADICTING percentage;
+    // with no percentage TOKEN printed next to it, guard 5 has nothing to
+    // check, and sum-closure alone decides.
+    const ledger: LedgerEntry[] = [
+      entry({ amountId: "I1", value: 100, lineIndex: 1 }),
+      entry({ amountId: "SUB", value: 100, lineIndex: 5 }),
+      entry({ amountId: "VATROW", value: 13.0, lineIndex: 6 }), // a genuine VAT-table disclosure, not a charge
+      entry({ amountId: "TOT", value: 113.0, lineIndex: 7 }), // real total — includes a charge OCR never captured at all
+    ];
+    const blocks: StructureBlock[] = [
+      { blockId: "ITEM", kind: "item", lineIndices: [1], parentBlockId: null, name: "Widget", amountId: "I1", quantity: 1, priceKind: "unit" },
+      { blockId: "SUB", kind: "summary", lineIndices: [5], parentBlockId: null, name: "Subtotal", amountId: "SUB", quantity: null, priceKind: null },
+      { blockId: "VATROW", kind: "summary", lineIndices: [6], parentBlockId: null, name: "Total IVA Incluido 13.00%", amountId: "VATROW", quantity: null, priceKind: null },
+      { blockId: "TOT", kind: "summary", lineIndices: [7], parentBlockId: null, name: "Total", amountId: "TOT", quantity: null, priceKind: null },
+    ];
+    const assignments: Assignment[] = blocks.map((b) => ({ blockId: b.blockId, amountId: b.amountId, quantity: b.quantity, priceKind: b.priceKind }));
+    const validations = validateAssignments(blocks, assignments, ledger);
+    const lines: string[] = [];
+    lines[6] = "Total IVA Incluido 13,00"; // no "%" token in the printed line itself
+    const { additive, summaryCoverage, summaryValidity } = finalizeSummaryWithAdditive("EUR", blocks, validations, ledger, witness("TOT", 113.0), lines);
+    assertEqual(additive.applied, true, "documented residual risk: sum-closure alone is enough when no percentage token is present to check against");
+    assertEqual(additive.corroboratedByRate, false, "no percentage token found adjacent to VATROW — nothing corroborated this, nothing contradicted it either");
+    assertEqual(
+      summaryCoverage.find((c) => c.amountId === "VATROW")?.role,
+      "PROVEN_ADDITIVE_CHARGE",
+      "wrong label — this is really a VAT disclosure row, not the missing charge — but the shown total and the split still come out numerically correct: valid=true with the wrong structure, exactly the residual risk named in the FIX 34 report"
+    );
+    assertEqual(summaryValidity.valid, true, "numerically valid — the residual risk is about WHICH line gets the charge label, never about the total being wrong");
   });
 });

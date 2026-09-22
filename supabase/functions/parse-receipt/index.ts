@@ -90,6 +90,7 @@ import {
   findSummaryDuplicateRoles,
   determineSummaryValidity,
   applyProvenNonAdditive,
+  applyProvenAdditiveCharge,
 } from "./coverage.ts";
 import { reconcile, toMajor, toMinor } from "./reconcile.ts";
 
@@ -741,13 +742,78 @@ serve(async (req: Request) => {
     let summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, summaryRoleAssignments);
     const summaryDuplicateRoles = findSummaryDuplicateRoles(summaryRoleAssignments);
 
+    // ── FIX 34 — proven additive charge, the mirror of FIX 32 Part 2 (see
+    // coverage.ts's applyProvenAdditiveCharge for the full six-guard
+    // rationale). Runs BEFORE FIX 32's own saturation: once a genuine gap
+    // between itemSum+charges and the witnessed total is filled by a proven
+    // charge, the books may now balance exactly, and any VAT-rate leftovers
+    // become FIX 32's job on the very next step ("first this rule, then the
+    // other" — the two compose, never run in the other order).
+    const ledgerByAmountIdForCharges = new Map(ledger.map((e) => [e.amountId, e]));
+    let itemSumPlusChargesMinorAfterAdditive = assembled.itemSumPlusChargesMinor;
+    let provenAdditive: { applied: boolean; count: number; corroboratedByRate: boolean; blockedBy: string | null } = {
+      applied: false,
+      count: 0,
+      corroboratedByRate: false,
+      blockedBy: null,
+    };
+    {
+      const grandTotalAssignment = summaryRoleAssignments.find((a) => a.role === "GRAND_TOTAL");
+      const grandTotalEntry = grandTotalAssignment ? ledgerByAmountIdForCharges.get(grandTotalAssignment.amountId) : undefined;
+      const totalValueMinor = grandTotalEntry ? toMinor(grandTotalEntry.value, currency) : null;
+      const itemsRegionUnresolvedCount = coverage.filter((c) => c.state === "UNRESOLVED").length;
+      const { coverage: adjustedSummaryCoverage, result } = applyProvenAdditiveCharge(
+        summaryCoverage,
+        ledgerByAmountIdForCharges,
+        appliedTotalWitness?.source ?? null,
+        totalValueMinor,
+        assembled.itemSumPlusChargesMinor,
+        assembled.itemSumMinor,
+        itemsRegionUnresolvedCount,
+        lines,
+        (value: number) => toMinor(value, currency)
+      );
+      summaryCoverage = adjustedSummaryCoverage;
+      provenAdditive = result;
+
+      if (result.applied) {
+        // FIX 34 — the proven charge must enter the envelope's own charges
+        // sum (the bill-split math needs to know it's a charge to divide),
+        // mapped onto the EXISTING RawCharge shape rather than a new
+        // schema field. Sign, per the same ledger value's own printed sign,
+        // decides fee vs. discount — the only two kinds chargesMinor's own
+        // arithmetic (validate.ts) distinguishes by sign.
+        const wonAmountIds = new Set(
+          adjustedSummaryCoverage.filter((c) => c.role === "PROVEN_ADDITIVE_CHARGE").map((c) => c.amountId)
+        );
+        let addedMinor = 0;
+        for (const amountId of wonAmountIds) {
+          const e = ledgerByAmountIdForCharges.get(amountId);
+          if (!e) continue;
+          const block = blocks.find((b) => b.amountId === amountId);
+          payload.charges.push({
+            id: amountId,
+            name: block?.name ?? "Additional Charge",
+            amount: e.value,
+            kind: e.value < 0 ? "discount" : "fee",
+          });
+          const m = toMinor(e.value, currency);
+          if (m !== null) addedMinor += e.value < 0 ? -m : m;
+        }
+        itemSumPlusChargesMinorAfterAdditive = assembled.itemSumPlusChargesMinor + addedMinor;
+      }
+    }
+
     // ── FIX 32 Part 2 — arithmetic saturation, now with an independent
     // base (see coverage.ts's applyProvenNonAdditive for the full guard
     // rationale — this is FIX 29's own idea, safe now that FIX 31 gives
     // GRAND_TOTAL a source that never touches itemSum). Runs BEFORE
     // determineSummaryValidity so a receipt whose books already balance
     // against an independently-identified total never gets blocked by its
-    // own VAT-rate disclosure table.
+    // own VAT-rate disclosure table. Uses itemSumPlusChargesMinorAfterAdditive
+    // (FIX 34's own updated figure, unchanged when FIX 34 never applied) so
+    // a receipt FIX 34 just closed doesn't get refused here by guard 2's
+    // now-stale sum.
     let provenNonAdditive: { applied: boolean; count: number; blockedBy: string | null } = {
       applied: false,
       count: 0,
@@ -755,16 +821,15 @@ serve(async (req: Request) => {
     };
     {
       const grandTotalAssignment = summaryRoleAssignments.find((a) => a.role === "GRAND_TOTAL");
-      const ledgerByAmountIdForSaturation = new Map(ledger.map((e) => [e.amountId, e]));
-      const grandTotalEntry = grandTotalAssignment ? ledgerByAmountIdForSaturation.get(grandTotalAssignment.amountId) : undefined;
+      const grandTotalEntry = grandTotalAssignment ? ledgerByAmountIdForCharges.get(grandTotalAssignment.amountId) : undefined;
       const totalValueMinor = grandTotalEntry ? toMinor(grandTotalEntry.value, currency) : null;
       const itemsRegionUnresolvedCount = coverage.filter((c) => c.state === "UNRESOLVED").length;
       const { coverage: adjustedSummaryCoverage, result } = applyProvenNonAdditive(
         summaryCoverage,
-        ledgerByAmountIdForSaturation,
+        ledgerByAmountIdForCharges,
         appliedTotalWitness?.source ?? null,
         totalValueMinor,
-        assembled.itemSumPlusChargesMinor,
+        itemSumPlusChargesMinorAfterAdditive,
         itemsRegionUnresolvedCount,
         (value: number) => toMinor(value, currency)
       );
@@ -877,6 +942,13 @@ serve(async (req: Request) => {
         // didn't apply. Purely diagnostic.
         provenNonAdditiveCount: provenNonAdditive.count,
         provenNonAdditiveBlockedBy: provenNonAdditive.blockedBy,
+        // FIX 34 — how many summary-region UNRESOLVED values were
+        // reclassified PROVEN_ADDITIVE_CHARGE, whether a corroborating
+        // printed percentage backed it, and which guard refused when it
+        // didn't apply. Purely diagnostic.
+        provenAdditiveCount: provenAdditive.count,
+        additiveCorroboratedByRate: provenAdditive.corroboratedByRate,
+        provenAdditiveBlockedBy: provenAdditive.blockedBy,
         unresolvedLoadBearingCount: validity.unresolvedLoadBearingCount,
         genuineOwnershipMissCount: validity.unresolvedLoadBearingCount,
         duplicateOwnershipCount: validity.duplicateOwnershipCount,

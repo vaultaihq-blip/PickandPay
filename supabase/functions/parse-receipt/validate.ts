@@ -271,7 +271,10 @@ export function resolveClosure(
 /** Maps validate.ts's own charge-kind vocabulary (classifyKnownCharge's
  *  chargeKind strings) onto coverage.ts's SummaryRole — kept here, next to
  *  where chargeKind is produced, rather than in coverage.ts. */
-const CHARGE_KIND_TO_SUMMARY_ROLE: Record<string, Exclude<SummaryRole, "UNRESOLVED" | "SUBTOTAL" | "GRAND_TOTAL" | "PROVEN_NON_ADDITIVE">> = {
+const CHARGE_KIND_TO_SUMMARY_ROLE: Record<
+  string,
+  Exclude<SummaryRole, "UNRESOLVED" | "SUBTOTAL" | "GRAND_TOTAL" | "PROVEN_NON_ADDITIVE" | "PROVEN_ADDITIVE_CHARGE">
+> = {
   tax: "TAX",
   service: "SERVICE_CHARGE",
   tip: "TIP",
@@ -309,6 +312,14 @@ export interface AssembleResult {
    *  test it against an INDEPENDENTLY identified total without
    *  recomputing it a second, potentially-divergent way. */
   itemSumPlusChargesMinor: number;
+  /** FIX 34 — itemSum ALONE, in minor units (the same value already used
+   *  above to compute itemSumPlusChargesMinor, exposed separately) — needed
+   *  by coverage.ts's applyProvenAdditiveCharge for its base*rate=value
+   *  corroboration check (FIX 34's own guard 5), which is measured against
+   *  the item sum alone, never against itemSum+charges (a printed
+   *  percentage like "Large Party (20.00%)" is always of the item total,
+   *  not of an already-tax-inclusive figure). */
+  itemSumMinor: number;
 }
 
 export function buildFinalPayload(
@@ -655,5 +666,6 @@ export function buildFinalPayload(
     priceKindOverrides,
     totalWitness: witnessCandidate ? totalWitness : null,
     itemSumPlusChargesMinor: itemSumMinor + chargesMinor,
+    itemSumMinor,
   };
 }

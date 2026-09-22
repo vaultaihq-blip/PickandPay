@@ -658,7 +658,15 @@ export type SummaryRole =
   | "DISCOUNT"
   | "FEE"
   | "UNRESOLVED"
-  | "PROVEN_NON_ADDITIVE";
+  | "PROVEN_NON_ADDITIVE"
+  /** FIX 34 — the mirror of PROVEN_NON_ADDITIVE: one or two UNRESOLVED
+   *  summary values whose SIGNED sum exactly fills the gap between an
+   *  independently-witnessed total and itemSum+recognized-charges. Like
+   *  PROVEN_NON_ADDITIVE, never a per-occurrence decision buildFinalPayload
+   *  makes — only a blanket reclassification applyProvenAdditiveCharge
+   *  applies afterward, over the whole UNRESOLVED set, gated by its own six
+   *  guards. See that function's header. */
+  | "PROVEN_ADDITIVE_CHARGE";
 
 /** One decided role for one observed summary amountId. Built by
  *  validate.ts's buildFinalPayload from the exact same resolution it
@@ -667,12 +675,12 @@ export type SummaryRole =
  *  output. */
 export interface SummaryRoleAssignment {
   amountId: string;
-  /** PROVEN_NON_ADDITIVE is deliberately excluded here too — it is never a
-   *  per-occurrence decision buildFinalPayload makes (nothing "won" that
-   *  role), only a blanket reclassification applyProvenNonAdditive applies
-   *  afterward, over the whole UNRESOLVED set at once, and only when its
-   *  own four guards hold. See that function's header. */
-  role: Exclude<SummaryRole, "UNRESOLVED" | "PROVEN_NON_ADDITIVE">;
+  /** PROVEN_NON_ADDITIVE/PROVEN_ADDITIVE_CHARGE are deliberately excluded
+   *  here too — neither is ever a per-occurrence decision buildFinalPayload
+   *  makes (nothing "won" that role), only a blanket reclassification a
+   *  dedicated function applies afterward, over the whole UNRESOLVED set at
+   *  once, and only when its own guards hold. See those functions' headers. */
+  role: Exclude<SummaryRole, "UNRESOLVED" | "PROVEN_NON_ADDITIVE" | "PROVEN_ADDITIVE_CHARGE">;
 }
 
 export interface SummaryCoverageEntry {
@@ -880,4 +888,202 @@ export function applyProvenNonAdditive(
 
   const newCoverage = summaryCoverage.map((c) => (c.role === "UNRESOLVED" ? { ...c, role: "PROVEN_NON_ADDITIVE" as const } : c));
   return { coverage: newCoverage, result: { applied: true, count: unresolvedEntries.length, blockedBy: null } };
+}
+
+// ─── FIX 34 — proven additive charge, the mirror of FIX 32 ─────────────────
+//
+// FIX 32 proved one direction: if itemSum+charges already EQUALS an
+// independently-witnessed total, no UNRESOLVED summary value can be
+// additive — there is no room left for it. This proves the opposite
+// direction: if itemSum+charges falls SHORT of that same independently-
+// witnessed total, and a small set of UNRESOLVED summary values fills the
+// gap EXACTLY, those values are a real, uncounted charge.
+//
+// Both rules depend on the same FIX 31 fact — the total came from a printed
+// label or typographic emphasis, never from arithmetic closure — for the
+// same reason: without an independent total, "the gap equals this value"
+// would be exactly the FIX 29 circularity (the target being tested is
+// derived from the same arithmetic being used to test it).
+//
+// Motivating case (Pai Northern Thai Kitchen, real fixture): itemSum 278.00
+// + recognized Tax 43.37 = 321.37; the label-witnessed total is 376.97; the
+// gap is 55.60; an unrecognized "Large Party (20.00%)" block sits UNRESOLVED
+// at exactly 55.60 — and 278.00 * 20% = 55.60 corroborates it in print.
+//
+// Six guards, every one load-bearing:
+//   1. the total came from a witness (label/typography), never closure —
+//      identical reasoning to FIX 32's own guard 1.
+//   2. zero UNRESOLVED values anywhere in the ITEMS region — even more
+//      load-bearing here than in FIX 32: a missing item price makes
+//      itemSum too LOW, and a real summary value could coincidentally fill
+//      that gap, misclassifying a charge that actually covers a missing
+//      dish. This is exactly Sulbarreiro's shape.
+//   6. no UNRESOLVED summary value's own magnitude exceeds the total — a
+//      sanity ceiling, checked before searching combinations at all
+//      (labeled 6 to match the spec's own guard numbering; evaluated early
+//      here purely because it is cheap and rules out garbage fast).
+//   3. sets of at most TWO values — enforced by construction (only 1- and
+//      2-element combinations are ever generated), never a general subset-
+//      sum search: the more values a set may combine, the more likely SOME
+//      combination closes by coincidence.
+//   5. a candidate with an adjacent printed percentage must have
+//      itemSum * rate equal that candidate's own value (exact, minor-unit
+//      tolerance) — a contradiction disqualifies the WHOLE combination it
+//      belongs to, never just that one value. No adjacent percentage at
+//      all: the sum-closure test alone decides. A percentage never decides
+//      alone either way (FIX 16/BR: base*rate=value is identically shaped
+//      for a real charge and an informational disclosure).
+//   4. strict uniqueness — if more than one surviving combination closes
+//      the exact same gap, none is chosen.
+//
+// Signs are read from the ledger's own already-signed value
+// (parseAmbiguousNumber already resolves a printed "-" or "(...)" to a
+// negative LedgerEntry.value) — never inferred from the gap's own sign.
+// summing an UNSIGNED "Desconto 20,00" against a negative gap simply never
+// closes (20 != -20), so it correctly stays UNRESOLVED. This is guard S5
+// from the design document, applied here for the first time.
+export interface ProvenAdditiveChargeResult {
+  applied: boolean;
+  /** How many summary-region UNRESOLVED entries were reclassified — 0, 1,
+   *  or 2. 0 when `applied` is false. */
+  count: number;
+  /** True when at least one reclassified value had an adjacent printed
+   *  percentage whose itemSum*rate matched it exactly — a corroborating
+   *  signal, never itself sufficient (see guard 5). False when `applied`
+   *  is false, or when the closing set had no adjacent percentage at all. */
+  corroboratedByRate: boolean;
+  /** Which guard refused, when `applied` is false — null only when applied
+   *  is true. Purely diagnostic. */
+  blockedBy:
+    | "no_independent_total"
+    | "items_region_unresolved"
+    | "larger_unresolved_value"
+    | "no_deficit"
+    | "no_closing_set"
+    | "rate_contradiction"
+    | "ambiguous_closing_sets"
+    | null;
+}
+
+/** A printed percentage on the candidate's own line, or the immediately
+ *  adjacent one — same-or-adjacent-line convention as every other
+ *  proximity signal in this module (FIX 21). Returns the rate as a
+ *  fraction (e.g. "20.00%" -> 0.2), or null when no percentage is printed
+ *  nearby at all — the caller treats null as "no corroboration signal
+ *  available", never as a contradiction. */
+const PERCENT_TOKEN = /(\d+(?:[.,]\d+)?)\s*%/;
+function findAdjacentPercentageRate(entry: LedgerEntry, lines: string[]): number | null {
+  for (const li of [entry.lineIndex, entry.lineIndex - 1, entry.lineIndex + 1]) {
+    const text = lines[li];
+    if (!text) continue;
+    const m = PERCENT_TOKEN.exec(text);
+    if (!m) continue;
+    const pct = Number(m[1].replace(",", "."));
+    if (Number.isFinite(pct)) return pct / 100;
+  }
+  return null;
+}
+
+interface AdditiveCombo {
+  members: Array<{ coverageEntry: SummaryCoverageEntry; ledgerEntry: LedgerEntry }>;
+  sumMinor: number;
+}
+
+export function applyProvenAdditiveCharge(
+  summaryCoverage: SummaryCoverageEntry[],
+  ledgerByAmountId: Map<string, LedgerEntry>,
+  /** Guard 1 — see applyProvenNonAdditive's identical parameter. */
+  totalWitnessSource: "label" | "typography" | null,
+  totalValueMinor: number | null,
+  /** validate.ts's AssembleResult.itemSumPlusChargesMinor — itemSum +
+   *  every already-recognized charge (tax/service/tip/discount/fee), the
+   *  same figure FIX 32's guard 2 tests for equality; here it is the base
+   *  the gap is measured FROM. */
+  itemSumPlusChargesMinor: number,
+  /** validate.ts's AssembleResult.itemSumMinor — itemSum ALONE, the base
+   *  guard 5's rate corroboration multiplies against (a printed percentage
+   *  is always of the item total, never of an already-tax-inclusive
+   *  figure). */
+  itemSumMinor: number,
+  /** Guard 2 — identical to FIX 32's own itemsRegionUnresolvedCount. */
+  itemsRegionUnresolvedCount: number,
+  /** Flattened OCR line text, indexed by lineIndex — the same shape
+   *  validate.ts's buildFinalPayload already receives as `lines`, reused
+   *  here only for guard 5's adjacent-percentage search. */
+  lines: string[],
+  toMinorFn: (value: number) => number | null
+): { coverage: SummaryCoverageEntry[]; result: ProvenAdditiveChargeResult } {
+  const refuse = (blockedBy: ProvenAdditiveChargeResult["blockedBy"]) => ({
+    coverage: summaryCoverage,
+    result: { applied: false, count: 0, corroboratedByRate: false, blockedBy },
+  });
+
+  if (totalWitnessSource === null || totalValueMinor === null) return refuse("no_independent_total");
+  if (itemsRegionUnresolvedCount > 0) return refuse("items_region_unresolved");
+
+  const unresolvedEntries = summaryCoverage
+    .filter((c) => c.role === "UNRESOLVED")
+    .map((c) => ({ coverageEntry: c, ledgerEntry: ledgerByAmountId.get(c.amountId) }))
+    .filter((x): x is { coverageEntry: SummaryCoverageEntry; ledgerEntry: LedgerEntry } => x.ledgerEntry !== undefined);
+
+  // Guard 6 — checked before any combination search: a real total is never
+  // smaller in magnitude than a single genuine charge that belongs to it.
+  const hasLargerOrphan = unresolvedEntries.some(({ ledgerEntry }) => {
+    const m = toMinorFn(ledgerEntry.value);
+    return m !== null && Math.abs(m) > totalValueMinor;
+  });
+  if (hasLargerOrphan) return refuse("larger_unresolved_value");
+
+  const differenceMinor = totalValueMinor - itemSumPlusChargesMinor;
+  if (differenceMinor === 0) return refuse("no_deficit"); // nothing to prove — FIX 32's job, not this rule's
+
+  // Guard 3 — sets of at most two, by construction: only 1- and 2-element
+  // combinations are ever built, never a general subset-sum search.
+  const combos: AdditiveCombo[] = [];
+  const minors = unresolvedEntries.map((e) => toMinorFn(e.ledgerEntry.value));
+  for (let i = 0; i < unresolvedEntries.length; i++) {
+    const mi = minors[i];
+    if (mi === null) continue;
+    combos.push({ members: [unresolvedEntries[i]], sumMinor: mi });
+    for (let j = i + 1; j < unresolvedEntries.length; j++) {
+      const mj = minors[j];
+      if (mj === null) continue;
+      combos.push({ members: [unresolvedEntries[i], unresolvedEntries[j]], sumMinor: mi + mj });
+    }
+  }
+
+  const sumMatching = combos.filter((c) => c.sumMinor === differenceMinor);
+  if (sumMatching.length === 0) return refuse("no_closing_set");
+
+  // Guard 5 — a printed percentage adjacent to a candidate must corroborate
+  // (itemSum*rate === that candidate's value) or the WHOLE combination it
+  // belongs to is disqualified, never just that one member.
+  const RATE_TOLERANCE_MINOR = 1;
+  const surviving: Array<AdditiveCombo & { corroborated: boolean }> = [];
+  for (const combo of sumMatching) {
+    let contradicted = false;
+    let corroborated = false;
+    for (const { ledgerEntry } of combo.members) {
+      const rate = findAdjacentPercentageRate(ledgerEntry, lines);
+      if (rate === null) continue; // no percentage nearby — decided by sum-closure alone
+      const expectedMinor = Math.round(itemSumMinor * rate);
+      const actualMinor = toMinorFn(ledgerEntry.value);
+      if (actualMinor === null || Math.abs(expectedMinor - actualMinor) > RATE_TOLERANCE_MINOR) {
+        contradicted = true;
+      } else {
+        corroborated = true;
+      }
+    }
+    if (!contradicted) surviving.push({ ...combo, corroborated });
+  }
+  if (surviving.length === 0) return refuse("rate_contradiction");
+  if (surviving.length > 1) return refuse("ambiguous_closing_sets"); // guard 4 — strict uniqueness
+
+  const winner = surviving[0];
+  const winningIds = new Set(winner.members.map((m) => m.coverageEntry.amountId));
+  const newCoverage = summaryCoverage.map((c) => (winningIds.has(c.amountId) ? { ...c, role: "PROVEN_ADDITIVE_CHARGE" as const } : c));
+  return {
+    coverage: newCoverage,
+    result: { applied: true, count: winner.members.length, corroboratedByRate: winner.corroborated, blockedBy: null },
+  };
 }

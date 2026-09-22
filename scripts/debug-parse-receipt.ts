@@ -102,6 +102,7 @@ import {
   findSummaryDuplicateRoles,
   determineSummaryValidity,
   applyProvenNonAdditive,
+  applyProvenAdditiveCharge,
 } from "../supabase/functions/parse-receipt/coverage";
 
 const MODEL = "gpt-4o-2024-08-06";
@@ -651,21 +652,72 @@ async function main() {
   let summaryCoverage = classifySummaryCoverage(ledger, itemsRegionEnd, summaryRoleAssignments);
   const summaryDuplicateRoles = findSummaryDuplicateRoles(summaryRoleAssignments);
 
+  // FIX 34 — kept in sync with index.ts: proven additive charge, the mirror
+  // of FIX 32 Part 2. Runs BEFORE it — see coverage.ts's
+  // applyProvenAdditiveCharge for the full six-guard rationale.
+  const ledgerByAmountIdForCharges = new Map(ledger.map((e) => [e.amountId, e]));
+  let itemSumPlusChargesMinorAfterAdditive = assembled.itemSumPlusChargesMinor;
+  let provenAdditive: { applied: boolean; count: number; corroboratedByRate: boolean; blockedBy: string | null } = {
+    applied: false,
+    count: 0,
+    corroboratedByRate: false,
+    blockedBy: null,
+  };
+  {
+    const grandTotalAssignment = summaryRoleAssignments.find((a) => a.role === "GRAND_TOTAL");
+    const grandTotalEntry = grandTotalAssignment ? ledgerByAmountIdForCharges.get(grandTotalAssignment.amountId) : undefined;
+    const totalValueMinor = grandTotalEntry ? toMinor(grandTotalEntry.value, currency) : null;
+    const itemsRegionUnresolvedCount = coverage.filter((c) => c.state === "UNRESOLVED").length;
+    const { coverage: adjustedSummaryCoverage, result } = applyProvenAdditiveCharge(
+      summaryCoverage,
+      ledgerByAmountIdForCharges,
+      appliedTotalWitness?.source ?? null,
+      totalValueMinor,
+      assembled.itemSumPlusChargesMinor,
+      assembled.itemSumMinor,
+      itemsRegionUnresolvedCount,
+      lines,
+      (value: number) => toMinor(value, currency)
+    );
+    summaryCoverage = adjustedSummaryCoverage;
+    provenAdditive = result;
+
+    if (result.applied) {
+      const wonAmountIds = new Set(
+        adjustedSummaryCoverage.filter((c) => c.role === "PROVEN_ADDITIVE_CHARGE").map((c) => c.amountId)
+      );
+      let addedMinor = 0;
+      for (const amountId of wonAmountIds) {
+        const e = ledgerByAmountIdForCharges.get(amountId);
+        if (!e) continue;
+        const block = blocks.find((b) => b.amountId === amountId);
+        payload.charges.push({
+          id: amountId,
+          name: block?.name ?? "Additional Charge",
+          amount: e.value,
+          kind: e.value < 0 ? "discount" : "fee",
+        });
+        const m = toMinor(e.value, currency);
+        if (m !== null) addedMinor += e.value < 0 ? -m : m;
+      }
+      itemSumPlusChargesMinorAfterAdditive = assembled.itemSumPlusChargesMinor + addedMinor;
+    }
+  }
+
   // FIX 32 Part 2 — kept in sync with index.ts: arithmetic saturation with
   // an independent base. See coverage.ts's applyProvenNonAdditive.
   let provenNonAdditive: { applied: boolean; count: number; blockedBy: string | null } = { applied: false, count: 0, blockedBy: null };
   {
     const grandTotalAssignment = summaryRoleAssignments.find((a) => a.role === "GRAND_TOTAL");
-    const ledgerByAmountIdForSaturation = new Map(ledger.map((e) => [e.amountId, e]));
-    const grandTotalEntry = grandTotalAssignment ? ledgerByAmountIdForSaturation.get(grandTotalAssignment.amountId) : undefined;
+    const grandTotalEntry = grandTotalAssignment ? ledgerByAmountIdForCharges.get(grandTotalAssignment.amountId) : undefined;
     const totalValueMinor = grandTotalEntry ? toMinor(grandTotalEntry.value, currency) : null;
     const itemsRegionUnresolvedCount = coverage.filter((c) => c.state === "UNRESOLVED").length;
     const { coverage: adjustedSummaryCoverage, result } = applyProvenNonAdditive(
       summaryCoverage,
-      ledgerByAmountIdForSaturation,
+      ledgerByAmountIdForCharges,
       appliedTotalWitness?.source ?? null,
       totalValueMinor,
-      assembled.itemSumPlusChargesMinor,
+      itemSumPlusChargesMinorAfterAdditive,
       itemsRegionUnresolvedCount,
       (value: number) => toMinor(value, currency)
     );
@@ -796,6 +848,9 @@ async function main() {
     totalWitnessAgreement: appliedTotalWitness?.agreement ?? null,
     provenNonAdditiveCount: provenNonAdditive.count,
     provenNonAdditiveBlockedBy: provenNonAdditive.blockedBy,
+    provenAdditiveCount: provenAdditive.count,
+    additiveCorroboratedByRate: provenAdditive.corroboratedByRate,
+    provenAdditiveBlockedBy: provenAdditive.blockedBy,
 
     // 4. Every semantic block produced by GPT.
     blocks: blocks.map((b) => ({
@@ -883,6 +938,7 @@ async function main() {
       // and whether the other one agreed.
       `totalWitness=${report.totalWitness}, totalWitnessAgreement=${report.totalWitnessAgreement}, ` +
       `provenNonAdditiveCount=${report.provenNonAdditiveCount}, provenNonAdditiveBlockedBy=${report.provenNonAdditiveBlockedBy}, ` +
+      `provenAdditiveCount=${report.provenAdditiveCount}, additiveCorroboratedByRate=${report.additiveCorroboratedByRate}, provenAdditiveBlockedBy=${report.provenAdditiveBlockedBy}, ` +
       // FIX 22 Part 1 — retryFired=false means structuralGap never exceeded
       // the threshold in the first place; gapBefore is null in that case.
       `retryFired=${report.structureRetryFired}, gapBefore=${report.structuralGapCountBeforeRetry}, ` +
