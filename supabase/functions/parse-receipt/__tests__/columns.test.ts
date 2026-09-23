@@ -27,13 +27,38 @@ function excludedIds(kept: LedgerEntry[], full: LedgerEntry[]): Set<string> {
   return new Set(full.filter((e) => !keptIds.has(e.amountId)).map((e) => e.amountId));
 }
 
+/**
+ * FIX 40 — finds a ledger entry by its RAW TEXT, anchored to a nearby line
+ * matching `marker` (a real, distinctive substring from the receipt's own
+ * printed content) rather than a hardcoded lineIndex. Line numbers shift
+ * whenever line reconstruction changes (FIX 39's own geometric path
+ * consolidates many of these fixtures' lines); the printed CONTENT does
+ * not. `maxDistance` tolerates the value landing on the same reconstructed
+ * line as the marker (0) or a few lines away (whichever reconstruction is
+ * active) without needing to know which.
+ */
+function findEntryNear(
+  ocr: { lines: OcrLine[] },
+  ledger: LedgerEntry[],
+  marker: string,
+  rawText: string,
+  maxDistance = 3,
+  which: "first" | "last" = "first"
+): LedgerEntry | undefined {
+  const markerLine = ocr.lines.find((l) => l.text.includes(marker));
+  if (!markerLine) return undefined;
+  const matches = ledger.filter((e) => e.rawText === rawText && Math.abs(e.lineIndex - markerLine.lineIndex) <= maxDistance);
+  if (matches.length === 0) return undefined;
+  return which === "first" ? matches[0] : matches[matches.length - 1];
+}
+
 describe("columns: Y — a number inside the item's own name, outside the authoritative column, is never a candidate (Quebra Mar)", () => {
   it("excludes the '2.00' embedded in 'FINO 2.00 €', keeps the real 5,25 VALOR entry elsewhere", () => {
     const { ocr, ledger } = loadFixture("vision-quebra-mar-pt.json");
-    const finoEmbedded = ledger.find((e) => e.lineIndex === 29 && e.rawText === "2.00");
+    const finoEmbedded = findEntryNear(ocr, ledger, "FINO", "2.00", 0);
     assert(finoEmbedded !== undefined, "fixture must still contain the FINO name-embedded '2.00' token");
-    const realValor = ledger.find((e) => e.lineIndex === 15 && e.rawText === "5,25");
-    assert(realValor !== undefined, "fixture must still contain the real 5,25 VALOR entry");
+    const realValor = findEntryNear(ocr, ledger, "SAFATA", "5,25", 3);
+    assert(realValor !== undefined, "fixture must still contain the real 5,25 VALOR entry (near 'SAFATA DE PAO', an unrelated earlier item)");
 
     const filtered = filterToAuthoritativeColumn(ledger, ocr.lines, new Set());
     const excluded = excludedIds(filtered, ledger);
@@ -45,9 +70,13 @@ describe("columns: Y — a number inside the item's own name, outside the author
 describe("columns: Z — a decimal-formatted quantity in the leftmost column is never a candidate (Mad God)", () => {
   it("excludes the '1.00' quantity, keeps the real 2,75 Valor entry on the same item", () => {
     const { ocr, ledger } = loadFixture("vision-madgod-pt.json");
-    const quantity = ledger.find((e) => e.lineIndex === 17 && e.rawText === "1.00");
+    const quantity = findEntryNear(ocr, ledger, "Heineken", "1.00", 0);
     assert(quantity !== undefined, "fixture must still contain the '1.00 Cerveja Heineken' quantity token");
-    const realValor = ledger.find((e) => e.lineIndex === 19 && e.rawText === "2,75");
+    // This item prints "2,75" TWICE nearby (its own unit price, then its
+    // line total/Valor) — the LATER occurrence (highest lineIndex, printed
+    // last) is the real Valor; the earlier one is the unit price, a
+    // different value this test isn't about.
+    const realValor = findEntryNear(ocr, ledger, "Heineken", "2,75", 3, "last");
     assert(realValor !== undefined, "fixture must still contain the real Valor entry for this item");
 
     const filtered = filterToAuthoritativeColumn(ledger, ocr.lines, new Set());
@@ -60,9 +89,9 @@ describe("columns: Z — a decimal-formatted quantity in the leftmost column is 
 describe("columns: AA — two value columns on the same line; the authoritative one is the right column, and the correct value is zero (Sulbarreiro)", () => {
   it("excludes the UNID column's 5.20, keeps the TOTAL column's real 0.00 — never prefers the non-zero value", () => {
     const { ocr, ledger } = loadFixture("vision-sulbarreiro-pt.json");
-    const unidColumn = ledger.find((e) => e.lineIndex === 24 && e.rawText === "5.20");
+    const unidColumn = findEntryNear(ocr, ledger, "Double Chees", "5.20", 0);
     assert(unidColumn !== undefined, "fixture must still contain 'Double Chees 5.20' UNID entry");
-    const totalColumn = ledger.find((e) => e.lineIndex === 25 && e.rawText === "0.00");
+    const totalColumn = findEntryNear(ocr, ledger, "Double Chees", "0.00", 3);
     assert(totalColumn !== undefined, "fixture must still contain the real 0.00 TOTAL entry");
 
     const filtered = filterToAuthoritativeColumn(ledger, ocr.lines, new Set());
@@ -75,7 +104,13 @@ describe("columns: AA — two value columns on the same line; the authoritative 
 describe("columns: AB — a unit-price annotation line's value is never a line-price candidate (Quebra Mar 'Preco:')", () => {
   it("excludes every 'Preco : X / Uni' annotation value", () => {
     const { ocr, ledger } = loadFixture("vision-quebra-mar-pt.json");
-    const annotation = ledger.find((e) => e.lineIndex === 16 && e.rawText === "1,75");
+    // "Preco:" appears once per item on this receipt — the combined marker
+    // (both "Preco" AND "1,75" on the same reconstructed line) picks out
+    // this SPECIFIC annotation line regardless of which item's annotation
+    // it is or which line index it lands on.
+    const annotationLine = ocr.lines.find((l) => l.text.includes("Preco") && l.text.includes("1,75"));
+    assert(annotationLine !== undefined, "fixture must still contain a 'Preco: 1,75/Uni' annotation line");
+    const annotation = ledger.find((e) => e.lineIndex === annotationLine!.lineIndex && e.rawText === "1,75");
     assert(annotation !== undefined, "fixture must still contain the 'Preco : 1,75 / Uni' annotation entry");
 
     const filtered = filterToAuthoritativeColumn(ledger, ocr.lines, new Set());
@@ -87,9 +122,15 @@ describe("columns: AB — a unit-price annotation line's value is never a line-p
 describe("columns: AC — a unit price on its own line, above the item name, is never a candidate (Augustiner)", () => {
   it("excludes '4,20' from '8 x 4,20' and '11,50' from '3 x 11,50'", () => {
     const { ocr, ledger } = loadFixture("vision-augustiner-de.json");
-    const helles = ledger.find((e) => e.lineIndex === 12 && e.rawText === "4,20");
+    const helles = findEntryNear(ocr, ledger, "x4,20", "4,20", 0);
     assert(helles !== undefined, "fixture must still contain the '8 x 4,20' unit-price entry");
-    const curry = ledger.find((e) => e.lineIndex === 14 && e.rawText === "11,50");
+    // "11,50" also prints later as "Leberkäs 11,50" (a different item's own
+    // line total) — anchoring on "x 11,50" / "x11,50" (the multiplier
+    // notation) picks out specifically the "3 x 11,50" unit-price line, not
+    // that unrelated later occurrence.
+    const curryLine = ocr.lines.find((l) => /x\s*11,50/.test(l.text));
+    assert(curryLine !== undefined, "fixture must still contain a '3 x 11,50' unit-price line");
+    const curry = ledger.find((e) => e.lineIndex === curryLine!.lineIndex && e.rawText === "11,50");
     assert(curry !== undefined, "fixture must still contain the '3 x 11,50' unit-price entry");
 
     const filtered = filterToAuthoritativeColumn(ledger, ocr.lines, new Set());

@@ -39,6 +39,17 @@ function loadRealFixture(filename: string) {
   return { ocr, ledger };
 }
 
+/** FIX 40 — the summary region's start line, found by real printed content
+ *  rather than a hardcoded lineIndex — line numbers shift whenever line
+ *  reconstruction changes (FIX 39's own geometric path consolidates many of
+ *  these fixtures' lines). Throws loudly if the marker is missing, rather
+ *  than silently returning 0 and testing a subtly different scenario. */
+function summaryRegionStartAt(ocr: { lines: OcrLine[] }, marker: string): number {
+  const line = ocr.lines.find((l) => l.text.includes(marker));
+  if (!line) throw new Error(`no line contains "${marker}"`);
+  return line.lineIndex;
+}
+
 describe("totalWitness: FIX 31 — Step 1 (blocking) — the discount scenario that killed FIX 29", () => {
   it("DP — ordinary discount receipt (Subtotal 100,00 / Desconto -20,00 / Total 80,00): the label identifies 80, never 100", () => {
     const lines: OcrLine[] = [
@@ -72,7 +83,7 @@ describe("totalWitness: FIX 31 — Step 1 (blocking) — the discount scenario t
 describe("totalWitness: FIX 31 — label witness (raw OCR text, never GPT's own block name)", () => {
   it("DR — Sulbarreiro real fixture: 'TOTAL LEVAR' is chosen, 'Total Liquido' is excluded", () => {
     const { ocr, ledger } = loadRealFixture("vision-sulbarreiro-pt.json");
-    const witness = findTotalLabelWitness(ocr.lines, ledger, 46);
+    const witness = findTotalLabelWitness(ocr.lines, ledger, summaryRegionStartAt(ocr, "TOTAL LEVAR"));
     assert(witness !== null && witness !== "AMBIGUOUS");
     if (witness && witness !== "AMBIGUOUS") {
       assertEqual(witness.value, 8.25, "TOTAL LEVAR (8.25), never Total Liquido (7.21) — the net-not-paid figure");
@@ -92,12 +103,13 @@ describe("totalWitness: FIX 31 — label witness (raw OCR text, never GPT's own 
 describe("totalWitness: FIX 31 — typographic witness (rotation-corrected height)", () => {
   it("DT — Mad God real fixture: the label is 3 lines away (out of the ≤2 window, correctly finds nothing), typography resolves it alone", () => {
     const { ocr, ledger } = loadRealFixture("vision-madgod-pt.json");
-    const labelWitness = findTotalLabelWitness(ocr.lines, ledger, 119);
+    const summaryRegionStart = summaryRegionStartAt(ocr, "Total liq");
+    const labelWitness = findTotalLabelWitness(ocr.lines, ledger, summaryRegionStart);
     assertEqual(labelWitness, null, "the real label ('Total liq.') sits 3 lines from the value — outside the measured ≤2 window, and must not reach further to grab it");
-    const typoWitness = findTotalTypographicWitness(ocr.lines, ledger, 119);
+    const typoWitness = findTotalTypographicWitness(ocr.lines, ledger, summaryRegionStart);
     assert(typoWitness !== null, "typography must resolve this alone");
     if (typoWitness) assertEqual(typoWitness.value, 363.55);
-    const combined = resolveTotalWitness(ocr.lines, ledger, 119);
+    const combined = resolveTotalWitness(ocr.lines, ledger, summaryRegionStart);
     assert(combined !== null && combined.source === "typography");
   });
 });

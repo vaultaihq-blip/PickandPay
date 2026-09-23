@@ -426,6 +426,31 @@ function loadRealFixture(filename: string) {
   return { ocr, ledger };
 }
 
+/** FIX 40 — a printed line's real lineIndex, found by CONTENT rather than a
+ *  hardcoded number — line numbers shift whenever line reconstruction
+ *  changes (FIX 39's own geometric path consolidates several of these
+ *  fixtures' lines). Throws loudly rather than silently testing a
+ *  different scenario if the marker text is missing. `nth` (0-based) picks
+ *  among multiple matches when the marker isn't unique on its own. */
+function lineOf(ocr: { lines: OcrLine[] }, marker: string, nth = 0): number {
+  const matches = ocr.lines.filter((l) => l.text.includes(marker));
+  const line = matches[nth];
+  if (!line) throw new Error(`no line #${nth} contains "${marker}" (found ${matches.length})`);
+  return line.lineIndex;
+}
+
+/** Same idea as lineOf, for a specific LEDGER ENTRY: anchored to a nearby
+ *  line's real content instead of a hardcoded amountId (amountIds are
+ *  assigned in ledger-build order, which line reconstruction can also
+ *  reorder). */
+function entryNear(ocr: { lines: OcrLine[] }, ledger: LedgerEntry[], marker: string, rawText: string, maxDistance = 3): LedgerEntry {
+  const markerLine = ocr.lines.find((l) => l.text.includes(marker));
+  if (!markerLine) throw new Error(`no line contains "${marker}"`);
+  const entry = ledger.find((e) => e.rawText === rawText && Math.abs(e.lineIndex - markerLine.lineIndex) <= maxDistance);
+  if (!entry) throw new Error(`no ledger entry with rawText "${rawText}" within ${maxDistance} lines of "${marker}"`);
+  return entry;
+}
+
 describe("ownership: FIX 25 Part 1 — items-region boundary as a penalty, not a wall", () => {
   it("CR — Buca di Beppo real fixture: no item block claims the Subtotal or Total value anymore", () => {
     // Real blocks, exactly as GPT reported them for this receipt (a photo
@@ -828,14 +853,35 @@ describe("ownership: FIX 27 — constant column offset, arbitrated by the printe
     // of that value (Currywurst's own block) IS the block being
     // "reassigned", so H1 hands it back the exact value it already had.
     const { ocr, ledger } = loadRealFixture("vision-augustiner-de.json");
+    // FIX 40 — every lineIndex below is found by real printed content
+    // (lineOf/entryNear), not hardcoded, so this test survives line
+    // reconstruction changing (FIX 39's geometric path consolidates many of
+    // these lines). b1's own [x11,50-line, 33,60-line] intentionally does
+    // NOT include the "Currywurst + Pommes 34,502" line itself — that
+    // mismatch (GPT's own real, misaligned block span for this receipt) is
+    // the exact shape this test exists to reproduce.
     const blocks: PriceBlockInput[] = [
-      { blockId: "b0", kind: "item", lineIndices: [12, 13], name: "HELLES 0,5L", parentBlockId: null, proposedAmountId: null },
-      { blockId: "b1", kind: "item", lineIndices: [14, 15], name: "Currywurst + Pommes", parentBlockId: null, proposedAmountId: "A10" },
-      { blockId: "b2", kind: "item", lineIndices: [17], name: "Leberkäs", parentBlockId: null, proposedAmountId: null },
-      { blockId: "b3", kind: "item", lineIndices: [18], name: "Weisswürste", parentBlockId: null, proposedAmountId: null },
-      { blockId: "b4", kind: "item", lineIndices: [19], name: "Brez'n", parentBlockId: null, proposedAmountId: null },
-      { blockId: "b5", kind: "item", lineIndices: [20, 21], name: "Aqua Panna 0,75L", parentBlockId: null, proposedAmountId: null },
-      { blockId: "b6", kind: "summary", lineIndices: [22], name: "Total", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b0", kind: "item", lineIndices: [lineOf(ocr, "x4,20"), lineOf(ocr, "HELLES")], name: "HELLES 0,5L", parentBlockId: null, proposedAmountId: null },
+      {
+        blockId: "b1",
+        kind: "item",
+        lineIndices: [lineOf(ocr, "x 11,50"), lineOf(ocr, "33,60")],
+        name: "Currywurst + Pommes",
+        parentBlockId: null,
+        proposedAmountId: entryNear(ocr, ledger, "Weisswürste", "7,50", 3).amountId,
+      },
+      { blockId: "b2", kind: "item", lineIndices: [lineOf(ocr, "Leberkäs")], name: "Leberkäs", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b3", kind: "item", lineIndices: [lineOf(ocr, "Weisswürste")], name: "Weisswürste", parentBlockId: null, proposedAmountId: null },
+      { blockId: "b4", kind: "item", lineIndices: [lineOf(ocr, "Brez'n")], name: "Brez'n", parentBlockId: null, proposedAmountId: null },
+      {
+        blockId: "b5",
+        kind: "item",
+        lineIndices: [...new Set([lineOf(ocr, "Aqua Panna"), lineOf(ocr, "6,90")])],
+        name: "Aqua Panna 0,75L",
+        parentBlockId: null,
+        proposedAmountId: null,
+      },
+      { blockId: "b6", kind: "summary", lineIndices: [lineOf(ocr, "Total")], name: "Total", parentBlockId: null, proposedAmountId: null },
     ];
     const itemsRegionEnd = computeItemsRegionEnd(blocks as unknown as StructureBlock[]);
     const ownership = computeGeometricOwnership(blocks, ledger, ocr.lines, itemsRegionEnd);

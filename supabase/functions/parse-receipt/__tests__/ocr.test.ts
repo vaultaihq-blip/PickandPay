@@ -65,35 +65,44 @@ describe("ocr: reconstructLines — primary path (word order + break type)", () 
     // primary path must not care, since it never looks at coordinates. Uses
     // non-price content so the (separately tested) two-column merge pass
     // can't interfere with isolating this specific claim.
+    //
+    // FIX 40 — explicitly requests the OLD (word-order/break-type) path.
+    // This is the exact claim under test: geometry is ignored. The FIX 39
+    // geometric path does the opposite by design (ignores word order,
+    // groups by geometry), so it would fail this assertion for the right
+    // reason, not a bug — declaring the path explicitly makes that a
+    // deliberate choice, not an accident of the default.
     const words = [
       word("w1", "Zebra", rectBox(900, 50, 10, 10), null),
       word("w2", "Apple", rectBox(10, 900, 10, 10), "LINE_BREAK"),
       word("w3", "Mango", rectBox(500, 5, 10, 10), null),
       word("w4", "Banana", rectBox(5, 5, 10, 10), "LINE_BREAK"),
     ];
-    const lines = reconstructLines(words);
+    const lines = reconstructLines(words, false);
     assertEqual(lines.length, 2);
     assertEqual(lines[0].text, "Zebra Apple");
     assertEqual(lines[1].text, "Mango Banana");
   });
 
   it("EOL_SURE_SPACE also terminates a line", () => {
+    // FIX 40 — explicitly the OLD path; see the test above for why.
     const words = [
       word("w1", "Alpha", rectBox(0, 0, 10, 10), "EOL_SURE_SPACE"),
       word("w2", "Beta", rectBox(0, 0, 10, 10), "LINE_BREAK"),
     ];
-    const lines = reconstructLines(words);
+    const lines = reconstructLines(words, false);
     assertEqual(lines.length, 2);
     assertEqual(lines[0].text, "Alpha");
     assertEqual(lines[1].text, "Beta");
   });
 
   it("HYPHEN terminates a line (documented choice: our word-level model holds no sub-word fragments)", () => {
+    // FIX 40 — explicitly the OLD path; see the first test in this block.
     const words = [
       word("w1", "Kitchen-", rectBox(0, 0, 10, 10), "HYPHEN"),
       word("w2", "Uptown", rectBox(0, 0, 10, 10), "LINE_BREAK"),
     ];
-    const lines = reconstructLines(words);
+    const lines = reconstructLines(words, false);
     assertEqual(lines.length, 2);
   });
 
@@ -175,20 +184,27 @@ describe("ocr: reconstructLines — two-column merge", () => {
   });
 
   it("does NOT merge two lines that both carry descriptive text", () => {
+    // FIX 40 — explicitly the OLD path: this guard is specific to
+    // mergeAdjacentTwoColumnLines' own type-check (text+price only, never
+    // text+text). Both words share one box BY CONSTRUCTION, deliberately —
+    // the geometric path (FIX 39) would correctly group same-position words
+    // onto one line for an entirely different, unrelated reason, so this
+    // test would fail there for the right reason, not a bug.
     const words = [
       word("w1", "PGP", rectBox(0, 500, 40, 30), "LINE_BREAK"),
       word("w2", "Mild", rectBox(0, 500, 40, 30), "LINE_BREAK"),
     ];
-    const lines = reconstructLines(words);
+    const lines = reconstructLines(words, false);
     assertEqual(lines.length, 2, "two text-only lines must never be merged");
   });
 
   it("does NOT merge two lines that both carry a price", () => {
+    // FIX 40 — explicitly the OLD path; see the test above for why.
     const words = [
       word("w1", "23.75", rectBox(0, 500, 40, 30), "LINE_BREAK"),
       word("w2", "2.00", rectBox(0, 500, 40, 30), "LINE_BREAK"),
     ];
-    const lines = reconstructLines(words);
+    const lines = reconstructLines(words, false);
     assertEqual(lines.length, 2, "two price-only lines must never be merged");
   });
 
@@ -285,9 +301,14 @@ describe("ocr: AF — glued OCR fragments are reassembled into one decimal (Augu
     const { ocr, ledger } = loadFixture("vision-augustiner-de.json");
     const glued = ledger.find((e) => Math.abs(e.value - 33.6) < 0.001);
     assert(glued !== undefined, "the split '33,60' must resolve to a single 33.6 ledger entry");
-    assertEqual(glued!.rawText, "33,60");
+    // FIX 40 — checks the VALUE, not the whole line's exact text: line
+    // reconstruction can consolidate other real content onto the same
+    // reconstructed line (FIX 39's geometric path does this on this exact
+    // fixture); what this test is actually about is that "33" "," "60"
+    // fused into one glued TOKEN, not that the token is the entire line.
+    assertEqual(glued!.rawText, "33,60", "the split '33,60' must fuse into one glued token, not remain '33 , 60' as separate text");
     const line = ocr.lines.find((l) => l.lineIndex === glued!.lineIndex);
-    assertEqual(line!.text, "33,60", "the reconstructed line itself must read as one glued token, not '33 , 60'");
+    assert(line !== undefined && line.text.includes("33,60"), "the reconstructed line containing this value must read the glued token '33,60', not '33 , 60'");
   });
 });
 

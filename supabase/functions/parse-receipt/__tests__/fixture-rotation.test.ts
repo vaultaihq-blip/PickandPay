@@ -210,45 +210,57 @@ describe("fixture (real, rotated receipt): FIX 7 regression — a dropped modifi
   it("leaves the dropped modifier's 6.00 unclaimed instead of pulling it into BTL Tempranillo", () => {
     const { ocr, ledger } = loadFixtureResult();
 
-    const item = (blockId: string, lineIndex: number, name: string): PriceBlockInput => ({
+    // FIX 40 — every lineIndex below is found by real printed content
+    // (lineOf), not hardcoded, so this test survives line reconstruction
+    // changing (FIX 39's geometric path consolidates many of these lines).
+    // `nth` disambiguates the receipt's own repeated dish names (two Chef
+    // Nuit Pad Thai orders, two Khao Soi, two BTL Tempranillo bottles).
+    function lineOf(marker: string, nth = 0): number {
+      const matches = ocr.lines.filter((l) => l.text.includes(marker));
+      const line = matches[nth];
+      if (!line) throw new Error(`no line #${nth} contains "${marker}" (found ${matches.length})`);
+      return line.lineIndex;
+    }
+
+    const item = (blockId: string, marker: string, nth: number, name: string): PriceBlockInput => ({
       blockId,
       kind: "item",
-      lineIndices: [lineIndex],
+      lineIndices: [lineOf(marker, nth)],
       name,
       parentBlockId: null,
       proposedAmountId: null,
     });
-    const modifier = (blockId: string, lineIndex: number, parentBlockId: string): PriceBlockInput => ({
+    const modifier = (blockId: string, marker: string, parentBlockId: string): PriceBlockInput => ({
       blockId,
       kind: "modifier",
-      lineIndices: [lineIndex],
+      lineIndices: [lineOf(marker)],
       name: null,
       parentBlockId,
       proposedAmountId: null,
     });
 
     const blocks: PriceBlockInput[] = [
-      item("wings", 11, "Thai Chicken Wings"),
-      modifier("wingsMod", 13, "wings"),
-      item("padGraProw", 14, "Pad Gra Prow"),
-      item("padThai1", 17, "Chef Nuit Pad Thai"),
-      modifier("ptShrimp", 18, "padThai1"),
-      item("springRolls", 20, "Spring Rolls"),
-      item("khaoSoi1", 21, "Khao Soi"),
-      modifier("ksShrimp", 22, "khaoSoi1"),
-      item("sleeman", 23, "Sleeman Honey Lager"),
-      item("padThai2", 24, "Chef Nuit Pad Thai"),
-      item("greenCurry", 27, "Green Curry"),
-      modifier("gcShrimp", 28, "greenCurry"),
-      // Line 30, "Add Shrimp $ 6.00", is INTENTIONALLY OMITTED — this is the
-      // exact structural gap that produced the real run3 bug.
-      item("btl1", 31, "BTL Campo Viejo Tempranillo"),
-      item("btl2", 34, "BTL Campo Viejo Tempranillo"),
-      item("khaoSoi2", 36, "Khao Soi"),
-      item("garlicShrimp", 38, "Garlic Shrimp"),
-      item("padSeeEw", 39, "Pad See Ew"),
-      item("lowry", 43, "Lowry"),
-      item("gaiSatay", 44, "Gai Satay"),
+      item("wings", "Thai Chicken Wings", 0, "Thai Chicken Wings"),
+      modifier("wingsMod", "$10.50", "wings"),
+      item("padGraProw", "Pad Gra Prow", 0, "Pad Gra Prow"),
+      item("padThai1", "Chef Nuit Pad Thai", 0, "Chef Nuit Pad Thai"),
+      modifier("ptShrimp", "PT Shrimp", "padThai1"),
+      item("springRolls", "Spring Rolls", 0, "Spring Rolls"),
+      item("khaoSoi1", "Khao Soi", 0, "Khao Soi"),
+      modifier("ksShrimp", "KS Shrimp", "khaoSoi1"),
+      item("sleeman", "Sleeman Honey Lager", 0, "Sleeman Honey Lager"),
+      item("padThai2", "Chef Nuit Pad Thai", 1, "Chef Nuit Pad Thai"),
+      item("greenCurry", "Green Curry", 0, "Green Curry"),
+      modifier("gcShrimp", "GC Shrimp", "greenCurry"),
+      // "Add Shrimp $6.00" is INTENTIONALLY OMITTED — this is the exact
+      // structural gap that produced the real run3 bug.
+      item("btl1", "BTL Campo Viejo Tempranillo", 0, "BTL Campo Viejo Tempranillo"),
+      item("btl2", "BTL Campo Viejo Tempranillo", 1, "BTL Campo Viejo Tempranillo"),
+      item("khaoSoi2", "Khao Soi", 1, "Khao Soi"),
+      item("garlicShrimp", "Garlic Shrimp", 0, "Garlic Shrimp"),
+      item("padSeeEw", "Pad See Ew", 0, "Pad See Ew"),
+      item("lowry", "Lowry", 0, "Lowry"),
+      item("gaiSatay", "Gai Satay", 0, "Gai Satay"),
     ];
 
     const results = computeGeometricOwnership(blocks, ledger, ocr.lines);
@@ -258,7 +270,8 @@ describe("fixture (real, rotated receipt): FIX 7 regression — a dropped modifi
     };
     const amountIdOf = (blockId: string) => results.find((r) => r.blockId === blockId)?.amountId ?? null;
 
-    const droppedAmountId = ledger.find((e) => e.lineIndex === 30 && e.value === 6)?.amountId;
+    const dropLineIndex = lineOf("Add Shrimp");
+    const droppedAmountId = ledger.find((e) => e.lineIndex === dropLineIndex && e.value === 6)?.amountId;
     assert(droppedAmountId !== undefined, "fixture must still contain the 6.00 Add Shrimp ledger entry");
 
     // The core assertion: the orphaned 6.00 must never end up claimed by

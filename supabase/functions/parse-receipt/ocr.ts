@@ -475,7 +475,22 @@ function glueOcrFragments(groups: OcrWord[][], angle: number): OcrWord[][] {
       const isSeparatorPair =
         (isBareSeparatorWord(prev.text) && isDigitOnlyWord(cur.text)) ||
         (isDigitOnlyWord(prev.text) && isBareSeparatorWord(cur.text));
-      if (gap <= generalThreshold) {
+      // FIX 40 — this whole pass exists to reattach a NUMBER Vision split
+      // into several words (its own header: "$"+"13.50", "9.00"+"%", a
+      // digit run split by a bare "." or ","). The general (rule 1) gap
+      // check never actually verified that, though — any two adjacent
+      // words within the threshold glued, including two ordinary TEXT
+      // words. Measured directly: under FIX 39's geometric reconstruction,
+      // this glued "Net"+"Amount" into "NetAmount" on the real V&RO
+      // fixture, silently breaking FIX 37's own `\bnet\s+amount\b` label
+      // match. Two purely alphabetic words are never a split-number
+      // fragment, so rule 1 no longer glues that pair — rule 2 (the
+      // separator-specific one) is unaffected, since it already requires a
+      // digit on one side.
+      const bothAlphabetic = /^\p{L}+$/u.test(prev.text) && /^\p{L}+$/u.test(cur.text);
+      if (bothAlphabetic) {
+        shouldGlue.push(false);
+      } else if (gap <= generalThreshold) {
         shouldGlue.push(true);
       } else if (isSeparatorPair && gap <= separatorThreshold) {
         shouldGlue.push(true);
