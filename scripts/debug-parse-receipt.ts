@@ -345,7 +345,12 @@ async function main() {
   const rawArgs = process.argv.slice(2);
   const expectedArg = rawArgs.find((a) => a.startsWith("--expected="));
   const fixtureArg = rawArgs.find((a) => a.startsWith("--fixture="));
-  const positional = rawArgs.filter((a) => !a.startsWith("--expected=") && !a.startsWith("--fixture="));
+  // FIX 39 — opt-in only, default off. Forwards to normalizeVisionResponse's
+  // own geometricReconstruction option so this round's corpus measurement
+  // can run both configurations without touching index.ts or any production
+  // call site at all.
+  const geometricFlag = rawArgs.includes("--geometric");
+  const positional = rawArgs.filter((a) => !a.startsWith("--expected=") && !a.startsWith("--fixture=") && a !== "--geometric");
   const expectedTotal = expectedArg ? Number(expectedArg.slice("--expected=".length)) : null;
   if (expectedArg && (expectedTotal === null || !Number.isFinite(expectedTotal))) {
     console.error(`Invalid --expected value: "${expectedArg}"`);
@@ -392,9 +397,9 @@ async function main() {
   let imageUrl: string | null = null;
   let ocr: OcrResult;
   if (fixturePath) {
-    console.log(`Replaying frozen OCR fixture: ${fixturePath}`);
+    console.log(`Replaying frozen OCR fixture: ${fixturePath}${geometricFlag ? " (--geometric)" : ""}`);
     const ocrRaw = JSON.parse(readFileSync(fixturePath, "utf-8"));
-    ocr = normalizeVisionResponse(ocrRaw);
+    ocr = normalizeVisionResponse(ocrRaw, { geometricReconstruction: geometricFlag });
   } else {
     const fileBuffer = readFileSync(imagePath as string);
     const base64Content = fileBuffer.toString("base64");
@@ -404,7 +409,7 @@ async function main() {
 
     console.log("Calling Google Vision...");
     const ocrRaw = await callGoogleVision(GOOGLE_CLOUD_API_KEY, base64Content, OCR_LANGUAGE_HINTS);
-    ocr = normalizeVisionResponse(ocrRaw);
+    ocr = normalizeVisionResponse(ocrRaw, { geometricReconstruction: geometricFlag });
   }
   const lines = ocr.lines.map((l) => l.text);
   console.log(`OCR: ${ocr.lines.length} lines, ${ocr.words.length} words`);

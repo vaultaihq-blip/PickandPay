@@ -378,3 +378,97 @@ describe("ocr: AJ — a receipt with no glued fragments is unaffected (Ramires, 
     assert(decimalEntries.length > 20, "sanity check: this fixture has plenty of decimal entries, unaffected by FIX 12");
   });
 });
+
+// ─── FIX 39 — geometric line reconstruction, behind a flag (default off) ───
+//
+// EXPERIMENTAL. reconstructByHeightGrouping ignores Vision's own block
+// traversal order entirely and groups words purely by measured reading-
+// frame height/position (FIX 38's own report: that traversal order has
+// 5-60 adjacent-block inversions on every one of the 11 corpus fixtures).
+// Reachable only via reconstructLines's/normalizeVisionResponse's own
+// `geometricReconstruction` option — false by default, so every test above
+// this point (and the whole rest of the suite) exercises the unchanged
+// production path.
+
+function loadFixtureGeometric(name: string) {
+  const path = join(process.cwd(), "supabase/functions/parse-receipt/__fixtures__/", name);
+  const raw = JSON.parse(readFileSync(path, "utf-8"));
+  resetWordIdCounterForTests();
+  return normalizeVisionResponse(raw, { geometricReconstruction: true });
+}
+
+describe("ocr: FIX 39 — geometric reconstruction (flag ON)", () => {
+  it("FQ — V&RO real fixture: 'Net Amount' and '5226.00' land on the SAME reconstructed line (8 lines apart today, flag off)", () => {
+    const ocr = loadFixtureGeometric("vision-vro-bengaluru-en.json");
+    const line = ocr.lines.find((l) => l.text.includes("Net") && l.text.includes("Amount"));
+    assert(line !== undefined, "expected to find the 'Net Amount' line at all");
+    assert(line!.text.includes("5226.00"), `expected '5226.00' on the same reconstructed line as 'Net Amount', got: "${line!.text}"`);
+  });
+
+  it("FR — the flag OFF reproduces today's exact reconstruction, byte for byte, on every corpus fixture", () => {
+    const files = [
+      "vision-augustiner-de.json",
+      "vision-bucadibeppo-en.json",
+      "vision-hollywoodcafe-en.json",
+      "vision-mademoiselle-en.json",
+      "vision-madgod-pt.json",
+      "vision-pai-nova-en.json",
+      "vision-quebra-mar-pt.json",
+      "vision-ramires-pt.json",
+      "vision-sulbarreiro-pt.json",
+      "vision-vro-bengaluru-en.json",
+      "vision-zoca-en.json",
+    ];
+    for (const file of files) {
+      const path = join(process.cwd(), "supabase/functions/parse-receipt/__fixtures__/", file);
+      const raw = JSON.parse(readFileSync(path, "utf-8"));
+
+      resetWordIdCounterForTests();
+      const defaultResult = normalizeVisionResponse(raw);
+      resetWordIdCounterForTests();
+      const explicitOffResult = normalizeVisionResponse(raw, { geometricReconstruction: false });
+
+      const defaultText = defaultResult.lines.map((l) => l.text).join("\n");
+      const explicitOffText = explicitOffResult.lines.map((l) => l.text).join("\n");
+      assertEqual(explicitOffText, defaultText, `${file}: passing geometricReconstruction: false must reproduce the no-options call exactly`);
+      assertEqual(defaultResult.lines.length, explicitOffResult.lines.length, `${file}: line count must match`);
+    }
+  });
+
+  it("FS — name and price in separate columns, same height, no break metadata at all → same line, left-to-right order", () => {
+    // Two rows, each with THREE name words (two ordinary inter-word gaps)
+    // before the price's own wide column gap, so glueOcrFragments' own
+    // median-gap reference is dominated by ordinary word spacing (4 of it)
+    // rather than split evenly with the column gap (2 of it) — with only
+    // one ordinary gap per row, the median lands halfway between the two
+    // and wrongly glues the name's own words together.
+    const words = [
+      word("w1", "Spicy", rectBox(0, 0, 100, 40), null),
+      word("w2", "Khao", rectBox(140, 0, 90, 40), null),
+      word("w3", "Soi", rectBox(270, 0, 80, 40), null),
+      word("w4", "$23.75", rectBox(600, 5, 120, 40), null),
+      word("w5", "Thai", rectBox(0, 60, 100, 40), null),
+      word("w6", "Singha", rectBox(140, 60, 90, 40), null),
+      word("w7", "Beer", rectBox(270, 60, 80, 40), null),
+      word("w8", "$10.25", rectBox(600, 65, 120, 40), null),
+    ];
+    const lines = reconstructLines(words, true);
+    assertEqual(lines.length, 2, "expected exactly two reconstructed lines");
+    const khaoLine = lines.find((l) => l.text.includes("Khao"));
+    assert(khaoLine !== undefined);
+    assertEqual(khaoLine!.text, "Spicy Khao Soi $23.75", "expected left-to-right order preserved: name, then price");
+  });
+
+  it("FT — Quebra Mar real fixture (rotated): angle correction still works with the new reconstruction — TOTAL and its value land together", () => {
+    const ocr = loadFixtureGeometric("vision-quebra-mar-pt.json");
+    const totalLine = ocr.lines.find((l) => /\bTOTAL\s*:/.test(l.text) && l.text.includes("300,25"));
+    assert(totalLine !== undefined, "expected a reconstructed line containing both 'TOTAL:' and '300,25' — proves the rotation-corrected reading frame still groups a real printed row correctly under the new algorithm");
+  });
+
+  it("FU — Mad God real fixture: an item row split into 3 pieces today (name+qty / unit-price+rate / total+rate) reconstructs whole", () => {
+    const ocr = loadFixtureGeometric("vision-madgod-pt.json");
+    const heinekenLine = ocr.lines.find((l) => l.text.includes("Heineken"));
+    assert(heinekenLine !== undefined, "expected to find the Cerveja Heineken line");
+    assert(heinekenLine!.text.includes("2,75"), `expected the row's own unit price (2,75) on the same reconstructed line as the item name, got: "${heinekenLine!.text}"`);
+  });
+});

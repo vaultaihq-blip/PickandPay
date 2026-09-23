@@ -249,6 +249,103 @@ function reconstructByNormalizedGeometry(words: OcrWord[]): OcrWord[][] {
   });
 }
 
+// ─── Geometric line reconstruction (FIX 39) ────────────────────────────────
+//
+// FIX 38 measured that Vision's own block traversal order is NOT top-to-
+// bottom on any of the 11 corpus fixtures (5-60 adjacent block inversions
+// each) — V&RO's own "Net Amount" and its value "5226.00" sit at nearly
+// identical height (reading-frame center-Y within 6 units) but 8
+// reconstructed lines apart, because Vision listed unrelated footer blocks
+// between them in its own traversal order. reconstructByWordOrderAndBreaks
+// (the primary path above) trusts that traversal order completely; this is
+// an alternative that ignores it entirely and groups by measured geometry
+// instead — height-grouped, never order-trusted.
+//
+// EXPERIMENTAL — gated behind reconstructLines'/normalizeVisionResponse's
+// own `geometricReconstruction` option, default false. The production path
+// above is untouched and remains the default; this function is reachable
+// only when a caller explicitly opts in (see this round's own measurement
+// script and FQ/FR/FS/FT/FU in ocr.test.ts). Do not wire this into index.ts
+// or debug-parse-receipt.ts's default path this round — that decision
+// belongs to whichever round actually flips the flag, against the
+// pre-registered criteria in this round's own report.
+//
+// Grouping rule, exactly as measured working in FIX 38 (after two rejected
+// attempts — raw Y-range IoU was noise, IoU>=0.5 flagged genuinely correct
+// same-line pairs like Augustiner's own "Total 96,50" as bad joins): two
+// words belong to the same printed line when their reading-frame center-Y
+// distance is under half the document's own MEDIAN WORD HEIGHT. Median word
+// height, never the gap between today's own reconstructed lines — many of
+// today's lines are already split fragments of one physical row, which
+// would make that reference circular (FIX 38's own report).
+function medianOf(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+const GEOMETRIC_SAME_ROW_FRACTION = 0.5;
+
+function reconstructByHeightGrouping(words: OcrWord[], angle: number): OcrWord[][] {
+  if (words.length === 0) return [];
+
+  const framed = words.map((w) => {
+    const pts = w.boundingBox.vertices.map((v) => toReadingFrame(v.x, v.y, angle));
+    const ys = pts.map((p) => p.normalY);
+    const xs = pts.map((p) => p.normalX);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    return { word: w, centerY: (minY + maxY) / 2, minX: Math.min(...xs), height: maxY - minY };
+  });
+
+  const typicalHeight = medianOf(framed.map((f) => f.height));
+  const threshold = GEOMETRIC_SAME_ROW_FRACTION * typicalHeight;
+
+  // Union-Find over EVERY pair whose center-Y distance is under the
+  // threshold — not just consecutive-in-sort-order pairs — exactly the
+  // pairwise relation FIX 38 measured against this corpus (a running/chained
+  // comparison risks a different failure mode: a long near-continuous smear
+  // of centers silently bridging two genuinely different rows one small
+  // step at a time). Small n per receipt (a few hundred words at most) — a
+  // full O(n^2) pass is cheap here.
+  const parent = framed.map((_, i) => i);
+  function find(i: number): number {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
+    }
+    return i;
+  }
+  function union(a: number, b: number): void {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  }
+  for (let i = 0; i < framed.length; i++) {
+    for (let j = i + 1; j < framed.length; j++) {
+      if (Math.abs(framed[i].centerY - framed[j].centerY) < threshold) union(i, j);
+    }
+  }
+
+  const groups = new Map<number, typeof framed>();
+  for (let i = 0; i < framed.length; i++) {
+    const root = find(i);
+    const existing = groups.get(root);
+    if (existing) existing.push(framed[i]);
+    else groups.set(root, [framed[i]]);
+  }
+
+  const lineGroups = [...groups.values()];
+  lineGroups.sort((a, b) => {
+    const meanA = a.reduce((s, f) => s + f.centerY, 0) / a.length;
+    const meanB = b.reduce((s, f) => s + f.centerY, 0) / b.length;
+    return meanA - meanB;
+  });
+
+  return lineGroups.map((group) => [...group].sort((a, b) => a.minX - b.minX).map((f) => f.word));
+}
+
 // ─── Fragment gluing (FIX 12) ───────────────────────────────────────────────
 //
 // FIX 11's measurement of the Augustiner fixture found two items (33.60,
@@ -481,6 +578,7 @@ function mergeAdjacentTwoColumnLines(groups: OcrWord[][], angle: number): OcrWor
       bandsOverlap
     ) {
       merged.push([...current.words, ...next.words]);
+      twoColumnMergeFireCount += 1;
       i += 2;
     } else {
       merged.push(current.words);
@@ -488,6 +586,18 @@ function mergeAdjacentTwoColumnLines(groups: OcrWord[][], angle: number): OcrWor
     }
   }
   return merged;
+}
+
+// FIX 39 — diagnostic-only: how many times mergeAdjacentTwoColumnLines
+// actually merged a pair, this call. Reset at the top of reconstructLines so
+// a caller comparing the two reconstruction methods (this round's own
+// measurement) can read it fresh after each call. Never consulted by any
+// production logic — purely observational, to answer whether the merge
+// pass is still doing work once the geometric grouping (when the flag is
+// on) already puts a name and its price on one line by construction.
+let twoColumnMergeFireCount = 0;
+export function getTwoColumnMergeFireCount(): number {
+  return twoColumnMergeFireCount;
 }
 
 function assembleLines(groups: OcrWord[][]): OcrLine[] {
@@ -515,16 +625,28 @@ function assembleLines(groups: OcrWord[][]): OcrLine[] {
  *
  * `words` must be in Vision's own natural traversal order (page -> block ->
  * paragraph -> word) for the primary path to work correctly.
+ *
+ * FIX 39 — `geometricReconstruction` (default false) swaps BOTH of the
+ * above for reconstructByHeightGrouping, which ignores Vision's traversal
+ * order entirely and groups purely by measured height/position. EXPERIMENTAL
+ * — see this round's own report for the measured comparison. The two-column
+ * merge and fragment-gluing passes still run afterward either way, so a
+ * caller comparing both paths sees whether the new grouping already
+ * achieves what the merge pass used to do alone.
  */
-export function reconstructLines(words: OcrWord[]): OcrLine[] {
+export function reconstructLines(words: OcrWord[], geometricReconstruction = false): OcrLine[] {
+  twoColumnMergeFireCount = 0;
   if (words.length === 0) return [];
 
-  const hasUsableBreakMetadata = words.some((w) => w.breakType !== null);
   const angle = dominantAngle(words);
 
-  const groups = hasUsableBreakMetadata
-    ? reconstructByWordOrderAndBreaks(words)
-    : reconstructByNormalizedGeometry(words);
+  let groups: OcrWord[][];
+  if (geometricReconstruction) {
+    groups = reconstructByHeightGrouping(words, angle);
+  } else {
+    const hasUsableBreakMetadata = words.some((w) => w.breakType !== null);
+    groups = hasUsableBreakMetadata ? reconstructByWordOrderAndBreaks(words) : reconstructByNormalizedGeometry(words);
+  }
 
   // FIX 12 — before the two-column merge, never after (see glueOcrFragments'
   // own header comment for why order matters here).
@@ -536,8 +658,11 @@ export function reconstructLines(words: OcrWord[]): OcrLine[] {
 /**
  * Flattens a Vision DOCUMENT_TEXT_DETECTION response into words, in
  * Vision's own natural traversal order, then reconstructs printed lines.
+ *
+ * FIX 39 — `options.geometricReconstruction` (default false) forwards to
+ * reconstructLines; see its own header for what changes.
  */
-export function normalizeVisionResponse(raw: unknown): OcrResult {
+export function normalizeVisionResponse(raw: unknown, options?: { geometricReconstruction?: boolean }): OcrResult {
   const result = raw as {
     fullTextAnnotation?: {
       pages?: Array<{
@@ -582,7 +707,7 @@ export function normalizeVisionResponse(raw: unknown): OcrResult {
     }
   }
 
-  const lines = reconstructLines(rawWords);
+  const lines = reconstructLines(rawWords, options?.geometricReconstruction ?? false);
   const words = lines.flatMap((l) => l.words.map((wo) => wo.word));
 
   return { lines, words, pageWidth: page?.width ?? null, pageHeight: page?.height ?? null };
