@@ -281,3 +281,63 @@ describe("ledger: FIX 15.2 — space-separated quantity/price never collapses ac
     assert(!ledger.some((e) => e.value === 3130), "no column corroboration at all — never merge on faith");
   });
 });
+
+// ─── FIX 36 — a number token must consume the whole contiguous run ─────────
+//
+// NUMBER_TOKEN_PATTERN required thousands to come separator-grouped; a long
+// number printed WITHOUT one (common outside a few locales — India, Japan,
+// many European POS systems) couldn't be decomposed by that grammar at all,
+// so the regex silently matched only a PIECE of it: "4525.00" (V&RO's own
+// real total, FIX 30) matched just "5.00"; "500094969" (Sulbarreiro's own
+// loyalty ID, FIX 35) matched just "969", which then polluted a column
+// band. Reading a fragment of a printed number is worse than not reading it
+// — a wrong value shown with full confidence, or a value that exists
+// nowhere on the receipt.
+
+describe("ledger: FIX 36 — a number token must consume the whole word, or match nothing", () => {
+  it("FB — a long amount with no thousands separator extracts whole, never a fragment (V&RO's own bug)", () => {
+    const tokens = findMoneyTokens("Total Amount          4525.00");
+    assert(tokens.some((t) => t.value === 4525), "expected the whole 4525.00");
+    assert(!tokens.some((t) => t.value === 5), "must never produce the old wrong fragment, 5.00");
+  });
+
+  it("FC — a long bare digit run with no decimal and no currency cue produces no monetary token at all, even last-on-line (Sulbarreiro's own ID number)", () => {
+    const tokens = findMoneyTokens("Promotion Applied in Sale - ID 500094969");
+    assertEqual(tokens.length, 0, "a 9-digit bare ID must never become money");
+  });
+
+  it("FD — a comma-thousands amount is unaffected (Cedarstay's own shape)", () => {
+    const tokens = findMoneyTokens("Total                3,590.00");
+    assert(tokens.some((t) => t.value === 3590));
+  });
+
+  it("FE — a dot-thousands, comma-decimal amount is unaffected (European format)", () => {
+    const tokens = findMoneyTokens("Gesamtbetrag           1.234,56");
+    assert(tokens.some((t) => t.value === 1234.56));
+  });
+
+  it("FF — '34,502' still resolves to 34502, unchanged — the app never silently decides which reading (34,50 vs 34502) is correct", () => {
+    const tokens = findMoneyTokens("Currywurst + Pommes    34,502");
+    assert(
+      tokens.some((t) => t.value === 34502),
+      "stays exactly as parseAmbiguousNumber already reads it — unresolved, and still the arithmetic-contradiction check's own job (FIX 35 Part 4) to flag, never this fix's to correct"
+    );
+  });
+
+  it("FG — FIX 15.2 stays intact: a quantity and price in separate columns still split into two tokens, never glued (V&RO's own shape, re-verified under this fix)", () => {
+    resetAmountIdCounterForTests();
+    const row1 = lineFromWords(0, [{ word: wordAt("L0W0", "Widget", 10) }, { word: wordAt("L0W1", "45.00", 500) }]);
+    const row2 = lineFromWords(1, [{ word: wordAt("L1W0", "Gadget", 10) }, { word: wordAt("L1W1", "12.00", 500) }]);
+    const row3 = lineFromWords(2, [{ word: wordAt("L2W0", "3", 10) }, { word: wordAt("L2W1", "130.00", 500) }]);
+    const ledger = buildLedgerFromOcr([row1, row2, row3]);
+    assert(!ledger.some((e) => e.value === 3130), "quantity 3 + price 130.00 must never glue into 3130.00 under the new pattern either");
+    assert(ledger.some((e) => e.value === 130 && e.lineIndex === 2), "the real price 130.00 must still survive as its own entry");
+  });
+
+  it("FH — a long bare number with no decimal in the items region produces no ledger entry at all", () => {
+    resetAmountIdCounterForTests();
+    const line = makeLine(0, [{ text: "Guest" }, { text: "ID" }, { text: "500094969" }]);
+    const ledger = buildLedgerFromOcr([line]);
+    assertEqual(ledger.length, 0, "no fragment, and no whole-run bare integer either — this ID must never enter the ledger");
+  });
+});

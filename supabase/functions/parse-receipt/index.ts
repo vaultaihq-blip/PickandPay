@@ -60,7 +60,7 @@ import {
   TARGETED_VERIFICATION_SYSTEM_PROMPT,
 } from "./prompts.ts";
 import { callGoogleVision, normalizeVisionResponse, OcrError } from "./ocr.ts";
-import { buildLedgerFromOcr, type LedgerEntry } from "./ledger.ts";
+import { buildLedgerFromOcr, getPartialNumberTokensRejectedCount, type LedgerEntry } from "./ledger.ts";
 import {
   buildStructureSchema,
   describeLedgerForPrompt,
@@ -400,6 +400,7 @@ serve(async (req: Request) => {
 
     // ── Monetary Evidence Ledger — built directly from OCR tokens ───────────
     const ledger = buildLedgerFromOcr(ocr.lines);
+    const partialNumberTokensRejected = getPartialNumberTokensRejectedCount();
     if (ledger.length === 0) {
       return errorResponse("UNREADABLE_RECEIPT", 422);
     }
@@ -1006,6 +1007,10 @@ serve(async (req: Request) => {
         itemsRegionSaturated: itemsRegionSaturation.applied,
         itemsRegionSaturationCount: itemsRegionSaturation.count,
         itemsRegionSaturationBlockedBy: itemsRegionSaturation.blockedBy,
+        // FIX 36 — how many candidate tokens were rejected outright (never
+        // fragmented into a wrong value) because they were a long bare digit
+        // run with no decimal and no currency cue. Purely diagnostic.
+        partialNumberTokensRejected,
         unresolvedLoadBearingCount: validity.unresolvedLoadBearingCount,
         genuineOwnershipMissCount: validity.unresolvedLoadBearingCount,
         duplicateOwnershipCount: validity.duplicateOwnershipCount,

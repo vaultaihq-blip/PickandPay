@@ -65,7 +65,7 @@ function loadEnvLocal(): void {
 loadEnvLocal();
 
 import { callGoogleVision, normalizeVisionResponse, type OcrResult } from "../supabase/functions/parse-receipt/ocr";
-import { buildLedgerFromOcr, type LedgerEntry } from "../supabase/functions/parse-receipt/ledger";
+import { buildLedgerFromOcr, getPartialNumberTokensRejectedCount, type LedgerEntry } from "../supabase/functions/parse-receipt/ledger";
 import {
   buildStructureSchema,
   describeLedgerForPrompt,
@@ -410,6 +410,7 @@ async function main() {
   console.log(`OCR: ${ocr.lines.length} lines, ${ocr.words.length} words`);
 
   const ledger = buildLedgerFromOcr(ocr.lines);
+  const partialNumberTokensRejected = getPartialNumberTokensRejectedCount();
   console.log(`Ledger: ${ledger.length} monetary tokens`);
 
   // FIX 11 (Group 1) — computed before the semantic pass, kept in sync with
@@ -898,6 +899,7 @@ async function main() {
     itemsRegionSaturated: itemsRegionSaturation.applied,
     itemsRegionSaturationCount: itemsRegionSaturation.count,
     itemsRegionSaturationBlockedBy: itemsRegionSaturation.blockedBy,
+    partialNumberTokensRejected,
 
     // 4. Every semantic block produced by GPT.
     blocks: blocks.map((b) => ({

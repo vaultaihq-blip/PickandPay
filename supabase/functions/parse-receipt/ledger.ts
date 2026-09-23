@@ -24,9 +24,41 @@
 //      (kept here rather than imported, so this file has no dependency
 //      outside its own directory and stays deployable standalone).
 
-/** A number-shaped run: digits, optional grouping/decimal separators. */
+/**
+ * A number-shaped run: digits, optional grouping/decimal separators.
+ *
+ * FIX 36 — two alternatives, tried in order at each position:
+ *   1. a PROPERLY GROUPED number: 1-3 leading digits, then ONE OR MORE
+ *      thousands groups of exactly 3 digits each (each preceded by a
+ *      separator), then an optional decimal suffix. The `+` here (not the
+ *      original `*`) is load-bearing: it requires at least one genuine
+ *      group before this alternative can match at all. With `*` (zero
+ *      groups allowed), this alternative alone could already match a bare
+ *      1-3-digit PREFIX of a longer, ungrouped run and stop there — exactly
+ *      the FIX 30/35 bug: "4525.00" (no thousands separator at all, since
+ *      "4,525.00" would have been the properly grouped form) matched only
+ *      "452" here, and independently the leftover "5.00" then matched as
+ *      its own, wrong, token via alternative 2 below; "500094969" (a
+ *      tax/loyalty ID, not money at all) matched only its trailing "969".
+ *   2. a BARE run: one or more digits with no internal separators at all,
+ *      plus the same optional decimal suffix. This is what alternative 1
+ *      degenerating to zero groups used to mean, made explicit and — the
+ *      actual fix — no longer capped at 3 leading digits, so "4525" (or
+ *      "500094969") is consumed WHOLE rather than only its first 1-3
+ *      digits. A token must consume the receipt's entire contiguous
+ *      digit-and-separator run or not match there at all — reading a
+ *      PIECE of a printed number (36.00 read from a photo's fragment) is
+ *      worse than not reading it, never better.
+ *
+ * Never changes what a PROPERLY separator-grouped number resolves to —
+ * "34,502" (comma + exactly 3 digits) still matches alternative 1 whole,
+ * unchanged from before this fix; "3,590.00" and "1.234,56" likewise. The
+ * decimal-vs-thousands disambiguation itself (parseAmbiguousNumber) is
+ * untouched — this only changes which SUBSTRING becomes a candidate token
+ * in the first place.
+ */
 const NUMBER_TOKEN_PATTERN =
-  /-?\(?\d{1,3}(?:[.,\s  ]\d{3})*(?:[.,]\d{1,2})?\)?/g;
+  /-?\(?\d{1,3}(?:[.,\s  ]\d{3})+(?:[.,]\d{1,2})?\)?|-?\(?\d+(?:[.,]\d{1,2})?\)?/g;
 
 const CURRENCY_SYMBOLS = /[$€£¥₩₹]/;
 const CURRENCY_CODE_NEARBY = /\b(USD|EUR|GBP|CAD|AUD|CHF|JPY|CNY|HKD|SGD|BRL|MXN)\b/i;
@@ -123,6 +155,16 @@ export function parseAmbiguousNumber(raw: string): number | null {
  * phone numbers, and labelled non-money numbers (order/table/check/
  * reference/covers) are excluded by context, not accepted and filtered later.
  */
+// FIX 36 — diagnostic-only: how many candidate tokens this run rejected
+// under the new "whole run or nothing" rule (a long bare digit run with no
+// decimal and no currency cue, e.g. an ID or phone-adjacent number).
+// Reset at the top of buildLedgerFromOcr so a long-lived isolate reports
+// only the count for the request currently being parsed.
+let partialNumberTokensRejectedCounter = 0;
+export function getPartialNumberTokensRejectedCount(): number {
+  return partialNumberTokensRejectedCounter;
+}
+
 export function findMoneyTokens(line: string): MoneyToken[] {
   const excludedRanges: Array<[number, number]> = [];
   for (const pattern of [DATE_PATTERN, PHONE_PATTERN]) {
@@ -171,6 +213,30 @@ export function findMoneyTokens(line: string): MoneyToken[] {
     // (the common "label ........ price" layout), which are the two
     // situations that actually distinguish a price from an incidental count.
     if (!hasDecimal && !hasCurrencySymbol) {
+      // FIX 36 — length is checked before position, and a long bare run
+      // never gets a pass merely for being last-on-line. Capped at 3
+      // digits — this grammar's own original assumption for a single
+      // ungrouped figure (0-999) — because every genuine 4+-digit amount
+      // observed across all 11 corpus fixtures prints WITH a decimal point
+      // (4525.00, 2250.00, 5226.00); a longer bare run with neither a
+      // decimal nor a currency cue is, in this corpus, always something
+      // else printed nearby (Sulbarreiro's "ID 500094969", a phone number,
+      // a tax ID) — never a real price. NUMBER_TOKEN_PATTERN's own FIX 36
+      // change means this now sees the run's true full length, not a
+      // fragment of it.
+      //
+      // Only applies to a token with NO separator anywhere in it — a
+      // properly-grouped number like "34,502" has hasDecimal=false too
+      // (its own trailing group is 3 digits, not the 1-2 a decimal suffix
+      // requires) but is a structurally different, more-trusted shape than
+      // an unbroken 9-digit run; it must keep going through the ordinary
+      // last-on-line check below unchanged (Augustiner's own case, FIX 35
+      // Part 4 — this fix never decides which reading of it is correct).
+      const hasAnySeparator = /[.,\s]/.test(rawText);
+      if (!hasAnySeparator && rawText.replace(/[^\d]/g, "").length > 3) {
+        partialNumberTokensRejectedCounter += 1;
+        continue;
+      }
       const restOfLine = line.slice(endIndex).trim();
       const isLastOnLine = restOfLine.length === 0;
       if (!isLastOnLine) continue;
@@ -411,6 +477,7 @@ function resplitSpaceGroupedTokens(hits: RawTokenHit[], lines: OcrLine[], angle:
  * entries, because each is anchored to a physically distinct OCR word.
  */
 export function buildLedgerFromOcr(lines: OcrLine[]): LedgerEntry[] {
+  partialNumberTokensRejectedCounter = 0;
   const hits: RawTokenHit[] = [];
 
   for (const line of lines) {
