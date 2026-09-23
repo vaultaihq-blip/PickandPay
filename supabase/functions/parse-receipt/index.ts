@@ -983,6 +983,13 @@ serve(async (req: Request) => {
         // witness found a candidate (pre-FIX-31 closure-only path applied).
         totalWitness: appliedTotalWitness?.source ?? null,
         totalWitnessAgreement: appliedTotalWitness?.agreement ?? null,
+        // FIX 37 Part 1 — how many distinct-value total-shaped label
+        // candidates were found, and whether the winner needed the
+        // position-vs-charges rule to arbitrate between them. null when the
+        // label search found nothing (typography or closure decided
+        // instead). Purely diagnostic.
+        totalCandidatesFound: appliedTotalWitness?.labelCandidatesFound ?? null,
+        totalChosenBy: appliedTotalWitness?.labelChosenBy ?? null,
         // FIX 32 Part 2 — how many summary-region UNRESOLVED values were
         // reclassified PROVEN_NON_ADDITIVE, and which guard refused when it
         // didn't apply. Purely diagnostic.

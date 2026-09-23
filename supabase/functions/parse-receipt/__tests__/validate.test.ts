@@ -2744,3 +2744,51 @@ describe("validate: FIX 35 Part 4 — arithmetic contradiction triggers verifica
     assertEqual(suspects.length, 0);
   });
 });
+
+describe("validate/coverage: FIX 37 — the V&RO trap, closed by Part 1's position rule", () => {
+  it("FJ — V&RO-shaped: item sum alone (4525) does not equal the TRUE total (5226), so FIX 32's saturation correctly refuses to fire and the real charges stay honestly UNRESOLVED — contrasted against the old, wrong total, which would have wrongly triggered it", () => {
+    const sharedCharges: LedgerEntry[] = [
+      entry({ amountId: "ITEM1", value: 4525, lineIndex: 1 }),
+      entry({ amountId: "SERC", value: 452.5, lineIndex: 50 }),
+      entry({ amountId: "STATEGST", value: 124.49, lineIndex: 51 }),
+      entry({ amountId: "CENTRALGST", value: 124.49, lineIndex: 52 }),
+      entry({ amountId: "ROUNDOFF", value: -0.48, lineIndex: 53 }),
+    ];
+
+    // TRUE total: the summary block's own amountId is the real "Net
+    // Amount" (5226) — what Part 1's position rule now picks (see this
+    // same round's FI test).
+    const trueLedger: LedgerEntry[] = [...sharedCharges, entry({ amountId: "NET", value: 5226, lineIndex: 54 })];
+    const trueBlocks: StructureBlock[] = [
+      { blockId: "ITEM", kind: "item", lineIndices: [1], parentBlockId: null, name: "Items", amountId: "ITEM1", quantity: 1, priceKind: "lineTotal" },
+      { blockId: "SUM", kind: "summary", lineIndices: [54], parentBlockId: null, name: "Net Amount", amountId: "NET", quantity: null, priceKind: null },
+    ];
+    const trueAssignments: Assignment[] = [
+      { blockId: "ITEM", amountId: "ITEM1", quantity: 1, priceKind: "lineTotal" },
+      { blockId: "SUM", amountId: "NET", quantity: null, priceKind: null },
+    ];
+    const trueValidations = validateAssignments(trueBlocks, trueAssignments, trueLedger);
+    const trueTotal = finalizeSummaryWithSaturation("INR", trueBlocks, trueValidations, trueLedger, witness("NET", 5226));
+    assertDeepEqual(trueTotal.saturation, { applied: false, count: 0, blockedBy: "sum_mismatch" }, "item sum (4525) does not equal the true total (5226) — saturation must refuse, not silently mark SERC/State Gst/Central Gst/Round Off decorative");
+
+    // Contrast — exactly what this closes: had the summary block instead
+    // pointed at the pre-tax subtotal (4525, printed as "Total Amount",
+    // the pre-FIX-37 bug), item sum alone WOULD have equalled it exactly,
+    // and saturation would have wrongly swept every real charge under the
+    // rug as "already explained" — the FALSE_VALID trap this round's own
+    // introduction describes, approved while the customer's real total
+    // (5226) was never shown.
+    const wrongLedger: LedgerEntry[] = [...sharedCharges, entry({ amountId: "TOTALAMT", value: 4525, lineIndex: 49 })];
+    const wrongBlocks: StructureBlock[] = [
+      { blockId: "ITEM", kind: "item", lineIndices: [1], parentBlockId: null, name: "Items", amountId: "ITEM1", quantity: 1, priceKind: "lineTotal" },
+      { blockId: "SUM", kind: "summary", lineIndices: [49], parentBlockId: null, name: "Total Amount", amountId: "TOTALAMT", quantity: null, priceKind: null },
+    ];
+    const wrongAssignments: Assignment[] = [
+      { blockId: "ITEM", amountId: "ITEM1", quantity: 1, priceKind: "lineTotal" },
+      { blockId: "SUM", amountId: "TOTALAMT", quantity: null, priceKind: null },
+    ];
+    const wrongValidations = validateAssignments(wrongBlocks, wrongAssignments, wrongLedger);
+    const wrongTotal = finalizeSummaryWithSaturation("INR", wrongBlocks, wrongValidations, wrongLedger, witness("TOTALAMT", 4525));
+    assert(wrongTotal.saturation.applied === true, "demonstrates the trap this fix closes: the OLD (wrong) total would have wrongly triggered saturation over real charges");
+  });
+});

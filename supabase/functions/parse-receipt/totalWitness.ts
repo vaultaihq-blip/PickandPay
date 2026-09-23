@@ -47,6 +47,13 @@ export interface TotalWitnessResult {
    *  means the label witness still won (typography never overrides it),
    *  but it is worth knowing how often the two would have clashed. */
   agreement: "agree" | "label_only" | "typography_only" | "disagree";
+  /** FIX 37 Part 1 — purely diagnostic. How many distinct-VALUE total-shaped
+   *  label candidates findTotalLabelWitness found (1 when there was never
+   *  any competition), and whether the winner needed the position rule to
+   *  arbitrate. null when source is "typography" (the label search found
+   *  nothing at all, so these never applied). */
+  labelCandidatesFound: number | null;
+  labelChosenBy: "single" | "position" | null;
 }
 
 // ─── Witness A — printed label, in the raw OCR text ─────────────────────────
@@ -71,7 +78,17 @@ const EXCLUDE_PATTERNS = [
   /total\s+l[ií]quido/i, // "Total Liquido" (Sulbarreiro — net, not the amount paid)
   /total\s+iva\s+inclu/i, // "Total IVA Incluido X%" (Sulbarreiro — VAT breakdown)
   /total\s+items?\b/i, // "Total Items : 20" (VRO — item count, not currency)
-  /net\s*(amount|umsatz)/i, // "Net Amount" (VRO), "Nettoumsatz" (Augustiner)
+  // FIX 37 — "Net Amount" was excluded here (V&RO). Measured directly
+  // against V&RO: it IS the true total (the printed "Total Amount" above
+  // it is a pre-tax subtotal), so it is removed — the position rule in
+  // findTotalLabelWitness below now decides between the two, never a name
+  // exclusion. The other half of this pattern, `net\s*umsatz`, never
+  // actually matched "Nettoumsatz" (Augustiner) in the first place —
+  // checked directly: no whitespace or word boundary separates "Netto"
+  // from "umsatz" in the real OCR text, so `net\s*umsatz` cannot match it
+  // — and TOTAL_LABEL_PATTERNS below has no pattern that matches "umsatz"
+  // either, so "Nettoumsatz"/"Umsatz X% inkl." were never candidates to
+  // begin with; this exclusion entry was dead code on that half too.
   // FIX 32 — added alongside the label variants below, in the same
   // proportion, per this module's own rule: no new label pattern without a
   // matching exclusion for the false positive it's most likely to invite.
@@ -101,6 +118,21 @@ const TOTAL_LABEL_PATTERNS = [
   /\bendbetrag\b/i, // German
   /\bsumme\b/i, // German "Summe" — excluded from "Zwischensumme" above
   /\btotale\b/i, // Italian "Totale" (word-boundary: does NOT match inside "Subtotale", already excluded above) — also covers "Importo Totale", "Totale da Pagare"
+  // FIX 37 — payment-instrument echoes: printed once a card/terminal
+  // payment closes, and on every corpus receipt that has one, its value
+  // equals the total (Sulbarreiro's "Multibanco 8,25", Ramires' "Valor
+  // entregue"). A partial payment could in principle print a DIFFERENT
+  // value here — the position rule's own AMBIGUOUS refusal (never "later
+  // wins" without a charge actually between them) is what protects against
+  // that, not this list.
+  /\bmultibanco\b/i,
+  /\bvalor\s+entregue\b/i,
+  // FIX 37 — "Net Amount" (V&RO) itself. Measured directly: no existing
+  // pattern above ever matched it (it contains neither "total" nor any
+  // other already-listed phrase) — the EXCLUDE_PATTERNS entry removed
+  // above was excluding a candidate that could never have been proposed in
+  // the first place. This is the pattern that actually makes it one.
+  /\bnet\s+amount\b/i,
 ];
 
 function classifyLabelLine(text: string): "TOTAL_LABEL" | "EXCLUDED" | "NONE" {
@@ -143,7 +175,7 @@ export function findTotalLabelWitness(
   lines: OcrLine[],
   ledger: LedgerEntry[],
   summaryRegionStart: number
-): { amountId: string; value: number } | "AMBIGUOUS" | null {
+): { amountId: string; value: number; candidatesFound: number; chosenBy: "single" | "position" } | "AMBIGUOUS" | null {
   const summaryLines = lines.filter((l) => l.lineIndex >= summaryRegionStart);
   const lineByIndex = new Map(summaryLines.map((l) => [l.lineIndex, l]));
   const labelLines = summaryLines
@@ -151,7 +183,7 @@ export function findTotalLabelWitness(
     .filter((l) => l.cls === "TOTAL_LABEL");
   const decimalEntries = ledger.filter((e) => DECIMAL_SHAPED.test(e.rawText.replace(/[()]/g, "")));
 
-  const matches: Array<{ amountId: string; value: number; distance: number }> = [];
+  const matches: Array<{ amountId: string; value: number; distance: number; labelLineIndex: number }> = [];
   for (const label of labelLines) {
     // A genuine grand-total label line carries exactly ONE monetary token —
     // a tax-rate-table row ("Total 23.00 101,00 e", Mad God's per-rate
@@ -160,7 +192,7 @@ export function findTotalLabelWitness(
     // closest of several", so it is skipped rather than guessed.
     const sameLineAll = decimalEntries.filter((e) => e.lineIndex === label.lineIndex);
     if (sameLineAll.length === 1) {
-      matches.push({ amountId: sameLineAll[0].amountId, value: sameLineAll[0].value, distance: 0 });
+      matches.push({ amountId: sameLineAll[0].amountId, value: sameLineAll[0].value, distance: 0, labelLineIndex: label.lineIndex });
       continue;
     }
     if (sameLineAll.length > 1) continue;
@@ -180,17 +212,60 @@ export function findTotalLabelWitness(
           return l ? isBareValueLine(l.text) : false;
         });
       if (candidates.length > 0) {
-        matches.push({ amountId: candidates[0].amountId, value: candidates[0].value, distance: dist });
+        matches.push({ amountId: candidates[0].amountId, value: candidates[0].value, distance: dist, labelLineIndex: label.lineIndex });
         break;
       }
     }
   }
 
   if (matches.length === 0) return null;
-  const distinctValues = new Set(matches.map((m) => Math.round(m.value * 100)));
-  if (distinctValues.size > 1) return "AMBIGUOUS";
-  matches.sort((a, b) => a.distance - b.distance);
-  return { amountId: matches[0].amountId, value: matches[0].value };
+
+  // FIX 37 Part 1 — collapse to one representative per DISTINCT value first
+  // (preferring the nearest match when several label lines happen to agree
+  // on the same value — Augustiner's "Total 96,50" / "Bar 96,50", an echo,
+  // not two competing totals). Only genuinely DIFFERENT values need the
+  // position rule below.
+  const byValue = new Map<number, (typeof matches)[number]>();
+  for (const m of matches) {
+    const key = Math.round(m.value * 100);
+    const existing = byValue.get(key);
+    if (!existing || m.distance < existing.distance) byValue.set(key, m);
+  }
+  const distinctCandidates = [...byValue.values()];
+
+  if (distinctCandidates.length === 1) {
+    return { amountId: distinctCandidates[0].amountId, value: distinctCandidates[0].value, candidatesFound: 1, chosenBy: "single" };
+  }
+
+  // Multiple total-shaped labels with DIFFERENT values: an invoice with
+  // charges prints an ordered structure — subtotal, then charges, then the
+  // true total. Position (the LABEL's own printed line, never the matched
+  // value's magnitude — magnitude broke on the FIX 29 discount scenario,
+  // BQ: subtotal 100, total 80) decides which is which. Walk the distinct
+  // candidates in PRINTED order; whenever another monetary value (a charge,
+  // or anything still unclassified) sits strictly between two consecutive
+  // candidates, the LATER one is the true total and the earlier one was
+  // only a subtotal, dropped from consideration. Two candidates with
+  // nothing between them and different values is genuinely ambiguous —
+  // refuse rather than guess, exactly like the single-candidate path above
+  // already refused on disagreeing values.
+  distinctCandidates.sort((a, b) => a.labelLineIndex - b.labelLineIndex);
+  let current = distinctCandidates[0];
+  for (let i = 1; i < distinctCandidates.length; i++) {
+    const next = distinctCandidates[i];
+    const lo = current.labelLineIndex;
+    const hi = next.labelLineIndex;
+    const currentKey = Math.round(current.value * 100);
+    const nextKey = Math.round(next.value * 100);
+    const hasValueBetween = decimalEntries.some((e) => {
+      if (e.lineIndex <= lo || e.lineIndex >= hi) return false;
+      const key = Math.round(e.value * 100);
+      return key !== currentKey && key !== nextKey;
+    });
+    if (!hasValueBetween) return "AMBIGUOUS";
+    current = next;
+  }
+  return { amountId: current.amountId, value: current.value, candidatesFound: distinctCandidates.length, chosenBy: "position" };
 }
 
 // ─── Witness B — typographic emphasis ───────────────────────────────────────
@@ -266,10 +341,17 @@ export function resolveTotalWitness(
     labelVal !== null && typo !== null ? (agree ? "agree" : "disagree") : labelVal !== null ? "label_only" : "typography_only";
 
   if (labelVal !== null) {
-    return { amountId: labelVal.amountId, value: labelVal.value, source: "label", agreement };
+    return {
+      amountId: labelVal.amountId,
+      value: labelVal.value,
+      source: "label",
+      agreement,
+      labelCandidatesFound: labelVal.candidatesFound,
+      labelChosenBy: labelVal.chosenBy,
+    };
   }
   if (typo) {
-    return { amountId: typo.amountId, value: typo.value, source: "typography", agreement };
+    return { amountId: typo.amountId, value: typo.value, source: "typography", agreement, labelCandidatesFound: null, labelChosenBy: null };
   }
   return null;
 }

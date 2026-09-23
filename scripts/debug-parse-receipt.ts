@@ -885,6 +885,8 @@ async function main() {
     offsetHypothesisAdopted,
     totalWitness: appliedTotalWitness?.source ?? null,
     totalWitnessAgreement: appliedTotalWitness?.agreement ?? null,
+    totalCandidatesFound: appliedTotalWitness?.labelCandidatesFound ?? null,
+    totalChosenBy: appliedTotalWitness?.labelChosenBy ?? null,
     provenNonAdditiveCount: provenNonAdditive.count,
     provenNonAdditiveBlockedBy: provenNonAdditive.blockedBy,
     provenAdditiveCount: provenAdditive.count,

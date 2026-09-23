@@ -148,3 +148,63 @@ describe("totalWitness: FIX 31 — combined verdict and buildFinalPayload wiring
     assertEqual(assembled.totalWitness, null);
   });
 });
+
+// ─── FIX 37 Part 1 — position among total-shaped labels decides ────────────
+//
+// Real-fixture measurement (FIX 37's own report) found V&RO Bengaluru's own
+// "Net Amount" (the true total, 5226.00) sits 8 lines from its printed
+// value — far outside findTotalLabelWitness's own measured ≤2-line window
+// (see docs/design/summary-region-orphan-pairing.md: a wider pairing
+// mechanism was explored, measured safe, but never actually reaches this
+// case, and was not implemented). FI/FJ below are therefore synthetic,
+// V&RO-SHAPED constructions — same label text, same charges, same true
+// total — with the label and its value close enough together for the
+// EXISTING ≤2-line matching to find it, so what's actually under test is
+// the NEW position rule itself, not the separately-documented OCR gap.
+
+describe("totalWitness: FIX 37 Part 1 — position among total-shaped labels decides, never magnitude", () => {
+  it("FI — V&RO-shaped: 'Total Amount' (a subtotal) and 'Net Amount' (the true total) disagree, with charges printed between them → the total is 5226, not 4525", () => {
+    const lines: OcrLine[] = [
+      makeLine(0, [makeWord("n0a", "Total", 0, 0), makeWord("n0b", "Amount", 60, 0), makeWord("v0", "4525.00", 300, 0)]),
+      makeLine(1, [makeWord("n1", "SERC", 0, 20), makeWord("v1", "452.50", 300, 20)]),
+      makeLine(2, [makeWord("n2a", "State", 0, 40), makeWord("n2b", "Gst", 60, 40), makeWord("v2", "124.49", 300, 40)]),
+      makeLine(3, [makeWord("n3a", "Central", 0, 60), makeWord("n3b", "Gst", 60, 60), makeWord("v3", "124.49", 300, 60)]),
+      makeLine(4, [makeWord("n4a", "Round", 0, 80), makeWord("n4b", "Off", 60, 80), makeWord("v4", "-0.48", 300, 80)]),
+      makeLine(5, [makeWord("n5a", "Net", 0, 100), makeWord("n5b", "Amount", 60, 100), makeWord("v5", "5226.00", 300, 100)]),
+    ];
+    const ledger = buildLedgerFromOcr(lines);
+    const witness = findTotalLabelWitness(lines, ledger, 0);
+    assert(witness !== null && witness !== "AMBIGUOUS", "the position rule must resolve this outright, never refuse when charges genuinely separate the two candidates");
+    if (witness && witness !== "AMBIGUOUS") {
+      assertEqual(witness.value, 5226, "Net Amount, printed after the charges, is the true total — Total Amount is only the pre-tax subtotal");
+    }
+  });
+
+  it("FK — Augustiner-shaped: 'Total' and 'Bar' agree on the same value, nothing between them but VAT breakdown lines → no ambiguity", () => {
+    const { ocr, ledger } = loadRealFixture("vision-augustiner-de.json");
+    const witness = findTotalLabelWitness(ocr.lines, ledger, 21);
+    assert(witness !== null && witness !== "AMBIGUOUS", "two agreeing labels, even with unrelated VAT-breakdown lines between them, must never read as ambiguous");
+    if (witness && witness !== "AMBIGUOUS") assertEqual(witness.value, 96.5);
+  });
+
+  it("FL — Sulbarreiro-shaped: 'TOTAL LEVAR' and a payment-terminal echo agree on the same value → no ambiguity", () => {
+    const lines: OcrLine[] = [
+      makeLine(0, [makeWord("n0", "TOTAL", 0, 0), makeWord("v0", "8.25", 300, 0)]),
+      makeLine(1, [makeWord("n1", "Multibanco", 0, 20), makeWord("v1", "8.25", 300, 20)]),
+    ];
+    const ledger = buildLedgerFromOcr(lines);
+    const witness = findTotalLabelWitness(lines, ledger, 0);
+    assert(witness !== null && witness !== "AMBIGUOUS", "the total label and its payment-terminal echo agree — never ambiguous");
+    if (witness && witness !== "AMBIGUOUS") assertEqual(witness.value, 8.25);
+  });
+
+  it("FM — two total-shaped labels with DIFFERENT values and nothing between them: genuinely ambiguous, nothing chosen (never 'the bigger one' — that is the FIX 29/BQ discount trap)", () => {
+    const lines: OcrLine[] = [
+      makeLine(0, [makeWord("n0", "Total", 0, 0), makeWord("v0", "100.00", 300, 0)]),
+      makeLine(1, [makeWord("n1", "Amount", 0, 20), makeWord("n1b", "Due", 60, 20), makeWord("v1", "80.00", 300, 20)]),
+    ];
+    const ledger = buildLedgerFromOcr(lines);
+    const witness = findTotalLabelWitness(lines, ledger, 0);
+    assertEqual(witness, "AMBIGUOUS", "different values, nothing between them to arbitrate — must refuse rather than guess either way");
+  });
+});
