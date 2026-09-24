@@ -25,6 +25,10 @@ interface ReceiptItemProps {
   onGroupingToggle?: () => void;
   showEditIcon?: boolean;
   hasMathError?: boolean;
+  /** FIX 44 — when provided, shows a tappable "reviewed" mark independent of
+   *  onPress (opening the edit modal), so it can be confirmed by hand with
+   *  no edit at all. */
+  onToggleReviewed?: () => void;
 }
 
 export function ReceiptItemRow({
@@ -40,6 +44,7 @@ export function ReceiptItemRow({
   onGroupingToggle,
   showEditIcon = false,
   hasMathError = false,
+  onToggleReviewed,
 }: ReceiptItemProps) {
   const [expanded, setExpanded] = useState(false);
   const isDark = useColorScheme() === "dark";
@@ -135,6 +140,19 @@ export function ReceiptItemRow({
 
         <View style={styles.rightSection}>
           <View style={styles.priceRow}>
+            {onToggleReviewed && (
+              <TouchableOpacity
+                onPress={onToggleReviewed}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.reviewedBadge}
+              >
+                <Ionicons
+                  name={item.reviewed ? "checkmark-circle" : "checkmark-circle-outline"}
+                  size={18}
+                  color={item.reviewed ? Colors.success : mutedColor}
+                />
+              </TouchableOpacity>
+            )}
             {hasMathError && (
               <Ionicons name="warning" size={13} color={Colors.warning} />
             )}
@@ -269,6 +287,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+  },
+  reviewedBadge: {
+    marginRight: 2,
   },
   price: {
     fontSize: 14,

@@ -53,6 +53,9 @@ export interface ReceiptItem {
   participants?: string[];
   confidence?: number;
   warnings?: string[];
+  /** User has confirmed this item is correct — set automatically on any edit,
+   *  or toggled by hand with no edit at all. FIX 44. */
+  reviewed?: boolean;
 }
 
 export interface GlobalCost {

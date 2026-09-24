@@ -35,8 +35,22 @@ const CATEGORIES: ItemCategory[] = [
 
 const STRICT_TOLERANCE = 0.01;
 
-function flattenItems(receipt: ParsedReceipt): EditableItem[] {
-  const result: EditableItem[] = [];
+// FIX 44 — quantity/unitPrice/totalPrice keep BOTH a numeric value (source
+// of truth for validation/rebuild) and the raw text last typed into that
+// field. Binding a TextInput's value straight to a formatted derivative of
+// the number (e.g. unitPrice.toFixed(2)) fights the user's own typing —
+// every keystroke re-renders the reformatted string, which can snap "1." back
+// to "1.00" before a trailing digit is ever typed. The *Text fields are what
+// each TextInput actually displays; the numeric fields are what validation,
+// totals, and the rebuilt receipt use.
+interface EditableRow extends EditableItem {
+  qtyText: string;
+  unitPriceText: string;
+  totalText: string;
+}
+
+function flattenItems(receipt: ParsedReceipt): EditableRow[] {
+  const result: EditableRow[] = [];
   for (const cat of CATEGORIES) {
     for (const item of receipt.categories[cat] ?? []) {
       result.push({
@@ -47,13 +61,17 @@ function flattenItems(receipt: ParsedReceipt): EditableItem[] {
         unitPrice: item.unitPrice,
         totalPrice: item.totalPrice,
         addOns: item.addOns,
+        reviewed: item.reviewed,
+        qtyText: String(item.quantity),
+        unitPriceText: item.unitPrice.toFixed(2),
+        totalText: item.totalPrice.toFixed(2),
       });
     }
   }
   return result;
 }
 
-function rebuildReceipt(original: ParsedReceipt, items: EditableItem[]): ParsedReceipt {
+function rebuildReceipt(original: ParsedReceipt, items: EditableRow[]): ParsedReceipt {
   const categories: ParsedReceipt["categories"] = {
     starters: [], mains: [], drinks: [], desserts: [], others: [],
   };
@@ -69,6 +87,7 @@ function rebuildReceipt(original: ParsedReceipt, items: EditableItem[]): ParsedR
       unitPrice: item.unitPrice,
       totalPrice: item.totalPrice,
       type: "individual",
+      reviewed: item.reviewed,
     } as ReceiptItem);
   }
   const userItemsTotal = Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100;
@@ -125,13 +144,18 @@ export default function ReviewReceiptScreen() {
 
   // ── All hooks before any conditional return ────────────────────────────────
 
-  const [items, setItems] = useState<EditableItem[]>(() =>
+  const [items, setItems] = useState<EditableRow[]>(() =>
     receipt ? flattenItems(receipt) : []
   );
   const [imageModalVisible, setImageModalVisible] = useState(false);
 
   useEffect(() => {
-    if (!receipt) router.replace("/(app)/scan");
+    if (!receipt) {
+      router.replace("/(app)/scan");
+      return;
+    }
+    const itemCount = Object.values(receipt.categories).flat().length;
+    console.log(`[review-receipt] Loaded receipt: ${receipt.restaurant} (${itemCount} items)`);
   }, []);
 
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
@@ -195,32 +219,70 @@ export default function ReviewReceiptScreen() {
   }, [validation]);
 
   const totalDiff = calculatedTotal - subtotalTarget;
-  const canContinue = validation.isValid;
+  // FIX 44 — editing must never be refused for not reconciling ("a app pode
+  // mostrar que a soma não bate, não pode recusar"). The Continue button is
+  // always enabled (see handleContinue and the JSX below); hasBlockingIssues
+  // only drives the informational banners, unchanged from before.
+  const hasBlockingIssues = !validation.isValid;
   const isWarning = validation.isWarning;
   const fixSuggestions = useMemo(() => buildFixSuggestions(totalDiff, t, currency), [totalDiff, t, currency]);
 
+  // FIX 44 — the three-field rule: quantity x unitPrice = total. Whichever
+  // field the user just edited keeps its own raw text exactly as typed; the
+  // OTHER dependent field(s) recompute from it (see EditableRow's own header
+  // comment for why raw text is tracked separately from the numeric value).
+  // Editing anything on an item activates its reviewed mark automatically.
   const updateItem = useCallback(
-    (id: string, field: "name" | "quantity" | "unitPrice", raw: string) => {
+    (id: string, field: "name" | "quantity" | "unitPrice" | "totalPrice", raw: string) => {
       setItems((prev) =>
         prev.map((item) => {
           if (item.id !== id) return item;
-          if (field === "name") return { ...item, name: raw };
+          if (field === "name") return { ...item, name: raw, reviewed: true };
+
           if (field === "quantity") {
             const qty = Math.max(1, parseInt(raw) || 1);
-            return { ...item, quantity: qty, totalPrice: Math.round(qty * item.unitPrice * 100) / 100 };
+            const total = Math.round(qty * item.unitPrice * 100) / 100;
+            return { ...item, qtyText: raw, quantity: qty, totalPrice: total, totalText: total.toFixed(2), reviewed: true };
           }
-          const price = parseFloat(raw.replace(",", ".")) || 0;
-          return { ...item, unitPrice: price, totalPrice: Math.round(item.quantity * price * 100) / 100 };
+
+          if (field === "unitPrice") {
+            const price = parseFloat(raw.replace(",", ".")) || 0;
+            const total = Math.round(item.quantity * price * 100) / 100;
+            return { ...item, unitPriceText: raw, unitPrice: price, totalPrice: total, totalText: total.toFixed(2), reviewed: true };
+          }
+
+          // field === "totalPrice" — the exact typed value is the ground
+          // truth ("o que conta para a conta é o total"); unitPrice is
+          // re-derived by division and rounded for display only.
+          const total = parseFloat(raw.replace(",", ".")) || 0;
+          const unitPrice = item.quantity > 0 ? Math.round((total / item.quantity) * 100) / 100 : item.unitPrice;
+          return { ...item, totalText: raw, totalPrice: total, unitPrice, unitPriceText: unitPrice.toFixed(2), reviewed: true };
         })
       );
     },
     []
   );
 
+  // FIX 44 — toggled by hand, independent of editing a field ("pode ser
+  // ativada à mão sem editar nada, para confirmar que está certo").
+  const toggleReviewed = useCallback((id: string) => {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, reviewed: !item.reviewed } : item)));
+  }, []);
+
   const addItem = useCallback(() => {
     setItems((prev) => [
       ...prev,
-      { id: `manual_${Date.now()}`, category: "others", name: "", quantity: 1, unitPrice: 0, totalPrice: 0 },
+      {
+        id: `manual_${Date.now()}`,
+        category: "others",
+        name: "",
+        quantity: 1,
+        unitPrice: 0,
+        totalPrice: 0,
+        qtyText: "1",
+        unitPriceText: "0.00",
+        totalText: "0.00",
+      },
     ]);
   }, []);
 
@@ -235,19 +297,14 @@ export default function ReviewReceiptScreen() {
   if (!receipt) return null;
 
   const handleContinue = () => {
-    if (!canContinue) {
-      Alert.alert(
-        t("review_receipt_fix_title"),
-        `The items must add up to exactly ${formatCurrency(subtotalTarget, currency as any)}.\n\nCurrent difference: ${totalDiff > 0 ? "+" : ""}${formatCurrency(Math.abs(totalDiff), currency as any)}`,
-        [{ text: t("ok") }]
-      );
-      return;
-    }
     const rebuilt = rebuildReceipt(receipt, items);
     setReceipt(rebuilt);
 
     const liveId = currentSession?.id;
     const isLiveSession = liveId && !liveId.startsWith("session_");
+    console.log(
+      `[review-receipt] handleContinue: isLiveSession=${!!isLiveSession} sessionId=${liveId ?? "none"} -> ${isLiveSession ? `session-lobby/${liveId}` : "review"}`
+    );
     if (isLiveSession) {
       setSession({ ...currentSession!, receipt: rebuilt });
       router.replace(`/(app)/session-lobby/${liveId}`);
@@ -292,7 +349,7 @@ export default function ReviewReceiptScreen() {
           </View>
 
           {/* Warning state — small discrepancy, can continue */}
-          {isWarning && canContinue && (
+          {isWarning && !hasBlockingIssues && (
             <View style={styles.warningBox}>
               <View style={styles.warningBoxHeader}>
                 <Ionicons name="warning" size={18} color={Colors.warning} />
@@ -311,12 +368,14 @@ export default function ReviewReceiptScreen() {
             </View>
           )}
 
-          {/* Blocked state — prominent error box */}
-          {!canContinue && (
+          {/* Discrepancy state — informational only, never blocks Continue
+              (FIX 44 — "a app pode mostrar que a soma não bate, não pode
+              recusar"). Same box as before, just no longer a refusal. */}
+          {hasBlockingIssues && (
             <View style={styles.blockedBox}>
               <View style={styles.blockedHeader}>
-                <Ionicons name="lock-closed" size={18} color="#DC2626" />
-                <Text style={styles.blockedTitle}>{t("review_receipt_cant_continue")}</Text>
+                <Ionicons name="warning" size={18} color="#DC2626" />
+                <Text style={styles.blockedTitle}>Items don't add up</Text>
               </View>
               <Text style={styles.blockedDesc}>
                 Items must add up to exactly{" "}
@@ -435,9 +494,21 @@ export default function ReviewReceiptScreen() {
               >
                 <View style={styles.itemHeader}>
                   <Text style={[styles.itemIndex, { color: mutedColor }]}>#{index + 1}</Text>
-                  <TouchableOpacity onPress={() => removeItem(item.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                    <Ionicons name="trash-outline" size={16} color={mutedColor} />
-                  </TouchableOpacity>
+                  <View style={styles.itemHeaderActions}>
+                    <TouchableOpacity
+                      onPress={() => toggleReviewed(item.id)}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Ionicons
+                        name={item.reviewed ? "checkmark-circle" : "checkmark-circle-outline"}
+                        size={18}
+                        color={item.reviewed ? Colors.success : mutedColor}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => removeItem(item.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Ionicons name="trash-outline" size={16} color={mutedColor} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {hasError && (
@@ -459,7 +530,7 @@ export default function ReviewReceiptScreen() {
                   <View style={styles.fieldCol}>
                     <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_qty")}</Text>
                     <TextInput
-                      value={String(item.quantity)}
+                      value={item.qtyText}
                       onChangeText={(v) => updateItem(item.id, "quantity", v)}
                       keyboardType="number-pad"
                       style={[styles.fieldInput, { color: textColor, borderColor }]}
@@ -468,7 +539,7 @@ export default function ReviewReceiptScreen() {
                   <View style={styles.fieldCol}>
                     <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_receipt_unit_price")}</Text>
                     <TextInput
-                      value={item.unitPrice.toFixed(2)}
+                      value={item.unitPriceText}
                       onChangeText={(v) => updateItem(item.id, "unitPrice", v)}
                       keyboardType="decimal-pad"
                       style={[styles.fieldInput, { color: textColor, borderColor }]}
@@ -476,11 +547,15 @@ export default function ReviewReceiptScreen() {
                   </View>
                   <View style={styles.fieldCol}>
                     <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_total")}</Text>
-                    <View style={[styles.fieldReadonly, { borderColor: hasError ? "#EF4444" : borderColor }]}>
-                      <Text style={[styles.fieldReadonlyText, { color: hasError ? "#EF4444" : Colors.primary }]}>
-                        {item.totalPrice.toFixed(2)}
-                      </Text>
-                    </View>
+                    <TextInput
+                      value={item.totalText}
+                      onChangeText={(v) => updateItem(item.id, "totalPrice", v)}
+                      keyboardType="decimal-pad"
+                      style={[
+                        styles.fieldInput,
+                        { color: hasError ? "#EF4444" : Colors.primary, borderColor: hasError ? "#EF4444" : borderColor, fontWeight: "700" },
+                      ]}
+                    />
                   </View>
                 </View>
               </View>
@@ -515,11 +590,11 @@ export default function ReviewReceiptScreen() {
           {/* Totals — prominent, shows match or mismatch */}
           <View style={[
             styles.totalCard,
-            { backgroundColor: canContinue ? cardColor : "#FEF2F2", borderColor: canContinue ? borderColor : "#FCA5A5" },
+            { backgroundColor: hasBlockingIssues ? "#FEF2F2" : cardColor, borderColor: hasBlockingIssues ? "#FCA5A5" : borderColor },
           ]}>
             <View style={styles.totalRow}>
               <Text style={[styles.totalLabel, { color: mutedColor }]}>{t("review_receipt_items_sum")}</Text>
-              <Text style={[styles.totalValue, { color: canContinue ? textColor : "#DC2626" }]}>
+              <Text style={[styles.totalValue, { color: hasBlockingIssues ? "#DC2626" : textColor }]}>
                 {formatCurrency(calculatedTotal, currency as any)}
               </Text>
             </View>
@@ -543,7 +618,7 @@ export default function ReviewReceiptScreen() {
             )}
             <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
             <View style={styles.totalRow}>
-              {canContinue ? (
+              {!hasBlockingIssues ? (
                 <>
                   <View style={styles.matchRow}>
                     <Ionicons name="checkmark-circle" size={15} color="#10B981" />
@@ -586,21 +661,15 @@ export default function ReviewReceiptScreen() {
           <TouchableOpacity
             style={[
               styles.continueBtn,
-              !canContinue && styles.continueBtnLocked,
-              isWarning && canContinue && styles.continueBtnWarning,
+              (isWarning || hasBlockingIssues) && styles.continueBtnWarning,
             ]}
             onPress={handleContinue}
-            activeOpacity={canContinue ? 0.85 : 1}
+            activeOpacity={0.85}
           >
-            {canContinue && !isWarning ? (
+            {!isWarning && !hasBlockingIssues ? (
               <Text style={styles.continueBtnText}>{t("review_receipt_looks_good")}</Text>
-            ) : canContinue && isWarning ? (
-              <Text style={styles.continueBtnText}>Continue anyway →</Text>
             ) : (
-              <View style={styles.lockedBtnInner}>
-                <Ionicons name="lock-closed" size={14} color="#9CA3AF" />
-                <Text style={styles.continueBtnTextLocked}>{t("review_receipt_locked_btn")}</Text>
-              </View>
+              <Text style={styles.continueBtnText}>Continue anyway →</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -800,6 +869,7 @@ const styles = StyleSheet.create({
   // ── Item cards ─────────────────────────────────────────────────────────────
   itemCard: { borderRadius: 12, borderWidth: 1, padding: 14, gap: 10 },
   itemHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  itemHeaderActions: { flexDirection: "row", alignItems: "center", gap: 12 },
   itemIndex: { fontSize: 11, fontWeight: "600" },
   itemErrorRow: { flexDirection: "row", alignItems: "flex-start", gap: 5 },
   itemErrorText: { fontSize: 11, color: "#EF4444", flex: 1, lineHeight: 16 },

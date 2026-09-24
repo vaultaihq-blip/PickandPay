@@ -58,6 +58,8 @@ interface CategorySectionProps {
   onGroupingToggle?: (itemId: string) => void;
   showEditIcon?: boolean;
   mathErrorItemIds?: Set<string>;
+  /** FIX 44 — reviewed-mark toggle, forwarded to each row. */
+  onToggleReviewed?: (itemId: string) => void;
 }
 
 export function CategorySection({
@@ -74,6 +76,7 @@ export function CategorySection({
   onGroupingToggle,
   showEditIcon = false,
   mathErrorItemIds,
+  onToggleReviewed,
 }: CategorySectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const isDark = useColorScheme() === "dark";
@@ -143,6 +146,7 @@ export function CategorySection({
                 onGroupingToggle={() => onGroupingToggle?.(item.id)}
                 showEditIcon={showEditIcon}
                 hasMathError={mathErrorItemIds?.has(item.id) ?? false}
+                onToggleReviewed={onToggleReviewed ? () => onToggleReviewed(item.id) : undefined}
               />
               {index < items.length - 1 && (
                 <View

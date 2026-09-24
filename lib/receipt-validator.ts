@@ -25,6 +25,21 @@ const TOTAL_TOLERANCE = 5.00;
 const WARN_THRESHOLD  = 0.50;
 const ITEM_MATH_TOLERANCE = 0.01;
 
+/**
+ * FIX 44 — the three-field edit rule (quantity/unitPrice/totalPrice) lets a
+ * user set totalPrice directly and derives unitPrice from it by division,
+ * ROUNDED to 2 decimals for display (totalPrice stays exactly as typed —
+ * it's the ground truth, unitPrice is informational). That rounding means
+ * quantity * unitPrice can legitimately differ from totalPrice by up to half
+ * a cent per unit (e.g. 10.00 / 3 -> 3.33, 3 * 3.33 = 9.99, off by 0.01) —
+ * a flat 0.01 tolerance would flag normal, correct use of that feature as a
+ * critical math error and lock the user out. Scales with quantity so it
+ * stays exact for any divisor, never loosens for an actually-wrong value.
+ */
+function itemMathTolerance(quantity: number): number {
+  return ITEM_MATH_TOLERANCE + Math.abs(quantity) * 0.005;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function allReceiptItems(receipt: ParsedReceipt): ReceiptItem[] {
@@ -126,7 +141,7 @@ export function validateReceiptOCR(receipt: ParsedReceipt): ValidationResult {
 
     const addOnsSum = paidAddOnsTotal(item);
     const expected = Math.round((item.quantity * item.unitPrice + addOnsSum) * 100) / 100;
-    if (Math.abs(expected - item.totalPrice) > ITEM_MATH_TOLERANCE) {
+    if (Math.abs(expected - item.totalPrice) > itemMathTolerance(item.quantity)) {
       errors.push({
         itemId: item.id,
         severity: "critical",
@@ -179,6 +194,8 @@ export interface EditableItem {
   /** Paid modifiers, when the caller has them available. Optional — existing
    *  callers that don't populate this keep behaving exactly as before. */
   addOns?: { unitPrice?: number; totalPrice: number }[];
+  /** FIX 44 — carried through so the reviewed mark survives edit/rebuild. */
+  reviewed?: boolean;
 }
 
 export function validateEditableItems(
@@ -229,7 +246,7 @@ export function validateEditableItems(
 
     const addOnsSum = paidAddOnsTotal(item);
     const expected = Math.round((item.quantity * item.unitPrice + addOnsSum) * 100) / 100;
-    if (Math.abs(expected - item.totalPrice) > ITEM_MATH_TOLERANCE) {
+    if (Math.abs(expected - item.totalPrice) > itemMathTolerance(item.quantity)) {
       errors.push({
         itemId: item.id,
         severity: "critical",

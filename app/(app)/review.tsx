@@ -276,28 +276,51 @@ export default function ReviewScreen() {
     []
   );
 
+  // FIX 44 — toggled by hand, independent of the edit modal ("pode ser
+  // ativada à mão sem editar nada, para confirmar que está certo").
+  const toggleReviewed = useCallback(
+    (itemId: string) => {
+      const item = allItems.find((i) => i.id === itemId);
+      if (!item) return;
+      updateItem(item.category, itemId, { reviewed: !item.reviewed });
+    },
+    [allItems, updateItem]
+  );
+
   const handleSaveEdit = () => {
     if (!editItem) return;
     const qty = Math.max(1, parseInt(editQty) || 1);
     const unitPrice = Math.max(0, parseFloat(editUnitPrice.replace(",", ".")) || 0);
     const totalPrice = Math.max(0, parseFloat(editTotalPrice.replace(",", ".")) || unitPrice * qty);
     const finalTotal = Math.round(totalPrice * 100) / 100;
+    const finalName = editName.trim() || editItem.name;
+    // FIX 44 — the reviewed mark activates automatically on any real edit,
+    // never on opening-and-saving a modal unchanged.
+    const changed =
+      finalName !== editItem.name ||
+      editCategory !== editItem.category ||
+      qty !== editItem.quantity ||
+      Math.abs(unitPrice - editItem.unitPrice) > 0.001 ||
+      Math.abs(finalTotal - editItem.totalPrice) > 0.001;
+    const reviewed = changed ? true : editItem.reviewed;
     if (editCategory !== editItem.category) {
       removeItem(editItem.id);
       addItem(editCategory, {
         ...editItem,
-        name: editName.trim() || editItem.name,
+        name: finalName,
         category: editCategory,
         quantity: qty,
         unitPrice,
         totalPrice: finalTotal,
+        reviewed,
       });
     } else {
       updateItem(editItem.category, editItem.id, {
-        name: editName.trim() || editItem.name,
+        name: finalName,
         quantity: qty,
         unitPrice,
         totalPrice: finalTotal,
+        reviewed,
       });
     }
     setEditItem(null);
@@ -309,8 +332,45 @@ export default function ReviewScreen() {
     setEditItem(null);
   };
 
+  // FIX 44 — the three-field rule: quantity x unitPrice = total. Whichever
+  // field the user just edited is left untouched; the OTHER dependent field
+  // recomputes from it. Quantity and unitPrice always drive total forward;
+  // total (when it's the one being typed) drives unitPrice backward, by
+  // division, rounded to 2 decimals for display — handleTotalPriceChange
+  // never reformats editTotalPrice's own state, so the exact typed total
+  // survives untouched through to Save.
+  const handleQtyChange = (v: string) => {
+    setEditQty(v);
+    const qty = parseInt(v) || 0;
+    const unit = parseFloat(editUnitPrice.replace(",", "."));
+    if (!isNaN(unit)) {
+      setEditTotalPrice(String(Math.round(unit * qty * 100) / 100));
+    }
+  };
+
+  const handleUnitPriceChange = (v: string) => {
+    setEditUnitPrice(v);
+    const unit = parseFloat(v.replace(",", "."));
+    const qty = parseInt(editQty) || 1;
+    if (!isNaN(unit)) {
+      setEditTotalPrice(String(Math.round(unit * qty * 100) / 100));
+    }
+  };
+
+  const handleTotalPriceChange = (v: string) => {
+    // The exact typed string is the ground truth for totalPrice — never
+    // reformatted here, only echoed back on Save.
+    setEditTotalPrice(v);
+    const total = parseFloat(v.replace(",", "."));
+    const qty = parseInt(editQty) || 1;
+    if (!isNaN(total) && qty > 0) {
+      setEditUnitPrice(String(Math.round((total / qty) * 100) / 100));
+    }
+  };
+
   const adjustEditQty = (delta: number) => {
-    setEditQty((prev) => String(Math.max(1, (parseInt(prev) || 1) + delta)));
+    const next = Math.max(1, (parseInt(editQty) || 1) + delta);
+    handleQtyChange(String(next));
   };
 
   const openAddItem = () => {
@@ -718,6 +778,7 @@ export default function ReviewScreen() {
               onGroupingToggle={toggleGroupingCheck}
               showEditIcon
               mathErrorItemIds={mathErrorItemIds}
+              onToggleReviewed={toggleReviewed}
             />
           ))}
 
@@ -925,7 +986,7 @@ export default function ReviewScreen() {
                   <TextInput
                     style={[styles.qtyInput, { color: textColor, borderColor, backgroundColor: bgColor }]}
                     value={editQty}
-                    onChangeText={setEditQty}
+                    onChangeText={handleQtyChange}
                     keyboardType="number-pad"
                     textAlign="center"
                   />
@@ -943,14 +1004,7 @@ export default function ReviewScreen() {
                 <TextInput
                   style={[styles.fieldInput, { color: textColor, borderColor, backgroundColor: bgColor }]}
                   value={editUnitPrice}
-                  onChangeText={(v) => {
-                    setEditUnitPrice(v);
-                    const unit = parseFloat(v.replace(",", "."));
-                    const qty = parseInt(editQty) || 1;
-                    if (!isNaN(unit)) {
-                      setEditTotalPrice(String(Math.round(unit * qty * 100) / 100));
-                    }
-                  }}
+                  onChangeText={handleUnitPriceChange}
                   placeholder="0.00"
                   placeholderTextColor={mutedColor}
                   keyboardType="decimal-pad"
@@ -963,7 +1017,7 @@ export default function ReviewScreen() {
             <TextInput
               style={[styles.fieldInput, { color: textColor, borderColor, backgroundColor: bgColor }]}
               value={editTotalPrice}
-              onChangeText={setEditTotalPrice}
+              onChangeText={handleTotalPriceChange}
               placeholder="0.00"
               placeholderTextColor={mutedColor}
               keyboardType="decimal-pad"
