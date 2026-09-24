@@ -18,11 +18,9 @@ import * as ImageManipulator from "expo-image-manipulator";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
-import { useAuthStore } from "@/store/authStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { supabase } from "@/lib/supabase";
-import { analyzeReceipt, createBlankReceipt } from "@/utils/parser";
-import { validateReceiptOCR } from "@/lib/receipt-validator";
+import { createBlankReceipt } from "@/utils/parser";
 import { useI18nStore } from "@/store/i18nStore";
 
 type ScanMode = "camera" | "upload" | "manual";
@@ -40,9 +38,8 @@ export default function ScanScreen() {
   const [mode, setMode] = useState<ScanMode>("camera");
   const [isPicking, setIsPicking] = useState(false);
 
-  const { setReceipt, setRawImageUri, setProcessing, setTip, setTipMode, clearReceipt, setPendingImage, isProcessing, processingStep } =
+  const { setReceipt, setProcessing, clearReceipt, setPendingImage, isProcessing, processingStep } =
     useReceiptStore();
-  const { profile } = useAuthStore();
   const { currentSession, clearSession } = useSessionStore();
   const { t, language } = useI18nStore();
   void language;
@@ -105,136 +102,6 @@ export default function ScanScreen() {
     cancelledRef.current = true;
     setProcessing(false);
   }, [setProcessing]);
-
-  const handleAnalyze = async (uri: string) => {
-    if (!profile?.isPro && (profile?.billCredits ?? 0) <= 0) {
-      Alert.alert(t("scan_no_credits"), t("scan_no_credits_alt"), [
-        { text: t("scan_buy"), onPress: () => router.push("/(app)/paywall") },
-        {
-          text: t("scan_enter_manually"),
-          onPress: () => {
-            setReceipt(createBlankReceipt());
-            router.push("/(app)/review");
-          },
-        },
-        { text: t("cancel"), style: "cancel" },
-      ]);
-      return;
-    }
-
-    cancelledRef.current = false;
-    setRawImageUri(uri);
-    setProcessing(true, "Analyzing receipt...");
-
-    const TIMEOUT_MS = 90_000;
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("TIMEOUT")), TIMEOUT_MS)
-    );
-
-    try {
-      const { receipt: parsed } = await Promise.race([
-        analyzeReceipt(uri),
-        timeoutPromise,
-      ]);
-
-      if (cancelledRef.current) return;
-
-      const itemCount = Object.values(parsed.categories).flat().length;
-
-      if (itemCount === 0) {
-        setProcessing(false);
-        Alert.alert(t("scan_no_items_title"), t("scan_no_items_msg"), [
-          { text: t("scan_try_again"), style: "cancel" },
-          {
-            text: t("scan_enter_manually"),
-            onPress: () => {
-              setReceipt(createBlankReceipt());
-              router.push("/(app)/review");
-            },
-          },
-        ]);
-        return;
-      }
-
-      setReceipt(parsed);
-      setTip("removed", 0, 0);
-      setTipMode("equal");
-      setProcessing(false);
-
-      const validation = validateReceiptOCR(parsed);
-      // Go to review-receipt for hard errors OR small-diff warnings (so user sees the discrepancy)
-      router.push(validation.isValid && !validation.isWarning ? "/(app)/review" : "/(app)/review-receipt");
-    } catch (err) {
-      if (cancelledRef.current) return;
-      setProcessing(false);
-      const msg = err instanceof Error ? err.message : "";
-
-      if (msg === "TIMEOUT") {
-        Alert.alert(
-          "Analysis timed out",
-          "The analysis took too long. Check your internet connection or enter items manually.",
-          [
-            {
-              text: t("scan_enter_manually"),
-              onPress: () => {
-                setReceipt(createBlankReceipt());
-                router.push("/(app)/review");
-              },
-            },
-            { text: t("scan_try_again"), style: "cancel" },
-          ]
-        );
-        return;
-      }
-
-      if (msg === "MISSING_GOOGLE_KEY") {
-        Alert.alert(
-          "Google Vision Key Required",
-          "Add your Google Cloud API key to .env.local as EXPO_PUBLIC_GOOGLE_CLOUD_API_KEY.",
-          [
-            {
-              text: "Enter Manually",
-              onPress: () => {
-                setReceipt(createBlankReceipt());
-                router.push("/(app)/review");
-              },
-            },
-            { text: "OK", style: "cancel" },
-          ]
-        );
-        return;
-      }
-
-      if (msg === "MISSING_KEY") {
-        Alert.alert(
-          "API Key Required",
-          "Add your OpenAI API key to .env.local as EXPO_PUBLIC_OPENAI_API_KEY.",
-          [
-            {
-              text: "Enter Manually",
-              onPress: () => {
-                setReceipt(createBlankReceipt());
-                router.push("/(app)/review");
-              },
-            },
-            { text: "OK", style: "cancel" },
-          ]
-        );
-        return;
-      }
-
-      Alert.alert(t("scan_analysis_failed"), `${t("scan_analysis_failed_msg")}\n\n[Debug] ${msg || String(err)}`, [
-        {
-          text: t("scan_enter_manually"),
-          onPress: () => {
-            setReceipt(createBlankReceipt());
-            router.push("/(app)/review");
-          },
-        },
-        { text: t("scan_try_again"), style: "cancel" },
-      ]);
-    }
-  };
 
   // Re-encodes the picked/captured image with no-op operations — this alone
   // bakes the file's EXIF Orientation tag into the actual pixel buffer and
