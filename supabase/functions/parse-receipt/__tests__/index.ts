@@ -11,6 +11,8 @@ import "./ownership.test";
 import "./fixture-rotation.test";
 import "./columns.test";
 import "./totalWitness.test";
+import "./structureAgreement.test";
+import "./materializeStructure.test";
 import { run } from "./harness";
 
 run();

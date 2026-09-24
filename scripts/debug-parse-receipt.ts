@@ -89,8 +89,9 @@ import {
   STRUCTURE_AND_ASSIGNMENT_SYSTEM_PROMPT,
   TARGETED_VERIFICATION_SYSTEM_PROMPT,
 } from "../supabase/functions/parse-receipt/prompts";
-import { computeGeometricOwnership, detectConstantOffsetRuns, type PriceBlockInput } from "../supabase/functions/parse-receipt/ownership";
 import { resolveTotalWitness } from "../supabase/functions/parse-receipt/totalWitness";
+import { materializeStructure } from "../supabase/functions/parse-receipt/materializeStructure";
+import { extractComparableStructure, findStructureDisagreements, type StructureDisagreement } from "../supabase/functions/parse-receipt/structureAgreement";
 import { filterToAuthoritativeColumn, detectAuthoritativeColumn, computeReadingAngle, detectColumnRoles } from "../supabase/functions/parse-receipt/columns";
 import { reconcile, toMajor, toMinor } from "../supabase/functions/parse-receipt/reconcile";
 import {
@@ -350,7 +351,13 @@ async function main() {
   // can run both configurations without touching index.ts or any production
   // call site at all.
   const geometricFlag = rawArgs.includes("--geometric");
-  const positional = rawArgs.filter((a) => !a.startsWith("--expected=") && !a.startsWith("--fixture=") && a !== "--geometric");
+  // FIX 41 — opt-in only, default off. Mirrors --geometric's own pattern:
+  // lets this round's corpus measurement run both configurations without
+  // touching index.ts's own DOUBLE_STRUCTURE_READ_ENABLED constant.
+  const doubleReadFlag = rawArgs.includes("--doubleread");
+  const positional = rawArgs.filter(
+    (a) => !a.startsWith("--expected=") && !a.startsWith("--fixture=") && a !== "--geometric" && a !== "--doubleread"
+  );
   const expectedTotal = expectedArg ? Number(expectedArg.slice("--expected=".length)) : null;
   if (expectedArg && (expectedTotal === null || !Number.isFinite(expectedTotal))) {
     console.error(`Invalid --expected value: "${expectedArg}"`);
@@ -515,97 +522,74 @@ async function main() {
   const { merchant, date, currency, blocks } = structurePass;
   console.log(`Structure: ${blocks.length} blocks (merchant=${merchant}, currency=${currency})`);
 
-  // Kept in sync with index.ts: every block participates in ownership, not
-  // just item/modifier/summary — a "quantity"/"unclassified" block still
-  // territorially claims its own lines (see ownership.ts), and dropping
-  // that filter here (this script previously only passed item/modifier/
-  // summary blocks) let a neighbour's search reach into a quantity block's
-  // lines that production always fences off. parentBlockId was also missing
-  // from this mapping, needed for the same-family territorial exemption.
-  const ownershipInputs: PriceBlockInput[] = blocks.map((b) => ({
-    blockId: b.blockId,
-    kind: b.kind,
-    lineIndices: b.lineIndices,
-    name: b.name,
-    parentBlockId: b.parentBlockId,
-    proposedAmountId: b.amountId,
-  }));
-  const ownershipResults = computeGeometricOwnership(ownershipInputs, matchingLedger, ocr.lines, itemsRegionEnd);
-  const ownershipByBlock = new Map(ownershipResults.map((r) => [r.blockId, r]));
-  for (const block of blocks) {
-    const owned = ownershipByBlock.get(block.blockId);
-    if (owned) block.amountId = owned.amountId;
-  }
-  console.log(`Geometric ownership: ${ownershipResults.filter((r) => r.confident).length}/${ownershipResults.length} confident, ${ownershipResults.filter((r) => r.anchorCorrected).length} anchor-corrected`);
-
   // FIX 31 — kept in sync with index.ts: independent evidence for the
   // printed grand total. See totalWitness.ts's own header comment.
   const totalWitness = resolveTotalWitness(ocr.lines, ledger, itemsRegionEnd);
   console.log(`Total witness: ${totalWitness ? `${totalWitness.source} -> ${totalWitness.value} (agreement=${totalWitness.agreement})` : "none"}`);
 
-  // FIX 27 — kept in sync with index.ts: constant column offset, arbitrated
-  // by the printed subtotal. See ownership.ts's own header comment on this.
-  let offsetFormDetected = false;
-  let offsetHypothesisAdopted: "H0" | "H1" | "AMBIGUOUS" = "H0";
-  {
-    const offsetRuns = detectConstantOffsetRuns(ownershipInputs, matchingLedger, ocr.lines, itemsRegionEnd);
-    offsetFormDetected = offsetRuns.length > 0;
-    const viableRuns = offsetRuns.filter((r) => r.h1AmountIds !== null);
-    const namedSubtotalBlock = blocks.find(
-      (b) => b.kind === "summary" && /subtotal/.test((b.name ?? "").toLowerCase().replace(/[^a-z]/g, ""))
-    );
-    const namedSubtotalOwnership = namedSubtotalBlock ? ownershipByBlock.get(namedSubtotalBlock.blockId) : undefined;
-    const printedSubtotalEntry =
-      namedSubtotalOwnership?.confident && namedSubtotalOwnership.amountId
-        ? ledger.find((e) => e.amountId === namedSubtotalOwnership.amountId) ?? null
-        : null;
-    const arbitrationTargetMinor = printedSubtotalEntry ? toMinor(printedSubtotalEntry.value, currency) : null;
-
-    if (viableRuns.length > 0 && arbitrationTargetMinor !== null) {
-      const affectedBlockIds = new Set(viableRuns.flatMap((r) => r.blockIds));
-      const h1AmountIdByBlock = new Map<string, string | null>();
-      for (const r of viableRuns) {
-        for (const [blockId, amountId] of r.h1AmountIds!) h1AmountIdByBlock.set(blockId, amountId);
-      }
-
-      const h0Assignments = assignmentsFromBlocks(blocks);
-      const h0Validations = validateAssignments(blocks, h0Assignments, ledger);
-      const h0Assembled = buildFinalPayload(merchant, currency, lines, blocks, h0Validations, ledger, totalWitness);
-      const h0SumMinor = reconcile(h0Assembled.payload).calculatedSubtotalMinor;
-
-      const h1Blocks = blocks.map((b) =>
-        affectedBlockIds.has(b.blockId) ? { ...b, amountId: h1AmountIdByBlock.get(b.blockId) ?? null } : b
-      );
-      const h1Assignments = assignmentsFromBlocks(h1Blocks);
-      const h1Validations = validateAssignments(h1Blocks, h1Assignments, ledger);
-      const h1Assembled = buildFinalPayload(merchant, currency, lines, h1Blocks, h1Validations, ledger, totalWitness);
-      const h1SumMinor = reconcile(h1Assembled.payload).calculatedSubtotalMinor;
-
-      const h0Closes = h0SumMinor === arbitrationTargetMinor;
-      const h1Closes = h1SumMinor === arbitrationTargetMinor;
-
-      if (h1Closes && !h0Closes) {
-        offsetHypothesisAdopted = "H1";
-        for (const block of blocks) {
-          if (affectedBlockIds.has(block.blockId)) block.amountId = h1AmountIdByBlock.get(block.blockId) ?? null;
-        }
-      } else if (h0Closes && h1Closes) {
-        offsetHypothesisAdopted = "AMBIGUOUS";
-        for (const block of blocks) {
-          if (affectedBlockIds.has(block.blockId)) block.amountId = null;
-        }
-      }
-    }
-  }
+  // FIX 41 — geometric ownership (FIX 11), constant-offset arbitration
+  // (FIX 27), and final payload assembly, extracted to
+  // materializeStructure.ts (kept in sync with index.ts — this is the exact
+  // same shared module, not a hand-copied mirror).
+  const materialized = materializeStructure(blocks, ledger, matchingLedger, ocr.lines, lines, merchant, currency, itemsRegionEnd, totalWitness);
+  const ownershipResults = materialized.ownershipResults;
+  const ownershipByBlock = new Map(ownershipResults.map((r) => [r.blockId, r]));
+  const offsetFormDetected = materialized.offsetFormDetected;
+  const offsetHypothesisAdopted = materialized.offsetHypothesisAdopted;
+  console.log(`Geometric ownership: ${ownershipResults.filter((r) => r.confident).length}/${ownershipResults.length} confident, ${ownershipResults.filter((r) => r.anchorCorrected).length} anchor-corrected`);
   console.log(`Constant-offset arbitration: formDetected=${offsetFormDetected}, hypothesisAdopted=${offsetHypothesisAdopted}`);
 
-  let assignments = assignmentsFromBlocks(blocks);
-  let validations: AssignmentValidation[] = validateAssignments(blocks, assignments, ledger);
-  validations = validations.map((v) => {
-    const owned = ownershipByBlock.get(v.blockId);
-    if (owned?.confident && v.amountId === owned.amountId) return { ...v, ownershipValid: true };
-    return v;
-  });
+  const assignments = materialized.assignments;
+  let validations: AssignmentValidation[] = materialized.validations;
+
+  // FIX 41 — double structuring read, gated behind --doubleread (default
+  // off). Runs the IDENTICAL structuring call a second, independent time
+  // and compares the two materialized structures at the user-relevant
+  // level (structureAgreement.ts) — never a vote, never a merge. See this
+  // round's own report for the measured corpus before deciding whether to
+  // ever flip index.ts's own DOUBLE_STRUCTURE_READ_ENABLED to true.
+  const asNumberOrNull = (v: unknown): number | null => (typeof v === "number" ? v : null);
+  let structureAgreementResult: boolean | null = null;
+  let structureDisagreements: StructureDisagreement[] = [];
+  if (doubleReadFlag) {
+    const secondPass = await runStructurePass();
+    if (secondPass !== null) {
+      structureTimeMs += secondPass.ms;
+      const secondMaterialized = materializeStructure(
+        secondPass.blocks,
+        ledger,
+        matchingLedger,
+        ocr.lines,
+        lines,
+        secondPass.merchant,
+        secondPass.currency,
+        computeItemsRegionEnd(secondPass.blocks),
+        totalWitness
+      );
+      const firstComparable = extractComparableStructure(
+        materialized.blocks,
+        materialized.assembled.summaryRoleAssignments,
+        asNumberOrNull(materialized.assembled.payload.printedTotal),
+        asNumberOrNull(materialized.assembled.payload.printedSubtotal)
+      );
+      const secondComparable = extractComparableStructure(
+        secondMaterialized.blocks,
+        secondMaterialized.assembled.summaryRoleAssignments,
+        asNumberOrNull(secondMaterialized.assembled.payload.printedTotal),
+        asNumberOrNull(secondMaterialized.assembled.payload.printedSubtotal)
+      );
+      structureDisagreements = findStructureDisagreements(firstComparable, secondComparable);
+      structureAgreementResult = structureDisagreements.length === 0;
+      console.log(
+        `Double read: agreement=${structureAgreementResult}` +
+          (structureDisagreements.length > 0 ? ` disagreements=[${structureDisagreements.map((d) => d.kind).join(",")}]` : "") +
+          (secondPass.usage ? ` (2nd pass tokens: prompt=${secondPass.usage.promptTokens} completion=${secondPass.usage.completionTokens})` : "")
+      );
+    } else {
+      console.log("Double read: second pass did not return parseable JSON — treated as no comparison available");
+    }
+  }
+
   // FIX 35 — kept in sync with index.ts: column roles, reused for Part 4's
   // arithmetic-contradiction check here and Part 2/3's row-proof and
   // saturation further down.
@@ -769,7 +753,10 @@ async function main() {
   }
 
   const summaryValidity = determineSummaryValidity(summaryCoverage, summaryDuplicateRoles);
-  const finalReconciles = reconciliation.reconciles && summaryValidity.valid;
+  // FIX 41 — kept in sync with index.ts: a double-read disagreement forces
+  // this false, reusing the existing honest-refusal path rather than a new
+  // "ambiguous" state.
+  const finalReconciles = reconciliation.reconciles && summaryValidity.valid && structureAgreementResult !== false;
 
   const validity = determineValidity(structuralGaps, coverage, duplicateOwnership, validations, finalReconciles);
 
@@ -880,6 +867,10 @@ async function main() {
     summaryDuplicateRoleAttemptCount: summaryValidity.summaryDuplicateRoleAttemptCount,
     validity,
     finalReconciles,
+    // FIX 41 — null when --doubleread wasn't passed (or the 2nd pass failed
+    // to parse). structureDisagreements is purely diagnostic.
+    structureAgreement: structureAgreementResult,
+    structureDisagreements: structureDisagreements.map((d) => d.kind),
     // FIX 23 — every item where GPT's own priceKind was overridden by the
     // deterministic unit-price-annotation rule. Purely diagnostic.
     priceKindOverrideCount: priceKindOverrides.length,
