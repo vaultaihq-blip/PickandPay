@@ -664,10 +664,13 @@ export default function SessionLobbyScreen() {
       if (!receiptData) return;
       const sess = useSessionStore.getState().currentSession;
       if (sess && !sess.receipt) {
+        console.log("[session-lobby] receipt_data arrived, store was empty — applying it");
         useSessionStore.getState().setSession({
           ...sess,
           receipt: receiptData as ParsedReceipt,
         });
+      } else if (sess) {
+        console.log("[session-lobby] receipt_data arrived but store already has a receipt — ignoring");
       }
     };
 

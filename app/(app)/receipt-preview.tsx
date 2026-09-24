@@ -108,7 +108,11 @@ export default function ReceiptPreviewScreen() {
       setIsAnalyzing(false);
 
       const validation = validateReceiptOCR(parsed);
-      router.push(validation.isValid && !validation.isWarning ? "/(app)/review" : "/(app)/review-receipt");
+      const target = validation.isValid && !validation.isWarning ? "/(app)/review" : "/(app)/review-receipt";
+      console.log(
+        `[receipt-preview] validation: isValid=${validation.isValid} isWarning=${validation.isWarning} errors=${validation.errors.length} warnings=${validation.warnings.length} -> routing to ${target}`
+      );
+      router.push(target);
     } catch (err) {
       if (cancelledRef.current) return;
       setIsAnalyzing(false);
