@@ -120,6 +120,24 @@ const OCR_LANGUAGE_HINTS = ["pt", "en", "es", "fr", "zh"];
 // good run and well below every bad one; any value from 3 to 26 would have
 // drawn the same line on this data.
 const STRUCTURAL_GAP_RETRY_THRESHOLD = 5;
+// FIX 42 — geometric line reconstruction (FIX 39, ocr.ts) is now the
+// default, as a PRODUCT decision made with full knowledge of the FIX 39
+// measurement criterion it overrides: Mad God went 0%->100% VALID, Sulbarreiro
+// stabilizes at 100% (was oscillating 60-100% across rounds), Quebra Mar's
+// own guarantee weakens from 100% to a measured 80-100% (variance, FIX 42's
+// own corpus measured ten reads), and Buca di Beppo's pre-existing internal
+// text corruption (a flyer photographed behind the receipt, unrelated to
+// this switch) persists at its already-failing 0%. Per-fixture broken-line
+// counts do NOT separate the receipts that want the new method from the
+// ones that want the old one (measured directly this round — no threshold
+// splits Mad God/Sulbarreiro from Quebra Mar/Buca di Beppo), so there is no
+// safer partial rollout available; it is all-or-nothing.
+//
+// The old reconstruction remains reachable through THIS SAME flag — set the
+// GEOMETRIC_RECONSTRUCTION_ENABLED env var to "false" (Supabase project
+// settings) to revert in production without a code change or redeploy. See
+// CLAUDE.md for what this flag does and how to turn it off.
+const GEOMETRIC_RECONSTRUCTION_ENABLED = Deno.env.get("GEOMETRIC_RECONSTRUCTION_ENABLED") !== "false";
 // FIX 41 — EXPERIMENTAL, off by default. Runs the structuring pass a
 // second, independent time (same prompt, same schema) and compares the two
 // results at the user-relevant level (structureAgreement.ts); disagreement
@@ -400,7 +418,7 @@ serve(async (req: Request) => {
     // ── OCR pass — the ONE source of truth for every printed character and
     // monetary digit. Deterministic per input, not a generative read. ──────
     const ocrPass = await timed(() => callGoogleVisionWithRetry(GOOGLE_CLOUD_API_KEY, base64Content, OCR_LANGUAGE_HINTS));
-    const ocr = normalizeVisionResponse(ocrPass.result);
+    const ocr = normalizeVisionResponse(ocrPass.result, { geometricReconstruction: GEOMETRIC_RECONSTRUCTION_ENABLED });
     if (ocr.lines.length === 0) {
       return errorResponse("UNREADABLE_RECEIPT", 422);
     }
@@ -1010,6 +1028,10 @@ serve(async (req: Request) => {
         // is purely diagnostic — which class of divergence dominated.
         structureAgreement: structureAgreementResult,
         structureDisagreements: structureDisagreements.map((d) => d.kind),
+        // FIX 42 — which line-reconstruction path this run actually used;
+        // surfaced so a GEOMETRIC_RECONSTRUCTION_ENABLED=false rollback can
+        // be confirmed in logs without redeploying or guessing.
+        geometricReconstructionEnabled: GEOMETRIC_RECONSTRUCTION_ENABLED,
         // Performance telemetry.
         ocrTimeMs: ocrPass.ms,
         structureTimeMs,

@@ -34,7 +34,7 @@ function loadRealFixture(filename: string) {
   const raw = JSON.parse(
     readFileSync(join(process.cwd(), `supabase/functions/parse-receipt/__fixtures__/${filename}`), "utf-8")
   );
-  const ocr = normalizeVisionResponse(raw);
+  const ocr = normalizeVisionResponse(raw, { geometricReconstruction: true });
   const ledger = buildLedgerFromOcr(ocr.lines);
   return { ocr, ledger };
 }
@@ -101,16 +101,29 @@ describe("totalWitness: FIX 31 — label witness (raw OCR text, never GPT's own 
 });
 
 describe("totalWitness: FIX 31 — typographic witness (rotation-corrected height)", () => {
-  it("DT — Mad God real fixture: the label is 3 lines away (out of the ≤2 window, correctly finds nothing), typography resolves it alone", () => {
+  it("DT — Mad God real fixture: under geometric reconstruction (FIX 42, now the default) the label sits on the SAME line as the value, so the label mechanism resolves it directly — no typographic fallback needed", () => {
+    // Legacy reconstruction: "Total liq." sat 3 lines from its value (out
+    // of the label mechanism's ≤2-line window), so only the typographic
+    // witness (the tallest text in the region) could resolve it.
+    //
+    // FIX 42: measured directly (scripts/_fix42-inspect-cz-dt.ts, deleted
+    // after use) — geometric reconstruction now prints "Total liq . 363,55
+    // e" as ONE line. The label mechanism finds its value on the same
+    // line it starts from (distance 0, well inside the window) without
+    // needing the height-based fallback at all. This is a genuine
+    // improvement from reconstruction, not a mechanism change in
+    // totalWitness.ts itself — untouched this round.
     const { ocr, ledger } = loadRealFixture("vision-madgod-pt.json");
     const summaryRegionStart = summaryRegionStartAt(ocr, "Total liq");
     const labelWitness = findTotalLabelWitness(ocr.lines, ledger, summaryRegionStart);
-    assertEqual(labelWitness, null, "the real label ('Total liq.') sits 3 lines from the value — outside the measured ≤2 window, and must not reach further to grab it");
+    assert(labelWitness !== null && labelWitness !== "AMBIGUOUS", "the label now shares a line with its value, well inside the ≤2 window");
+    if (labelWitness && labelWitness !== "AMBIGUOUS") assertEqual(labelWitness.value, 363.55);
     const typoWitness = findTotalTypographicWitness(ocr.lines, ledger, summaryRegionStart);
-    assert(typoWitness !== null, "typography must resolve this alone");
+    assert(typoWitness !== null, "typography still resolves it too — the two witnesses agree, they are not in conflict");
     if (typoWitness) assertEqual(typoWitness.value, 363.55);
     const combined = resolveTotalWitness(ocr.lines, ledger, summaryRegionStart);
-    assert(combined !== null && combined.source === "typography");
+    assert(combined !== null && combined.source === "label", "the label decides when it resolves at all — see DU's own header comment");
+    if (combined) assertEqual(combined.value, 363.55);
   });
 });
 

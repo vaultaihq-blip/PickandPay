@@ -346,17 +346,18 @@ async function main() {
   const rawArgs = process.argv.slice(2);
   const expectedArg = rawArgs.find((a) => a.startsWith("--expected="));
   const fixtureArg = rawArgs.find((a) => a.startsWith("--fixture="));
-  // FIX 39 — opt-in only, default off. Forwards to normalizeVisionResponse's
-  // own geometricReconstruction option so this round's corpus measurement
-  // can run both configurations without touching index.ts or any production
-  // call site at all.
-  const geometricFlag = rawArgs.includes("--geometric");
+  // FIX 39 — introduced opt-in, default off. FIX 42 flips the default to ON
+  // (mirrors index.ts's own GEOMETRIC_RECONSTRUCTION_ENABLED, default true,
+  // env-overridable) — this is now the production path. --legacy-lines
+  // forces the OLD reconstruction, kept reachable for exactly the kind of
+  // before/after corpus comparison FIX 42's own measurement needed.
+  const geometricFlag = !rawArgs.includes("--legacy-lines");
   // FIX 41 — opt-in only, default off. Mirrors --geometric's own pattern:
   // lets this round's corpus measurement run both configurations without
   // touching index.ts's own DOUBLE_STRUCTURE_READ_ENABLED constant.
   const doubleReadFlag = rawArgs.includes("--doubleread");
   const positional = rawArgs.filter(
-    (a) => !a.startsWith("--expected=") && !a.startsWith("--fixture=") && a !== "--geometric" && a !== "--doubleread"
+    (a) => !a.startsWith("--expected=") && !a.startsWith("--fixture=") && a !== "--legacy-lines" && a !== "--doubleread"
   );
   const expectedTotal = expectedArg ? Number(expectedArg.slice("--expected=".length)) : null;
   if (expectedArg && (expectedTotal === null || !Number.isFinite(expectedTotal))) {
@@ -404,7 +405,7 @@ async function main() {
   let imageUrl: string | null = null;
   let ocr: OcrResult;
   if (fixturePath) {
-    console.log(`Replaying frozen OCR fixture: ${fixturePath}${geometricFlag ? " (--geometric)" : ""}`);
+    console.log(`Replaying frozen OCR fixture: ${fixturePath}${geometricFlag ? " (geometric reconstruction)" : " (--legacy-lines)"}`);
     const ocrRaw = JSON.parse(readFileSync(fixturePath, "utf-8"));
     ocr = normalizeVisionResponse(ocrRaw, { geometricReconstruction: geometricFlag });
   } else {
