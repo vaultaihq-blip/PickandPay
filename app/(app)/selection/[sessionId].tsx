@@ -658,6 +658,17 @@ export default function SelectionScreen() {
       : "$";
 
   if (!session || !receipt || !activeParticipant) {
+    // FIX 46 — "Session not found" collapsed three distinct causes into one
+    // message with no way to tell them apart from the logs: no session at
+    // all in the local store, a session with no receipt yet (FIX 44's own
+    // documented gap — a participant who joined before the host scanned),
+    // or a session whose participants list doesn't include this device's
+    // own id. Logged once, not on every re-render, since this branch stays
+    // mounted while the condition holds.
+    console.log(
+      `[selection] blocked: session=${!!session} receipt=${!!receipt} activeParticipant=${!!activeParticipant} ` +
+        `userId=${userId ?? "none"} sessionParticipants=${session?.participants.length ?? "n/a"}`
+    );
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
         <View style={styles.emptyContainer}>

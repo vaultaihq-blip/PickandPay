@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Share,
   Modal,
+  AppState,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -419,10 +420,14 @@ export default function SessionLobbyScreen() {
       .on("presence", { event: "leave" }, ({ leftPresences }) => {
         for (const p of leftPresences as any[]) {
           const uid = p.key as string;
+          console.log(`[session-lobby] presence leave: ${uid}${uid === myId ? " (me, ignored)" : ""}`);
           if (uid === myId) continue;
 
           // If they navigated to selection intentionally, suppress
-          if (goingToSelection.has(uid)) continue;
+          if (goingToSelection.has(uid)) {
+            console.log(`[session-lobby] presence leave for ${uid} suppressed — they went to selection`);
+            continue;
+          }
 
           const hostId = useSessionStore.getState().currentSession?.creatorId;
 
@@ -437,6 +442,7 @@ export default function SessionLobbyScreen() {
             // Regular participant — 30s grace period before marking disconnected
             const timer = setTimeout(() => {
               graceTimers.current.delete(uid);
+              console.log(`[session-lobby] marking ${uid} disconnected (30s grace elapsed)`);
               markDisconnected(uid);
             }, 30_000);
             graceTimers.current.set(uid, timer);
@@ -447,6 +453,7 @@ export default function SessionLobbyScreen() {
         for (const p of newPresences as any[]) {
           const uid = p.key as string;
           const presenceStatus = (p.presences?.[0]?.status ?? p.state?.status) as string | undefined;
+          console.log(`[session-lobby] presence join: ${uid} status=${presenceStatus ?? "none"}`);
           const hostId = useSessionStore.getState().currentSession?.creatorId;
 
           if (uid === hostId) {
@@ -632,6 +639,24 @@ export default function SessionLobbyScreen() {
       });
 
     channelRef.current = ch;
+
+    // FIX 46 — Symptom 2 (a disconnected participant keeps showing as present
+    // for the host). The presence "leave" handler above is correct, but it
+    // only fires once Realtime notices the socket is gone — a clean in-app
+    // navigation triggers it via this effect's own cleanup (removeChannel),
+    // but killing the app or backgrounding it does not: no React unmount
+    // happens, so nothing here runs, and the leave is left entirely to a
+    // server-side socket timeout, which can take far longer than the 30s
+    // grace this screen already shows. Untracking on background/inactive
+    // makes the leave prompt instead of waited-for. No AppState listener
+    // existed anywhere in this file before this round (confirmed by search).
+    const appStateSub = AppState.addEventListener("change", (next) => {
+      console.log(`[session-lobby] AppState -> ${next}`);
+      if (next === "background" || next === "inactive") {
+        ch.untrack().catch((err) => console.log("[session-lobby] untrack on background failed:", err));
+      }
+    });
+
     return () => {
       graceTimers.current.forEach(clearTimeout);
       graceTimers.current.clear();
@@ -639,6 +664,7 @@ export default function SessionLobbyScreen() {
       reconnectIntervals.current.clear();
       if (finalIntervalRef.current) clearInterval(finalIntervalRef.current);
       if (hostGraceTimerRef.current) clearTimeout(hostGraceTimerRef.current);
+      appStateSub.remove();
       supabase.removeChannel(ch);
     };
   }, [id, myId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -674,12 +700,28 @@ export default function SessionLobbyScreen() {
       }
     };
 
+    // FIX 46 — this used to discard `error` entirely (`const { data } = ...`),
+    // so a blocked/failed read and a genuinely-still-empty session_data both
+    // looked identical: `data` undefined, nothing logged, "Select" eventually
+    // shows "Session not found" with zero trail back to why. Logged once per
+    // distinct failure reason (not every 2s) so a real two-device run doesn't
+    // drown in repeats.
+    let lastLoggedFailure: string | null = null;
     const fetchSessionStatus = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("sessions")
         .select("status, receipt_data")
         .eq("id", id)
         .single();
+      if (error) {
+        const reason = `${error.code ?? "?"}: ${error.message}`;
+        if (reason !== lastLoggedFailure) {
+          console.log(`[session-lobby] sessions read failed (id=${id}): ${reason}`);
+          lastLoggedFailure = reason;
+        }
+        return;
+      }
+      lastLoggedFailure = null;
       handleSessionStatus(data?.status as string | undefined);
       handleReceiptData(data?.receipt_data);
     };
@@ -698,7 +740,15 @@ export default function SessionLobbyScreen() {
         handleSessionStatus(payload.new?.status as string | undefined);
         handleReceiptData(payload.new?.receipt_data);
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        // FIX 46 — a participant this table's RLS doesn't recognise as a
+        // member wouldn't necessarily see a loud error here: Realtime can
+        // subscribe successfully and just never deliver a row. Logged so a
+        // real two-device run shows whether the channel itself is unhappy.
+        if (status !== "SUBSCRIBED") {
+          console.log(`[session-lobby] sessions realtime channel status: ${status}${err ? ` (${err.message})` : ""}`);
+        }
+      });
 
     return () => {
       clearInterval(poll);
