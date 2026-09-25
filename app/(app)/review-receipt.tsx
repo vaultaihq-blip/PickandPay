@@ -7,7 +7,6 @@ import {
   TextInput,
   Image,
   Modal,
-  StyleSheet,
   useColorScheme,
   Alert,
   KeyboardAvoidingView,
@@ -20,12 +19,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
 import { useCanonicalReceiptStore, visibleIssues } from "@/store/canonicalReceiptStore";
-import { validateEditableItems, EditableItem } from "@/lib/receipt-validator";
+import { validateEditableItems, type EditableRow } from "@/lib/receipt-validator";
+import { buildReceiptGuidance, type ReceiptGuidance } from "@/lib/receipt-guidance";
+import { GuidedDiagnosisStep } from "@/components/receipt/guided/GuidedDiagnosisStep";
+import { GuidedTotalStep } from "@/components/receipt/guided/GuidedTotalStep";
+import { GuidedItemStep, type ItemField } from "@/components/receipt/guided/GuidedItemStep";
+import { GuidedClosingStep } from "@/components/receipt/guided/GuidedClosingStep";
 import { ItemCategory, ParsedReceipt, ReceiptItem } from "@/types";
 import { useSessionStore } from "@/store/sessionStore";
 import { useI18nStore } from "@/store/i18nStore";
 import { TranslationKey } from "@/constants/translations";
 import { formatCurrency } from "@/utils/formatter";
+import { styles } from "@/components/receipt/reviewReceiptStyles";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,19 +40,17 @@ const CATEGORIES: ItemCategory[] = [
 
 const STRICT_TOLERANCE = 0.01;
 
-// FIX 44 — quantity/unitPrice/totalPrice keep BOTH a numeric value (source
-// of truth for validation/rebuild) and the raw text last typed into that
-// field. Binding a TextInput's value straight to a formatted derivative of
-// the number (e.g. unitPrice.toFixed(2)) fights the user's own typing —
-// every keystroke re-renders the reformatted string, which can snap "1." back
-// to "1.00" before a trailing digit is ever typed. The *Text fields are what
-// each TextInput actually displays; the numeric fields are what validation,
-// totals, and the rebuilt receipt use.
-interface EditableRow extends EditableItem {
-  qtyText: string;
-  unitPriceText: string;
-  totalText: string;
-}
+/**
+ * FIX 45 — the guided correction flow. Only receipts that already failed
+ * validation reach this screen (receipt-preview.tsx routes clean ones
+ * straight to /review), so every receipt here has something to fix.
+ *
+ *   diagnosis -> total -> items (queue) -> closing
+ *
+ * "all" is the pre-existing full list, kept exactly as it was and reachable
+ * from the item and closing steps via "ver todos os itens".
+ */
+type GuidedStep = "diagnosis" | "total" | "items" | "closing";
 
 function flattenItems(receipt: ParsedReceipt): EditableRow[] {
   const result: EditableRow[] = [];
@@ -71,7 +74,17 @@ function flattenItems(receipt: ParsedReceipt): EditableRow[] {
   return result;
 }
 
-function rebuildReceipt(original: ParsedReceipt, items: EditableRow[]): ParsedReceipt {
+/**
+ * FIX 45 — `confirmedTotal` is the total the user confirmed in step 2. It is
+ * the anchor the rest of the flow validates against, so when they corrected
+ * it (or supplied one the parser never found) it must reach the receipt
+ * rather than being discarded at the door. Null keeps the original.
+ */
+function rebuildReceipt(
+  original: ParsedReceipt,
+  items: EditableRow[],
+  confirmedTotal: number | null = null
+): ParsedReceipt {
   const categories: ParsedReceipt["categories"] = {
     starters: [], mains: [], drinks: [], desserts: [], others: [],
   };
@@ -93,10 +106,11 @@ function rebuildReceipt(original: ParsedReceipt, items: EditableRow[]): ParsedRe
   const userItemsTotal = Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100;
   // Compare user's items against the subtotal (items only), not grand total (includes service/tax).
   const subtotalTarget = original.validation.computedTotal ?? original.validation.receiptTotal;
-  const receiptTotal = original.validation.receiptTotal; // grand total kept for display reference
+  const receiptTotal = confirmedTotal ?? original.validation.receiptTotal;
   const difference = Math.round((userItemsTotal - subtotalTarget) * 100) / 100;
   return {
     ...original,
+    printed_total: confirmedTotal ?? original.printed_total,
     categories,
     suggestedTips: [
       { percentage: 10, amount: Math.round(userItemsTotal * 0.1 * 100) / 100 },
@@ -149,6 +163,13 @@ export default function ReviewReceiptScreen() {
   );
   const [imageModalVisible, setImageModalVisible] = useState(false);
 
+  // ── FIX 45 — guided flow state ─────────────────────────────────────────────
+  // Every step renders inside this same component, so nothing unmounts and no
+  // edit is ever lost by moving back and forth between steps.
+  const [step, setStep] = useState<GuidedStep>("diagnosis");
+  const [queueIndex, setQueueIndex] = useState(0);
+  const [showAllItems, setShowAllItems] = useState(false);
+
   useEffect(() => {
     if (!receipt) {
       router.replace("/(app)/scan");
@@ -187,6 +208,55 @@ export default function ReviewReceiptScreen() {
   // what was read) than the item-math/price-variant checks above.
   const canonicalIssues = useCanonicalReceiptStore(visibleIssues);
   const dismissCanonicalIssue = useCanonicalReceiptStore((s) => s.dismissIssue);
+
+  const formatMoney = useCallback(
+    (value: number) => formatCurrency(value, currency as any),
+    [currency]
+  );
+
+  const chargesSum = useMemo(
+    () =>
+      Math.round((receipt?.globalCosts ?? []).reduce((s, c) => s + (c.amount ?? 0), 0) * 100) / 100,
+    [receipt]
+  );
+
+  // FIX 45 — computed ONCE, from the analysis as it arrived. Recomputing it
+  // as the user edits would make items disappear from the queue mid-flow
+  // ("item 2 de 5" turning into "item 2 de 3" under their thumb); the queue
+  // is the list of things the parser flagged, not a live to-do list.
+  const [guidance] = useState<ReceiptGuidance>(() =>
+    buildReceiptGuidance(
+      {
+        canonical: useCanonicalReceiptStore.getState().receipt,
+        items,
+        printedTotal: receipt?.validation.receiptTotal ?? null,
+        itemsSum: receipt?.validation.computedTotal ?? 0,
+        chargesSum: Math.round(
+          (receipt?.globalCosts ?? []).reduce((s, c) => s + (c.amount ?? 0), 0) * 100
+        ) / 100,
+      },
+      (value) => formatCurrency(value, (receipt?.currency ?? "EUR") as any)
+    )
+  );
+
+  // The anchor. Blank when the parser never identified a total, which is
+  // exactly when step 2 matters most.
+  const [confirmedTotalText, setConfirmedTotalText] = useState(() => {
+    if (guidance.missingTotal) return "";
+    const printed = receipt?.validation.receiptTotal ?? 0;
+    return printed > 0 ? printed.toFixed(2) : "";
+  });
+
+  const confirmedTotal = useMemo(() => {
+    const parsed = parseFloat(confirmedTotalText.replace(",", "."));
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }, [confirmedTotalText]);
+
+  /** Ids in the queue that still exist in `items` (an item can be deleted). */
+  const attentionQueue = useMemo(
+    () => guidance.attentionItemIds.filter((id) => items.some((i) => i.id === id)),
+    [guidance, items]
+  );
 
   // Tapping an issue scrolls to and briefly highlights the item it points at
   // (issue.itemId survives the canonical -> legacy projection unchanged, see
@@ -233,7 +303,7 @@ export default function ReviewReceiptScreen() {
   // comment for why raw text is tracked separately from the numeric value).
   // Editing anything on an item activates its reviewed mark automatically.
   const updateItem = useCallback(
-    (id: string, field: "name" | "quantity" | "unitPrice" | "totalPrice", raw: string) => {
+    (id: string, field: ItemField, raw: string) => {
       setItems((prev) =>
         prev.map((item) => {
           if (item.id !== id) return item;
@@ -297,7 +367,10 @@ export default function ReviewReceiptScreen() {
   if (!receipt) return null;
 
   const handleContinue = () => {
-    const rebuilt = rebuildReceipt(receipt, items);
+    // FIX 45 — the total the user confirmed wins over whatever was parsed.
+    // Zero means they left it blank; in that case keep the original rather
+    // than writing a total of 0.00 onto the receipt.
+    const rebuilt = rebuildReceipt(receipt, items, confirmedTotal > 0 ? confirmedTotal : null);
     setReceipt(rebuilt);
 
     const liveId = currentSession?.id;
@@ -313,13 +386,154 @@ export default function ReviewReceiptScreen() {
     }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // ── FIX 45 — step navigation ───────────────────────────────────────────────
+  // Every transition is logged, matching FIX 44's own navigation logging, so
+  // a real-device run still shows where the user actually went.
+  const goToStep = (next: GuidedStep) => {
+    console.log(`[review-receipt] guided step: ${step} -> ${next} (queue ${attentionQueue.length})`);
+    setStep(next);
+  };
+
+  /** After the total: the item queue, or straight to the close when empty. */
+  const afterTotal = () => {
+    if (attentionQueue.length === 0) {
+      goToStep("closing");
+      return;
+    }
+    setQueueIndex(0);
+    goToStep("items");
+  };
+
+  const advanceQueue = (confirmed: boolean) => {
+    const current = attentionQueue[queueIndex];
+    if (confirmed && current !== undefined) {
+      setItems((prev) =>
+        prev.map((item) => (item.id === current ? { ...item, reviewed: true } : item))
+      );
+    }
+    if (queueIndex + 1 >= attentionQueue.length) {
+      goToStep("closing");
+      return;
+    }
+    setQueueIndex(queueIndex + 1);
+  };
+
+  const retreatQueue = () => {
+    if (queueIndex === 0) {
+      goToStep("total");
+      return;
+    }
+    setQueueIndex(queueIndex - 1);
+  };
+
+  const reviewAgain = () => {
+    if (attentionQueue.length === 0) {
+      setShowAllItems(true);
+      return;
+    }
+    setQueueIndex(0);
+    goToStep("items");
+  };
+
+  const guidedItem = items.find((i) => i.id === attentionQueue[queueIndex]);
+  const itemReason = guidedItem ? guidance.attentionReasons[guidedItem.id] : undefined;
+  const itemsSum = calculatedTotal;
+  const closingDifference = Math.round((itemsSum + chargesSum - confirmedTotal) * 100) / 100;
+
+  // ── FIX 45 — guided flow renders instead of the full list, unless the user
+  // asked to see everything. The list below is unchanged from before. ────────
+  if (!showAllItems) {
+    if (step === "diagnosis") {
+      return (
+        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+          <GuidedDiagnosisStep
+            merchantName={receipt.restaurant ?? "Fatura"}
+            problems={guidance.problems}
+            onStart={() => goToStep("total")}
+            onBack={() => router.back()}
+          />
+        </SafeAreaView>
+      );
+    }
+
+    if (step === "total") {
+      return (
+        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
+            <GuidedTotalStep
+              merchantName={receipt.restaurant ?? "Fatura"}
+              totalText={confirmedTotalText}
+              onChangeTotal={setConfirmedTotalText}
+              missingTotal={guidance.missingTotal}
+              currencyLabel={currency}
+              onConfirm={afterTotal}
+              onBack={() => goToStep("diagnosis")}
+            />
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      );
+    }
+
+    if (step === "items" && guidedItem !== undefined) {
+      return (
+        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
+            <GuidedItemStep
+              item={guidedItem}
+              position={queueIndex + 1}
+              total={attentionQueue.length}
+              reason={itemReason}
+              currencyLabel={currency}
+              onChangeField={updateItem}
+              onToggleReviewed={toggleReviewed}
+              onConfirm={() => advanceQueue(true)}
+              onSkip={() => advanceQueue(false)}
+              onBack={retreatQueue}
+              onSeeAll={() => setShowAllItems(true)}
+            />
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      );
+    }
+
+    if (step === "closing" || step === "items") {
+      return (
+        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+          <GuidedClosingStep
+            itemsSum={itemsSum}
+            chargesSum={chargesSum}
+            confirmedTotal={confirmedTotal}
+            difference={closingDifference}
+            formatMoney={formatMoney}
+            onAccept={handleContinue}
+            onReviewAgain={reviewAgain}
+            onBack={() => (attentionQueue.length > 0 ? goToStep("items") : goToStep("total"))}
+            onSeeAll={() => setShowAllItems(true)}
+          />
+        </SafeAreaView>
+      );
+    }
+  }
+
+  // ─── Render — the full item list ("ver todos os itens") ───────────────────
+  // Unchanged from before FIX 45 apart from the back button, which returns to
+  // the guided flow instead of leaving the screen when that is where the user
+  // came from. The reviewed marks (FIX 44) stay visible here.
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity
+          onPress={() => (showAllItems ? setShowAllItems(false) : router.back())}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
           <Ionicons name="arrow-back" size={24} color={textColor} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>
@@ -702,311 +916,3 @@ export default function ReviewReceiptScreen() {
     </SafeAreaView>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-  },
-  headerTitle: { fontSize: 17, fontWeight: "700" },
-  scroll: { paddingHorizontal: 20, gap: 14 },
-
-  restaurantCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  restaurantName: { fontSize: 15, fontWeight: "700" },
-  restaurantDate: { fontSize: 12, marginTop: 2 },
-
-  // ── Warning state (small discrepancy, can continue) ───────────────────────
-  warningBox: {
-    padding: 16,
-    borderRadius: 14,
-    backgroundColor: "#FFFBEB",
-    borderWidth: 1.5,
-    borderColor: "#FCD34D",
-    gap: 8,
-  },
-  warningBoxHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  warningBoxTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#92400E",
-    flex: 1,
-  },
-  warningBoxDesc: {
-    fontSize: 13,
-    color: "#78350F",
-    lineHeight: 20,
-  },
-  warningBoxAmount: {
-    fontWeight: "700",
-  },
-  warningBoxHint: {
-    fontSize: 12,
-    color: "#92400E",
-    lineHeight: 18,
-    fontStyle: "italic",
-  },
-
-  // ── Blocked state ──────────────────────────────────────────────────────────
-  blockedBox: {
-    padding: 16,
-    borderRadius: 14,
-    backgroundColor: "#FEF2F2",
-    borderWidth: 1.5,
-    borderColor: "#FCA5A5",
-    gap: 10,
-  },
-  blockedHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  blockedTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#DC2626",
-    flex: 1,
-  },
-  blockedDesc: {
-    fontSize: 13,
-    color: "#7F1D1D",
-    lineHeight: 20,
-  },
-  blockedAmount: {
-    fontWeight: "700",
-  },
-  fixSuggestions: {
-    gap: 4,
-    paddingTop: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#FCA5A5",
-  },
-  fixSuggestionHead: {
-    fontWeight: "700",
-    paddingTop: 4,
-  },
-  fixSuggestionLine: {
-    fontSize: 12,
-    color: "#991B1B",
-    lineHeight: 18,
-  },
-
-  // ── Errors / warnings ─────────────────────────────────────────────────────
-  errorBanner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#FEF2F2",
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
-  },
-  errorBannerTitle: { fontSize: 12, fontWeight: "700", color: "#EF4444" },
-  errorBannerItem: { fontSize: 11, color: "#DC2626", lineHeight: 16 },
-  errorBannerMore: { fontSize: 11, color: "#DC2626", fontStyle: "italic" },
-
-  warningBanner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#FFFBEB",
-    borderWidth: 1,
-    borderColor: "#FCD34D",
-  },
-  warningBannerTitle: { fontSize: 12, fontWeight: "700", color: Colors.warning },
-  warningBannerItem: { fontSize: 11, color: Colors.warning, lineHeight: 16 },
-
-  evidenceBanner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#EEF2FF",
-    borderWidth: 1,
-    borderColor: "#C7D2FE",
-  },
-  evidenceBannerTitle: { fontSize: 12, fontWeight: "700", color: Colors.primary },
-  evidenceIssueRow: { gap: 4 },
-  evidenceIssueMessage: { fontSize: 11, color: "#3730A3", lineHeight: 16 },
-  evidenceIssueSourceLine: { fontSize: 11, color: "#4338CA", fontStyle: "italic" },
-  evidenceDismissBtn: { alignSelf: "flex-start", paddingVertical: 2 },
-  evidenceDismissBtnText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: Colors.primary,
-    textDecorationLine: "underline",
-  },
-  evidenceMoreText: { fontSize: 11, color: Colors.primary, fontStyle: "italic" },
-
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    marginBottom: -4,
-  },
-
-  // ── Item cards ─────────────────────────────────────────────────────────────
-  itemCard: { borderRadius: 12, borderWidth: 1, padding: 14, gap: 10 },
-  itemHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  itemHeaderActions: { flexDirection: "row", alignItems: "center", gap: 12 },
-  itemIndex: { fontSize: 11, fontWeight: "600" },
-  itemErrorRow: { flexDirection: "row", alignItems: "flex-start", gap: 5 },
-  itemErrorText: { fontSize: 11, color: "#EF4444", flex: 1, lineHeight: 16 },
-  nameInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14,
-  },
-  fieldRow: { flexDirection: "row", gap: 8 },
-  fieldCol: { flex: 1, gap: 4 },
-  fieldLabel: { fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.3 },
-  fieldInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-    textAlign: "right",
-  },
-  fieldReadonly: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    alignItems: "flex-end",
-  },
-  fieldReadonlyText: { fontSize: 14, fontWeight: "700" },
-
-  // ── Add item ───────────────────────────────────────────────────────────────
-  addItemBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-  },
-  addItemText: { color: Colors.primary, fontSize: 14, fontWeight: "600" },
-
-  // ── Totals ─────────────────────────────────────────────────────────────────
-  totalCard: { borderRadius: 14, borderWidth: 1.5, padding: 16, gap: 12 },
-  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  totalLabel: { fontSize: 14 },
-  totalValue: { fontSize: 15, fontWeight: "700" },
-  totalDivider: { height: StyleSheet.hairlineWidth },
-  matchRow: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1 },
-  matchText: { fontSize: 13, color: "#10B981", fontWeight: "600" },
-  diffLabel: { fontSize: 14, fontWeight: "700", color: "#DC2626" },
-  diffValue: { fontSize: 15, fontWeight: "800", color: "#DC2626" },
-
-  // ── Bottom actions ─────────────────────────────────────────────────────────
-  actions: {
-    flexDirection: "row",
-    gap: 10,
-    padding: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  retryBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  retryBtnText: { fontSize: 13, fontWeight: "600" },
-  continueBtn: {
-    flex: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 15,
-    borderRadius: 12,
-    backgroundColor: Colors.primary,
-  },
-  continueBtnLocked: {
-    backgroundColor: "#F3F4F6",
-  },
-  continueBtnWarning: {
-    backgroundColor: Colors.warning,
-  },
-  continueBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  continueBtnTextLocked: { color: "#9CA3AF", fontSize: 14, fontWeight: "600" },
-  lockedBtnInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  // ── Original receipt photo preview ─────────────────────────────────────────
-  photoCard: {
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: "hidden",
-    height: 160,
-  },
-  photoThumb: {
-    width: "100%",
-    height: "100%",
-  },
-  photoOverlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 10,
-    backgroundColor: "rgba(0,0,0,0.45)",
-  },
-  photoOverlayText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-
-  // ── Full-screen photo modal ────────────────────────────────────────────────
-  photoModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  photoModalClose: {
-    position: "absolute",
-    top: 56,
-    right: 20,
-    zIndex: 10,
-  },
-  photoModalImage: {
-    flex: 1,
-  },
-});

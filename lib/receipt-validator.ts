@@ -198,6 +198,25 @@ export interface EditableItem {
   reviewed?: boolean;
 }
 
+/**
+ * FIX 44 — quantity/unitPrice/totalPrice keep BOTH a numeric value (source
+ * of truth for validation/rebuild) and the raw text last typed into that
+ * field. Binding a TextInput's value straight to a formatted derivative of
+ * the number (e.g. unitPrice.toFixed(2)) fights the user's own typing —
+ * every keystroke re-renders the reformatted string, which can snap "1." back
+ * to "1.00" before a trailing digit is ever typed. The *Text fields are what
+ * each TextInput actually displays; the numeric fields are what validation,
+ * totals, and the rebuilt receipt use.
+ *
+ * Lives here rather than in a screen so the correction UI (FIX 45) can render
+ * a row without importing from a route file.
+ */
+export interface EditableRow extends EditableItem {
+  qtyText: string;
+  unitPriceText: string;
+  totalText: string;
+}
+
 export function validateEditableItems(
   items: EditableItem[],
   subtotalTarget: number,
