@@ -48,6 +48,9 @@ export interface ReceiptGuidance {
 export interface GuidanceItem {
   id: string;
   totalPrice: number;
+  /** FIX 44's mark. An item the user already confirmed never queues, even
+   *  when it would otherwise need attention — they already said it's right. */
+  reviewed?: boolean;
 }
 
 export interface GuidanceInput {
@@ -77,6 +80,11 @@ function issueItemIds(issues: readonly ReceiptIssue[]): Set<string> {
 /**
  * Items needing attention, in receipt order: unpriced, pointed at by a
  * diagnosis, or sitting directly beneath a value nothing could explain.
+ *
+ * FIX 46 — an item already carrying FIX 44's reviewed mark never queues,
+ * even when one of those signals would otherwise flag it: the user already
+ * confirmed it. Checked against `items` (the legacy list, which carries
+ * `reviewed`), not the canonical model, which has no such field.
  */
 export function attentionItemIds(input: GuidanceInput): string[] {
   const { canonical, items } = input;
@@ -85,7 +93,7 @@ export function attentionItemIds(input: GuidanceInput): string[] {
     // Legacy path: an unpriced item projects to totalPrice 0 (adapter.ts
     // derives unitPrice/totalPrice from calculatedLineTotal, which is zero
     // for an unpriced line).
-    return items.filter((item) => item.totalPrice === 0).map((item) => item.id);
+    return items.filter((item) => item.totalPrice === 0 && !item.reviewed).map((item) => item.id);
   }
 
   const flagged = issueItemIds(canonical.validation.issues);
@@ -104,7 +112,9 @@ export function attentionItemIds(input: GuidanceInput): string[] {
 
   // Walk the legacy list so the order matches what the user sees, and so an
   // item that only exists on one side is simply skipped rather than crashing.
-  return items.filter((item) => needsAttention.has(item.id)).map((item) => item.id);
+  return items
+    .filter((item) => needsAttention.has(item.id) && !item.reviewed)
+    .map((item) => item.id);
 }
 
 /**

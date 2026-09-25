@@ -13,6 +13,7 @@ import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { StepHeader, PrimaryButton, SecondaryButton, LinkButton, useGuidedTheme, styles as shell } from "./GuidedShell";
+import { ReceiptPhotoStrip } from "./ReceiptPhotoStrip";
 
 interface Props {
   itemsSum: number;
@@ -43,7 +44,8 @@ export function GuidedClosingStep({
 
   return (
     <>
-      <StepHeader title="Confirmação" caption="4 de 4" onBack={onBack} />
+      <StepHeader title="Confirmação" caption="3 de 3" onBack={onBack} />
+      <ReceiptPhotoStrip />
       <ScrollView contentContainerStyle={shell.body} showsVerticalScrollIndicator={false}>
         <View
           style={[

@@ -21,7 +21,6 @@ import { useReceiptStore } from "@/store/receiptStore";
 import { useCanonicalReceiptStore, visibleIssues } from "@/store/canonicalReceiptStore";
 import { validateEditableItems, type EditableRow } from "@/lib/receipt-validator";
 import { buildReceiptGuidance, type ReceiptGuidance } from "@/lib/receipt-guidance";
-import { GuidedDiagnosisStep } from "@/components/receipt/guided/GuidedDiagnosisStep";
 import { GuidedTotalStep } from "@/components/receipt/guided/GuidedTotalStep";
 import { GuidedItemStep, type ItemField } from "@/components/receipt/guided/GuidedItemStep";
 import { GuidedClosingStep } from "@/components/receipt/guided/GuidedClosingStep";
@@ -41,16 +40,20 @@ const CATEGORIES: ItemCategory[] = [
 const STRICT_TOLERANCE = 0.01;
 
 /**
- * FIX 45 — the guided correction flow. Only receipts that already failed
+ * FIX 45/46 — the guided correction flow. Only receipts that already failed
  * validation reach this screen (receipt-preview.tsx routes clean ones
  * straight to /review), so every receipt here has something to fix.
  *
- *   diagnosis -> total -> items (queue) -> closing
+ *   total (+ what's wrong) -> items (queue) -> closing
+ *
+ * FIX 46 merged the standalone diagnosis screen into the total step (A.1) —
+ * the total is the anchor, so the explanation belongs right next to it, not
+ * on a screen the user has to click past first.
  *
  * "all" is the pre-existing full list, kept exactly as it was and reachable
  * from the item and closing steps via "ver todos os itens".
  */
-type GuidedStep = "diagnosis" | "total" | "items" | "closing";
+type GuidedStep = "total" | "items" | "closing";
 
 function flattenItems(receipt: ParsedReceipt): EditableRow[] {
   const result: EditableRow[] = [];
@@ -166,7 +169,7 @@ export default function ReviewReceiptScreen() {
   // ── FIX 45 — guided flow state ─────────────────────────────────────────────
   // Every step renders inside this same component, so nothing unmounts and no
   // edit is ever lost by moving back and forth between steps.
-  const [step, setStep] = useState<GuidedStep>("diagnosis");
+  const [step, setStep] = useState<GuidedStep>("total");
   const [queueIndex, setQueueIndex] = useState(0);
   const [showAllItems, setShowAllItems] = useState(false);
 
@@ -443,19 +446,6 @@ export default function ReviewReceiptScreen() {
   // ── FIX 45 — guided flow renders instead of the full list, unless the user
   // asked to see everything. The list below is unchanged from before. ────────
   if (!showAllItems) {
-    if (step === "diagnosis") {
-      return (
-        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-          <GuidedDiagnosisStep
-            merchantName={receipt.restaurant ?? "Fatura"}
-            problems={guidance.problems}
-            onStart={() => goToStep("total")}
-            onBack={() => router.back()}
-          />
-        </SafeAreaView>
-      );
-    }
-
     if (step === "total") {
       return (
         <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
@@ -465,12 +455,13 @@ export default function ReviewReceiptScreen() {
           >
             <GuidedTotalStep
               merchantName={receipt.restaurant ?? "Fatura"}
+              problems={guidance.problems}
               totalText={confirmedTotalText}
               onChangeTotal={setConfirmedTotalText}
               missingTotal={guidance.missingTotal}
               currencyLabel={currency}
               onConfirm={afterTotal}
-              onBack={() => goToStep("diagnosis")}
+              onBack={() => router.back()}
             />
           </KeyboardAvoidingView>
         </SafeAreaView>

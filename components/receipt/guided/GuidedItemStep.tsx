@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import type { EditableRow } from "@/lib/receipt-validator";
 import { StepHeader, PrimaryButton, SecondaryButton, LinkButton, useGuidedTheme, styles as shell } from "./GuidedShell";
+import { ReceiptPhotoStrip } from "./ReceiptPhotoStrip";
 
 export type ItemField = "name" | "quantity" | "unitPrice" | "totalPrice";
 
@@ -48,6 +49,7 @@ export function GuidedItemStep({
   return (
     <>
       <StepHeader title="Rever prato" caption={`item ${position} de ${total}`} onBack={onBack} />
+      <ReceiptPhotoStrip />
       <ScrollView
         contentContainerStyle={shell.body}
         showsVerticalScrollIndicator={false}
