@@ -217,10 +217,15 @@ export default function SessionLobbyScreen() {
   const countdownStarted = useRef(false);
   const goingToSelectionRef = useRef<Set<string>>(new Set());
   const savedDraftRef = useRef<Set<string>>(new Set());
+  // FIX 49 — read by the presence/broadcast handlers and a focus callback
+  // whose effects only re-run on [id, myId]; reading `isCreator` directly
+  // there froze it at the first render.
+  const isCreatorRef = useRef(isCreator);
 
   // Keep refs in sync with state (used in callbacks)
   useEffect(() => { goingToSelectionRef.current = goingToSelection; }, [goingToSelection]);
   useEffect(() => { savedDraftRef.current = savedDraftIds; }, [savedDraftIds]);
+  useEffect(() => { isCreatorRef.current = isCreator; }, [isCreator]);
 
   // Fetch profiles immediately on mount so avatars show without waiting for focus
   useEffect(() => { fetchFreshProfiles(); }, [fetchFreshProfiles]);
@@ -445,14 +450,14 @@ export default function SessionLobbyScreen() {
           if (uid === myId) return;
 
           // If they navigated to selection intentionally, suppress
-          if (goingToSelection.has(uid)) {
+          if (goingToSelectionRef.current.has(uid)) {
             console.log(`[session-lobby] presence leave for ${uid} suppressed — they went to selection`);
             return;
           }
 
           const hostId = useSessionStore.getState().currentSession?.creatorId;
 
-          if (uid === hostId && !isCreator) {
+          if (uid === hostId && !isCreatorRef.current) {
             // Host disconnected — 30s grace before showing takeover prompt
             if (hostGraceTimerRef.current) clearTimeout(hostGraceTimerRef.current);
             hostGraceTimerRef.current = setTimeout(() => {
@@ -629,7 +634,7 @@ export default function SessionLobbyScreen() {
         }
       })
       .on("broadcast", { event: "host_reviewing" }, () => {
-        if (!isCreator) setHostReviewing(true);
+        if (!isCreatorRef.current) setHostReviewing(true);
       })
       .on("broadcast", { event: "host_review_done" }, () => {
         setHostReviewing(false);
@@ -1080,7 +1085,7 @@ export default function SessionLobbyScreen() {
       }
 
       // Host returned from review screen — notify participants
-      if (reviewingRef.current && isCreator) {
+      if (reviewingRef.current && isCreatorRef.current) {
         reviewingRef.current = false;
         setHostReviewing(false);
         channelRef.current?.send({ type: "broadcast", event: "host_review_done", payload: {} });
