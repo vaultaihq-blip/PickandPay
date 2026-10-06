@@ -193,6 +193,16 @@ export default function SessionLobbyScreen() {
   // true when host presence drops and grace timer expires
   const [hostDisconnected, setHostDisconnected] = useState(false);
   const hostGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // FIX 48 — the status this device last put into presence, so it can be
+  // re-tracked as-is after an untrack (background) or a channel rejoin,
+  // instead of falling back to "waiting".
+  const presenceStatusRef = useRef<"waiting" | "selecting" | "done">("waiting");
+  const trackPresence = (status: "waiting" | "selecting" | "done") => {
+    presenceStatusRef.current = status;
+    const uid = useAuthStore.getState().profile?.id;
+    if (!uid) return;
+    return channelRef.current?.track({ userId: uid, status, joinedAt: Date.now() });
+  };
   // true while host is on the review screen editing the receipt
   const [hostReviewing, setHostReviewing] = useState(false);
   const reviewingRef = useRef(false);
@@ -417,7 +427,15 @@ export default function SessionLobbyScreen() {
     });
 
     ch
-      .on("presence", { event: "leave" }, ({ leftPresences }) => {
+      .on("presence", { event: "leave" }, ({ currentPresences, leftPresences }) => {
+        // FIX 48 — currentPresences is what's still tracked under this key
+        // after the leave. Non-empty means the same user still has another
+        // live connection (second tab/device, or a rejoin that landed before
+        // the old socket's leave) — they haven't actually gone.
+        if (currentPresences.length > 0) {
+          console.log(`[session-lobby] presence leave ignored — ${currentPresences.length} connection(s) still open`);
+          return;
+        }
         for (const p of leftPresences as any[]) {
           const uid = p.key as string;
           console.log(`[session-lobby] presence leave: ${uid}${uid === myId ? " (me, ignored)" : ""}`);
@@ -557,7 +575,7 @@ export default function SessionLobbyScreen() {
         // Update own presence so late joiners see the correct "done" state
         const currentMyId = useAuthStore.getState().profile?.id;
         if (uid === currentMyId) {
-          ch.track({ userId: currentMyId, status: "done", joinedAt: Date.now() });
+          trackPresence("done");
         }
       })
       .on("broadcast", { event: "selection_uncomplete" }, ({ payload }) => {
@@ -633,8 +651,10 @@ export default function SessionLobbyScreen() {
         setTakenOver((prev) => new Map([...prev, [targetId, takerId]]));
       })
       .subscribe(async (status) => {
+        // Fires again on every rejoin after a dropped socket — re-track the
+        // last known status rather than resetting to "waiting".
         if (status === "SUBSCRIBED") {
-          await ch.track({ userId: myId, status: "waiting", joinedAt: Date.now() });
+          await trackPresence(presenceStatusRef.current);
         }
       });
 
@@ -654,6 +674,14 @@ export default function SessionLobbyScreen() {
       console.log(`[session-lobby] AppState -> ${next}`);
       if (next === "background" || next === "inactive") {
         ch.untrack().catch((err) => console.log("[session-lobby] untrack on background failed:", err));
+      } else if (next === "active") {
+        // FIX 48 — FIX 46 only ever untracked; nothing put the presence back,
+        // so a participant who switched to their banking app to pay stayed
+        // gone for everyone else. If the socket itself dropped meanwhile, the
+        // SUBSCRIBED callback above re-tracks on rejoin instead.
+        Promise.resolve(trackPresence(presenceStatusRef.current))
+          .then((res) => console.log(`[session-lobby] re-track on active (${presenceStatusRef.current}): ${res ?? "no channel"}`))
+          .catch((err) => console.log("[session-lobby] re-track on active failed:", err));
       }
     });
 
@@ -1089,7 +1117,7 @@ export default function SessionLobbyScreen() {
               event: "selection_complete",
               payload: { userId: currentMyId, selections: myDbSels },
             });
-            channelRef.current?.track({ userId: currentMyId, status: "done", joinedAt: Date.now() });
+            trackPresence("done");
             setSelectionDone((prev) => new Set([...prev, currentMyId]));
             setSavedDraftIds((prev) => { const n = new Set(prev); n.delete(currentMyId); return n; });
           } else if (myStatus === "selecting") {
@@ -1171,7 +1199,7 @@ export default function SessionLobbyScreen() {
 
   const handleSelectMyItems = () => {
     if (!myId) return;
-    channelRef.current?.track({ userId: myId, status: "selecting", joinedAt: Date.now() });
+    trackPresence("selecting");
     channelRef.current?.send({
       type: "broadcast",
       event: "going_to_selection",
@@ -1195,7 +1223,7 @@ export default function SessionLobbyScreen() {
     if (!myId) return;
     setSelectionDone((prev) => { const n = new Set(prev); n.delete(myId); return n; });
     setGoingToSelection((prev) => new Set([...prev, myId]));
-    channelRef.current?.track({ userId: myId, status: "selecting", joinedAt: Date.now() });
+    trackPresence("selecting");
     channelRef.current?.send({
       type: "broadcast",
       event: "going_to_selection",
@@ -1236,7 +1264,7 @@ export default function SessionLobbyScreen() {
     if (!myId) return;
     setSavedDraftIds((prev) => { const n = new Set(prev); n.delete(myId); return n; });
     setGoingToSelection((prev) => new Set([...prev, myId]));
-    channelRef.current?.track({ userId: myId, status: "selecting", joinedAt: Date.now() });
+    trackPresence("selecting");
     channelRef.current?.send({ type: "broadcast", event: "going_to_selection", payload: { userId: myId } });
     router.push(`/(app)/selection/${id}?userId=${myId}&returnTo=lobby`);
   };
