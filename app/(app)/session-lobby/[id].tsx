@@ -686,18 +686,62 @@ export default function SessionLobbyScreen() {
     // ever re-checks it, so "Select" renders an empty list even after the
     // host finishes. This channel/poll is already here for `status` — reuse
     // it to also carry the receipt across once it lands in the DB.
+    //
+    // FIX 47 — this used to ignore the DB whenever the store held *any*
+    // receipt. Right for the host (memory is the source; the DB write may
+    // still be in flight), wrong for a participant whose store holds an
+    // older receipt (host re-scanned or edited it from the lobby). Now the
+    // DB wins when it has changed since this screen last read it, or —
+    // for non-hosts — when it differs on first read (join.tsx loaded it
+    // earlier, so a difference means the DB moved on). Compared by a
+    // key-sorted fingerprint because jsonb doesn't preserve key order.
+    // Logged once per state change, not once per poll/event.
+    const fingerprint = (v: unknown): string =>
+      JSON.stringify(v, (_k, val) =>
+        val && typeof val === "object" && !Array.isArray(val)
+          ? Object.keys(val).sort().reduce<Record<string, unknown>>((acc, k) => {
+              acc[k] = (val as Record<string, unknown>)[k];
+              return acc;
+            }, {})
+          : val
+      );
+    let lastDbFingerprint: string | null = null;
+    let lastReceiptLog: string | null = null;
+    const logReceiptState = (state: string, msg: string) => {
+      if (state === lastReceiptLog) return;
+      lastReceiptLog = state;
+      console.log(`[session-lobby] ${msg}`);
+    };
     const handleReceiptData = (receiptData?: unknown) => {
       if (!receiptData) return;
       const sess = useSessionStore.getState().currentSession;
-      if (sess && !sess.receipt) {
-        console.log("[session-lobby] receipt_data arrived, store was empty — applying it");
-        useSessionStore.getState().setSession({
-          ...sess,
-          receipt: receiptData as ParsedReceipt,
-        });
-      } else if (sess) {
-        console.log("[session-lobby] receipt_data arrived but store already has a receipt — ignoring");
+      if (!sess) return;
+      const dbFp = fingerprint(receiptData);
+      const firstRead = lastDbFingerprint === null;
+      const dbChanged = !firstRead && dbFp !== lastDbFingerprint;
+      lastDbFingerprint = dbFp;
+      const apply = () =>
+        useSessionStore.getState().setSession({ ...sess, receipt: receiptData as ParsedReceipt });
+
+      if (!sess.receipt) {
+        logReceiptState("applied-empty", "receipt_data arrived, store was empty — applying it");
+        apply();
+        return;
       }
+      if (fingerprint(sess.receipt) === dbFp) {
+        logReceiptState("in-sync", "receipt_data matches store");
+        return;
+      }
+      const isHost = sess.creatorId === myId;
+      if (dbChanged || (firstRead && !isHost)) {
+        logReceiptState("applied-newer", "receipt_data in DB is newer than store — applying it");
+        apply();
+        return;
+      }
+      logReceiptState(
+        "kept-local",
+        "receipt_data differs from store but hasn't changed since last read — keeping local (host write pending)"
+      );
     };
 
     // FIX 46 — this used to discard `error` entirely (`const { data } = ...`),
