@@ -427,7 +427,7 @@ export default function SessionLobbyScreen() {
     });
 
     ch
-      .on("presence", { event: "leave" }, ({ currentPresences, leftPresences }) => {
+      .on("presence", { event: "leave" }, ({ key, currentPresences }) => {
         // FIX 48 — currentPresences is what's still tracked under this key
         // after the leave. Non-empty means the same user still has another
         // live connection (second tab/device, or a rejoin that landed before
@@ -436,15 +436,18 @@ export default function SessionLobbyScreen() {
           console.log(`[session-lobby] presence leave ignored — ${currentPresences.length} connection(s) still open`);
           return;
         }
-        for (const p of leftPresences as any[]) {
-          const uid = p.key as string;
+        // FIX 48 — the presence key (user id) is on the event itself; each
+        // presence entry only carries the tracked payload + presence_ref, so
+        // reading the key per entry gave `undefined` since the initial commit.
+        {
+          const uid = key;
           console.log(`[session-lobby] presence leave: ${uid}${uid === myId ? " (me, ignored)" : ""}`);
-          if (uid === myId) continue;
+          if (uid === myId) return;
 
           // If they navigated to selection intentionally, suppress
           if (goingToSelection.has(uid)) {
             console.log(`[session-lobby] presence leave for ${uid} suppressed — they went to selection`);
-            continue;
+            return;
           }
 
           const hostId = useSessionStore.getState().currentSession?.creatorId;
@@ -467,10 +470,11 @@ export default function SessionLobbyScreen() {
           }
         }
       })
-      .on("presence", { event: "join" }, ({ newPresences }) => {
-        for (const p of newPresences as any[]) {
-          const uid = p.key as string;
-          const presenceStatus = (p.presences?.[0]?.status ?? p.state?.status) as string | undefined;
+      .on("presence", { event: "join" }, ({ key, newPresences }) => {
+        // FIX 48 — see leave: key from the event, status from the tracked payload.
+        {
+          const uid = key;
+          const presenceStatus = (newPresences[0] as { status?: string } | undefined)?.status;
           console.log(`[session-lobby] presence join: ${uid} status=${presenceStatus ?? "none"}`);
           const hostId = useSessionStore.getState().currentSession?.creatorId;
 
