@@ -90,6 +90,20 @@ const CATEGORY_LABEL_KEYS: Record<string, TranslationKey> = {
   others: "lobby_cat_others",
 };
 const RECONNECT_SECONDS = 300; // 5 min
+// FIX 49 — host takeover is switched OFF pending a server-side RPC
+// (`update sessions set host_id = me where host_id = <old>`, first caller
+// wins). As written it lied: RLS ("Host can update their session") makes a
+// non-host's host_id update match 0 rows WITHOUT an error, so the catch
+// never fired and the DB host never changed — yet the taker became host
+// locally and broadcast host_transfer. Two takers ended up each believing
+// the other was host (broadcasts don't echo to the sender) while the DB
+// kept the original, who also still believed it was host on return. It
+// never ran before FIX 48 (presence never detected a host leaving), so
+// switching it off removes nothing anyone used. Covers: the button, the
+// handler, and applying a received host_transfer. The "host
+// disconnected" banner itself stays (it's real information) along with
+// its Leave button.
+const HOST_TAKEOVER_ENABLED = false;
 const FINAL_COUNTDOWN = 5;
 
 export default function SessionLobbyScreen() {
@@ -640,6 +654,12 @@ export default function SessionLobbyScreen() {
         setHostReviewing(false);
       })
       .on("broadcast", { event: "host_transfer" }, ({ payload }) => {
+        // FIX 49 — see HOST_TAKEOVER_ENABLED. Also ignores one sent by an
+        // older build that still has the button.
+        if (!HOST_TAKEOVER_ENABLED) {
+          console.log(`[session-lobby] host_transfer ignored (takeover disabled): ${payload?.newHostId}`);
+          return;
+        }
         const newHostId = payload.newHostId as string | undefined;
         if (!newHostId) return;
         const sess = useSessionStore.getState().currentSession;
@@ -1368,6 +1388,7 @@ export default function SessionLobbyScreen() {
   }, [id, startFinalCountdown, syncSelectionsFromDB]);
 
   const handleTakeOverAsHost = useCallback(async () => {
+    if (!HOST_TAKEOVER_ENABLED) return; // FIX 49 — see the flag's comment
     if (!id || !myId || !session) return;
     try {
       await supabase
@@ -1543,16 +1564,18 @@ export default function SessionLobbyScreen() {
                 {t("lobby_host_disconnected_title")}
               </Text>
               <Text style={styles.hostDisconnectedBody}>
-                {t("lobby_host_disconnected_body")}
+                {t(HOST_TAKEOVER_ENABLED ? "lobby_host_disconnected_body" : "lobby_host_disconnected_body_wait")}
               </Text>
               <View style={styles.hostDisconnectedActions}>
-                <TouchableOpacity
-                  style={styles.takeOverHostBtn}
-                  onPress={handleTakeOverAsHost}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.takeOverHostBtnText}>{t("lobby_take_over_host")}</Text>
-                </TouchableOpacity>
+                {HOST_TAKEOVER_ENABLED && (
+                  <TouchableOpacity
+                    style={styles.takeOverHostBtn}
+                    onPress={handleTakeOverAsHost}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.takeOverHostBtnText}>{t("lobby_take_over_host")}</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={styles.leaveSessionBtn}
                   onPress={() => {
