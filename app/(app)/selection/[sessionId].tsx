@@ -163,9 +163,24 @@ export default function SelectionScreen() {
     const sid = sessionId ?? session?.id;
     if (!sid || String(sid).startsWith("session_") || String(sid).startsWith("dev_session_")) return;
     const channelName = returnTo === "lobby" ? `lobby:${sid}` : `selection:${sid}`;
+    // FIX 49 — supabase.channel() returns the *existing* channel object when
+    // one with this topic is already open. Coming from the lobby, that's the
+    // lobby's own presence/broadcast channel (it stays mounted underneath),
+    // and removing it here on unmount left the lobby deaf: no broadcasts and
+    // no way to re-track presence, so the user showed as disconnected to
+    // everyone. This screen is a guest on a channel it didn't open — borrow
+    // it for sends, never close it. Only a channel created here is removed.
+    const existing = supabase.getChannels().find((c) => c.topic === `realtime:${channelName}`);
+    if (existing) {
+      channelRef.current = existing;
+      return () => {
+        channelRef.current = null;
+      };
+    }
     const ch = supabase.channel(channelName).subscribe();
     channelRef.current = ch;
     return () => {
+      channelRef.current = null;
       supabase.removeChannel(ch);
     };
   }, [sessionId, session?.id, returnTo]);
