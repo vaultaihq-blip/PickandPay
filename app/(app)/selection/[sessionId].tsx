@@ -127,6 +127,8 @@ export default function SelectionScreen() {
   const hasSetSelectingRef = useRef(false);
   // Stop draft broadcasts the moment Done is pressed (before router.back() finishes)
   const doneRef = useRef(false);
+  // Last "[selection] blocked" line printed — see the not-found branch below.
+  const lastBlockedLogRef = useRef<string | null>(null);
 
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
   const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
@@ -678,12 +680,16 @@ export default function SelectionScreen() {
     // all in the local store, a session with no receipt yet (FIX 44's own
     // documented gap — a participant who joined before the host scanned),
     // or a session whose participants list doesn't include this device's
-    // own id. Logged once, not on every re-render, since this branch stays
-    // mounted while the condition holds.
-    console.log(
+    // own id. Logged once per distinct state, not on every re-render, since
+    // this branch stays mounted while the condition holds (FIX 49: the
+    // "once" was only claimed before; it printed on every render).
+    const blockedLine =
       `[selection] blocked: session=${!!session} receipt=${!!receipt} activeParticipant=${!!activeParticipant} ` +
-        `userId=${userId ?? "none"} sessionParticipants=${session?.participants.length ?? "n/a"}`
-    );
+      `userId=${userId ?? "none"} sessionParticipants=${session?.participants.length ?? "n/a"}`;
+    if (lastBlockedLogRef.current !== blockedLine) {
+      lastBlockedLogRef.current = blockedLine;
+      console.log(blockedLine);
+    }
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
         <View style={styles.emptyContainer}>
