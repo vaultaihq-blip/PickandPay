@@ -75,40 +75,45 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false },
   });
 
-  // Idempotency guard — insert the event ID first.
-  // If it already exists (code 23505), this delivery is a duplicate; return 200 silently.
-  const { error: insertError } = await admin.from("credit_transactions").insert({
-    revenuecat_event_id: eventId,
-    user_id: appUserId,
-    amount: creditsToAdd,
-    product_id: productId,
-  });
-
-  if (insertError) {
-    if (insertError.code === "23505") {
-      // Duplicate delivery — idempotent, return success
-      return new Response(
-        JSON.stringify({ received: true, processed: false, reason: "duplicate_event" }),
-        { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
-      );
-    }
-    console.error("[grant-credits] Failed to insert credit_transaction:", insertError);
-    return new Response("Internal Server Error", { status: 500, headers: CORS_HEADERS });
-  }
-
-  // Grant credits via SECURITY DEFINER function (bypasses protect_sensitive_profile_fields trigger)
-  const { data: newBalance, error: rpcError } = await admin.rpc("admin_grant_credits", {
-    p_user_id: appUserId,
+  // One transaction: the event row (unique revenuecat_event_id) is only kept if
+  // the credits were granted. A failure leaves nothing behind, so we answer 500
+  // and RevenueCat's retry grants normally.
+  const { data: result, error: rpcError } = await admin.rpc("grant_purchase_credits", {
+    p_event_id: eventId,
+    p_app_user_id: appUserId,
+    p_product_id: productId,
     p_amount: creditsToAdd,
   });
 
   if (rpcError) {
-    console.error("[grant-credits] admin_grant_credits failed:", rpcError);
-    // The transaction row is already inserted — on retry the idempotency guard will fire.
-    // This means credits will NOT be double-granted even if the caller retries on 500.
+    console.error("[grant-credits] grant_purchase_credits failed, nothing recorded — RevenueCat will retry:", rpcError);
     return new Response("Internal Server Error", { status: 500, headers: CORS_HEADERS });
   }
 
+  const status = (result as { status?: string } | null)?.status;
+
+  if (status === "duplicate_event") {
+    return new Response(
+      JSON.stringify({ received: true, processed: false, reason: "duplicate_event" }),
+      { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (status === "invalid_app_user_id") {
+    // Not a Supabase user id (e.g. a RevenueCat anonymous id). Retrying can't fix it.
+    console.error(`[grant-credits] Event ${eventId}: app_user_id "${appUserId}" is not a Supabase user id — no credits granted`);
+    return new Response(
+      JSON.stringify({ received: true, processed: false, reason: "invalid_app_user_id" }),
+      { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+    );
+  }
+
+  if (status !== "granted") {
+    console.error("[grant-credits] Unexpected grant_purchase_credits result:", result);
+    return new Response("Internal Server Error", { status: 500, headers: CORS_HEADERS });
+  }
+
+  const newBalance = (result as { new_balance?: number }).new_balance;
   console.log(`[grant-credits] Granted ${creditsToAdd} credits to ${appUserId}. New balance: ${newBalance}`);
 
   return new Response(
