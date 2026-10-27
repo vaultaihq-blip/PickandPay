@@ -45,5 +45,7 @@ export const CREDIT_PACKS: CreditPack[] = [
   },
 ];
 
-export const FREE_CREDITS_ON_SIGNUP = 1;
+// Display only. The amount actually granted is SIGNUP_CREDITS in
+// supabase/functions/initialize-user-credits/index.ts — keep the two equal.
+export const FREE_CREDITS_ON_SIGNUP = 3;
 export const FREE_CREDITS_PER_REFERRAL = 1;

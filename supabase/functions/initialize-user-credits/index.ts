@@ -5,8 +5,10 @@ const SUPABASE_ANON_KEY        = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const HIBP_API_KEY             = Deno.env.get("HIBP_API_KEY") ?? "";
 
-const FREE_CREDITS_ESTABLISHED = 1;
-const FREE_CREDITS_NEW         = 1;
+// The only place the sign-up amount is defined. Granted once per account by
+// grant_signup_credits (one email_signup_audit row per user). The HIBP check
+// below is recorded in the audit row; it no longer changes the amount.
+const SIGNUP_CREDITS = 3;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -86,21 +88,21 @@ Deno.serve(async (req: Request) => {
   console.log(`[initialize-user-credits] Processing user ${userId} (${email})`);
 
   try {
-    // ── 1. Check email reputation ──────────────────────────────────────────────
+    // ── 1. Check email reputation (audit only) ────────────────────────────────
     const reputation = await checkEmailReputation(email);
-    const freeCredits = reputation.isEstablished
-      ? FREE_CREDITS_ESTABLISHED
-      : FREE_CREDITS_NEW;
-
     console.log(
       `[initialize-user-credits] HIBP status=${reputation.hibpStatus} ` +
-      `established=${reputation.isEstablished} → ${freeCredits} credits`
+      `established=${reputation.isEstablished}`
     );
 
-    // ── 2. Set initial credits (idempotent) ────────────────────────────────────
-    const { data: newBalance, error: rpcError } = await admin.rpc("admin_set_signup_credits", {
-      p_user_id: userId,
-      p_amount:  freeCredits,
+    // ── 2. Grant sign-up credits + write the audit row, once per account ──────
+    const { data: result, error: rpcError } = await admin.rpc("grant_signup_credits", {
+      p_user_id:        userId,
+      p_amount:         SIGNUP_CREDITS,
+      p_email:          email,
+      p_in_breaches:    reputation.inBreaches,
+      p_is_established: reputation.isEstablished,
+      p_hibp_status:    reputation.hibpStatus,
     });
 
     if (rpcError) {
@@ -111,20 +113,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── 3. Write audit row ─────────────────────────────────────────────────────
-    await admin.from("email_signup_audit").insert({
-      user_id:              userId,
-      email,
-      in_breaches:          reputation.inBreaches,
-      is_established:       reputation.isEstablished,
-      free_credits_granted: freeCredits,
-      hibp_status:          reputation.hibpStatus,
-    });
+    const granted = (result as { status?: string }).status === "granted";
+    const balance = granted
+      ? (result as { new_balance: number }).new_balance
+      : (result as { balance: number }).balance;
+    console.log(
+      `[initialize-user-credits] ${granted ? `granted ${SIGNUP_CREDITS}` : "already granted, nothing added"}, balance=${balance}`
+    );
 
     return new Response(
       JSON.stringify({
-        freeCredits,
-        balance:       newBalance,
+        freeCredits:   granted ? SIGNUP_CREDITS : 0,
+        alreadyGranted: !granted,
+        balance,
         isEstablished: reputation.isEstablished,
       }),
       { status: 200, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }

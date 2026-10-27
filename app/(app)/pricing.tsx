@@ -15,6 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
+import { FREE_CREDITS_ON_SIGNUP } from "@/constants/packs";
 import { getOfferings, purchasePackage, restorePurchases } from "@/lib/revenuecat";
 import type { PurchasesPackage } from "react-native-purchases";
 import { useAuthStore } from "@/store/authStore";
@@ -192,7 +193,7 @@ export default function PricingScreen() {
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]}>
-        <Text style={styles.subtitle}>Start with 1 free bill, no credit card required</Text>
+        <Text style={styles.subtitle}>Start with {FREE_CREDITS_ON_SIGNUP} free bills, no credit card required</Text>
 
         <View style={styles.balanceCard}>
           <Ionicons name="receipt-outline" size={24} color={Colors.primary} />
@@ -207,7 +208,7 @@ export default function PricingScreen() {
         <View style={styles.freeBanner}>
           <Ionicons name="gift-outline" size={28} color={Colors.primary} />
           <View style={styles.freeBannerContent}>
-            <Text style={styles.freeBannerTitle}>1 Free Bill to Try</Text>
+            <Text style={styles.freeBannerTitle}>{FREE_CREDITS_ON_SIGNUP} Free Bills to Try</Text>
             <Text style={styles.freeBannerText}>No credit card required</Text>
           </View>
         </View>

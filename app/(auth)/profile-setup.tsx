@@ -108,9 +108,10 @@ export default function ProfileSetupScreen() {
         await upsertProfile(profile);
       }
 
-      // Determine initial credits via server-side email reputation check
+      // Sign-up credits are granted once, server-side (initialize-user-credits).
+      // Show the balance the server returned; never assume an amount.
       const creditResult = user ? await initializeUserCredits() : null;
-      const billCredits = creditResult?.freeCredits ?? 2;
+      const billCredits = creditResult?.balance ?? 0;
 
       setProfile({
         id: profile.id,
@@ -125,10 +126,16 @@ export default function ProfileSetupScreen() {
         isPro: false,
       });
 
-      Alert.alert(
-        "Welcome!",
-        `You received ${billCredits} free scan${billCredits === 1 ? "" : "s"} to try Pick&Pay.`
-      );
+      const granted = creditResult?.freeCredits ?? 0;
+      if (granted > 0) {
+        Alert.alert(
+          "Welcome!",
+          `You received ${granted} free scan${granted === 1 ? "" : "s"} to try Pick&Pay.`
+        );
+      } else if (!creditResult) {
+        console.error("[profile-setup] initialize-user-credits failed; balance shown is what the server has");
+        Alert.alert("Welcome!", "We couldn't add your free scans right now. Please contact support if your balance stays at 0.");
+      }
 
       router.replace("/(app)");
     } catch (err) {

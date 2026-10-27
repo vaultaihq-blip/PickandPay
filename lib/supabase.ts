@@ -387,6 +387,7 @@ export async function saveOCRCorrection(params: {
 
 export async function initializeUserCredits(): Promise<{
   freeCredits: number;
+  alreadyGranted: boolean;
   isEstablished: boolean;
   balance: number;
 } | null> {
@@ -400,7 +401,7 @@ export async function initializeUserCredits(): Promise<{
     console.warn("[initializeUserCredits] Edge function error:", error);
     return null;
   }
-  return data as { freeCredits: number; isEstablished: boolean; balance: number };
+  return data as { freeCredits: number; alreadyGranted: boolean; isEstablished: boolean; balance: number };
 }
 
 export async function parseReceiptImage(image: string) {

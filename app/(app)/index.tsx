@@ -258,10 +258,10 @@ export default function HomeScreen() {
               email: user.email,
               name: user.email?.split("@")[0] || "User",
               color: "#3B82F6",
-              bill_credits: 3,
+              // bill_credits / is_pro / referral_count are server-owned: the
+              // profile trigger forces 0/false on client inserts, and
+              // initialize-user-credits grants the sign-up credits.
               avatar_icon: "👤",
-              referral_count: 0,
-              is_pro: false,
             });
           if (createError) {
             console.error("[home] Profile creation failed:", JSON.stringify(createError));
