@@ -33,7 +33,7 @@ async function main() {
     console.error("Usage: GOOGLE_CLOUD_API_KEY=... npx tsx scripts/fetch-vision-fixture.ts <image path> <fixture output path>");
     process.exit(1);
   }
-  const apiKey = process.env.GOOGLE_CLOUD_API_KEY ?? process.env.EXPO_PUBLIC_GOOGLE_CLOUD_API_KEY ?? "";
+  const apiKey = process.env.GOOGLE_CLOUD_API_KEY ?? "";
   if (!apiKey) {
     console.error("Missing GOOGLE_CLOUD_API_KEY in the environment.");
     process.exit(1);

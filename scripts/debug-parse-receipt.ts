@@ -32,8 +32,9 @@
  * the command line, never set as a shell env var by the caller, so a key
  * value is never present in any command text, shell history, or terminal
  * scrollback this script produces. OPENAI_API_KEY/GOOGLE_CLOUD_API_KEY are
- * accepted directly too (if already exported), falling back to this repo's
- * EXPO_PUBLIC_-prefixed client names. A key's VALUE is never printed —
+ * accepted directly too (if already exported). They are NOT EXPO_PUBLIC_
+ * names any more: an EXPO_PUBLIC_ variable is inlined into the app bundle as
+ * soon as any app code references it, and these are secret server keys. A key's VALUE is never printed —
  * anywhere a problem is reported, only the missing key's NAME is.
  *
  * Output is written to a local JSON file (default: alongside the image,
@@ -390,11 +391,11 @@ async function main() {
     process.exit(1);
   }
 
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? "";
-  const GOOGLE_CLOUD_API_KEY = process.env.GOOGLE_CLOUD_API_KEY ?? process.env.EXPO_PUBLIC_GOOGLE_CLOUD_API_KEY ?? "";
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? "";
+  const GOOGLE_CLOUD_API_KEY = process.env.GOOGLE_CLOUD_API_KEY ?? "";
   const missing = [
-    OPENAI_API_KEY ? null : "OPENAI_API_KEY (or EXPO_PUBLIC_OPENAI_API_KEY)",
-    fixturePath || GOOGLE_CLOUD_API_KEY ? null : "GOOGLE_CLOUD_API_KEY (or EXPO_PUBLIC_GOOGLE_CLOUD_API_KEY)",
+    OPENAI_API_KEY ? null : "OPENAI_API_KEY",
+    fixturePath || GOOGLE_CLOUD_API_KEY ? null : "GOOGLE_CLOUD_API_KEY",
   ].filter((m): m is string => m !== null);
   if (missing.length > 0) {
     // Names only, never values, and never anything from .env.local's content.
