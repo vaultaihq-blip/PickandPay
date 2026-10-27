@@ -4,8 +4,8 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from "react-native";
+import { showDialog } from "@/lib/dialog";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 
@@ -26,6 +26,7 @@ import { extractSessionIdFromQR } from "@/lib/deeplink";
 import { useAuthStore } from "@/store/authStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { supabase } from "@/lib/supabase";
+import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
 import { Session, SessionParticipant, UserProfile } from "@/types";
 import { getColorForIndex } from "@/constants/colors";
 import { getAvatarEmoji } from "@/constants/avatars";
@@ -78,7 +79,7 @@ export default function JoinSessionScreen() {
 
   const fetchSessionPreview = async (sessionId: string) => {
     if (!profile) {
-      Alert.alert(t("join_sign_in_required"), t("join_sign_in_body"), [
+      showDialog(t("join_sign_in_required"), t("join_sign_in_body"), [
         { text: t("cancel"), style: "cancel" },
         { text: t("join_setup_profile"), onPress: () => router.push("/(auth)/profile-setup") },
       ]);
@@ -97,7 +98,9 @@ export default function JoinSessionScreen() {
       let isRejoin = false;
       let isLeftRejoin = false;
       if (participantError && participantError.code !== "23505") {
-        console.warn("[join] Participant insert warning:", participantError.code, participantError.message);
+        // Without this row RLS hides the session, so nothing below can work.
+        console.error("[join] Participant insert failed:", participantError.code, participantError.message);
+        throw new Error(t("join_error_load"));
       } else if (participantError?.code === "23505") {
         // Already a participant — check if this is a rejoin (previously joined/left)
         const { data: existingRow } = await supabase
@@ -124,12 +127,17 @@ export default function JoinSessionScreen() {
         .single();
 
       if (error) {
-        await supabase
-          .from("session_participants")
-          .delete()
-          .eq("session_id", sessionId)
-          .eq("user_id", profile.id)
-          .eq("status", "pending");
+        // Best-effort cleanup of our pending row; the load error is what the user sees.
+        await expectRows(
+          "join: remove pending row after failed load",
+          supabase
+            .from("session_participants")
+            .delete()
+            .eq("session_id", sessionId)
+            .eq("user_id", profile.id)
+            .eq("status", "pending")
+            .select("id")
+        ).catch(() => {});
         if (error.code === "PGRST116") {
           throw new Error("Session not found. Check that the RLS policy was updated in Supabase.");
         }
@@ -152,20 +160,30 @@ export default function JoinSessionScreen() {
       });
     } catch (err: any) {
       console.error("[join] fetchSessionPreview error:", err);
-      Alert.alert(t("error"), err?.message ?? t("join_error_load"));
+      showDialog(t("error"), err?.message ?? t("join_error_load"));
     } finally {
       setLoading(false);
     }
   };
 
   const handleCancel = async () => {
-    if (preview && profile) {
-      await supabase
-        .from("session_participants")
-        .delete()
-        .eq("session_id", preview.id)
-        .eq("user_id", profile.id)
-        .eq("status", "pending");
+    // A rejoin has no pending row to remove (status is joined/left/…).
+    if (preview && profile && !preview.isRejoin) {
+      try {
+        await expectRows(
+          "join: cancel (remove pending row)",
+          supabase
+            .from("session_participants")
+            .delete()
+            .eq("session_id", preview.id)
+            .eq("user_id", profile.id)
+            .eq("status", "pending")
+            .select("id")
+        );
+      } catch (err) {
+        showWriteError(err, t);
+        return;
+      }
     }
     setPreview(null);
   };
@@ -175,7 +193,7 @@ export default function JoinSessionScreen() {
 
     // Skip credit check when rejoining (user already paid for this session)
     if (!preview.isRejoin && !profile.isPro && (profile.billCredits ?? 0) <= 0) {
-      Alert.alert(
+      showDialog(
         t("scan_no_credits"),
         t("join_no_credits_msg"),
         [
@@ -191,11 +209,15 @@ export default function JoinSessionScreen() {
       const sessionId = preview.id;
 
       // Confirma participante: pending → joined
-      await supabase
-        .from("session_participants")
-        .update({ status: "joined" })
-        .eq("session_id", sessionId)
-        .eq("user_id", profile.id);
+      await expectRows(
+        "join: pending → joined",
+        supabase
+          .from("session_participants")
+          .update({ status: "joined" })
+          .eq("session_id", sessionId)
+          .eq("user_id", profile.id)
+          .select("id")
+      );
 
       // Carrega sessão + participantes completos
       const { data: sessionData, error } = await supabase
@@ -259,7 +281,8 @@ export default function JoinSessionScreen() {
       router.replace(`/(app)/session-lobby/${sessionId}`);
     } catch (err: any) {
       console.error("[join] confirmJoin error:", err);
-      Alert.alert(t("error"), t("join_error_join"));
+      if (err instanceof WriteError) showWriteError(err, t);
+      else showDialog(t("error"), t("join_error_join"));
     } finally {
       setLoading(false);
     }
@@ -270,7 +293,7 @@ export default function JoinSessionScreen() {
     if (sessionId) {
       fetchSessionPreview(sessionId);
     } else {
-      Alert.alert(t("join_invalid_qr_title"), t("join_invalid_qr_msg"));
+      showDialog(t("join_invalid_qr_title"), t("join_invalid_qr_msg"));
     }
   };
 

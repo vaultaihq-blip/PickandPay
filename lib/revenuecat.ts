@@ -9,7 +9,6 @@ import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/store/authStore";
 
 const API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
-const BASE_FREE_BILLS = 1;
 
 let configuredUserId: string | null = null;
 
@@ -17,38 +16,11 @@ function isRevenueCatSupported() {
   return Platform.OS === "ios" || Platform.OS === "android";
 }
 
-function entitlementCreditFloor(customerInfo: CustomerInfo) {
-  let totalBills = BASE_FREE_BILLS;
-  const entitlements = customerInfo.entitlements.active;
-
-  if (entitlements.bills_15) totalBills += 15;
-  if (entitlements.bills_50) totalBills += 50;
-
-  return totalBills;
-}
-
 async function getCurrentUserId() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
   return user?.id ?? null;
-}
-
-async function setCreditsAtLeast(_userId: string, creditFloor: number) {
-  // Read current credits and add only the difference via the secure RPC
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("bill_credits")
-    .eq("id", (await supabase.auth.getUser()).data.user?.id ?? "")
-    .single();
-
-  const currentCredits = Number(profile?.bill_credits ?? 0);
-  const toAdd = creditFloor - currentCredits;
-  if (toAdd <= 0) return currentCredits;
-
-  const { data, error } = await supabase.rpc("add_user_credits", { amount: Math.min(toAdd, 50) });
-  if (error) throw error;
-  return data as number;
 }
 
 export async function initRevenueCat(userId: string) {
@@ -75,9 +47,8 @@ export async function initRevenueCat(userId: string) {
     appUserID: userId,
   });
   configuredUserId = userId;
-
-  const customerInfo = await Purchases.getCustomerInfo();
-  await syncCreditsWithSupabase(customerInfo);
+  // Credits are never written from the client: purchases reach the balance
+  // only through the RevenueCat webhook (grant-credits-from-purchase).
 
   if (__DEV__) console.log("[RevenueCat] Initialized successfully");
 }
@@ -141,24 +112,6 @@ export async function restorePurchases() {
   } catch (error) {
     console.error("[RevenueCat] Restore failed:", error);
     return { success: false };
-  }
-}
-
-export async function syncCreditsWithSupabase(customerInfo: CustomerInfo) {
-  try {
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      console.error("[RevenueCat] No user found, cannot sync credits");
-      return null;
-    }
-
-    const creditFloor = entitlementCreditFloor(customerInfo);
-    const creditsSynced = await setCreditsAtLeast(userId, creditFloor);
-    if (__DEV__) console.log("[RevenueCat] Credits synced:", creditsSynced);
-    return creditsSynced;
-  } catch (error) {
-    console.error("[RevenueCat] Sync failed:", error);
-    return null;
   }
 }
 

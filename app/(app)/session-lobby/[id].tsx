@@ -6,13 +6,13 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   BackHandler,
   ActivityIndicator,
   Share,
   Modal,
   AppState,
 } from "react-native";
+import { showDialog } from "@/lib/dialog";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
@@ -24,6 +24,7 @@ import { CountdownModal } from "@/components/CountdownModal";
 import { useSessionMonitor } from "@/hooks/useSessionMonitor";
 import { formatCurrency } from "@/utils/formatter";
 import { supabase } from "@/lib/supabase";
+import { expectRows, showLeaveWriteError, showWriteError } from "@/lib/checkedWrite";
 import { ReceiptItem, ItemSelection, SessionParticipant, ParsedReceipt } from "@/types";
 import { isDeveloperUser } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
@@ -361,17 +362,17 @@ export default function SessionLobbyScreen() {
     setCountdownActive(false);
     countdownStarted.current = false;
     if (isCreator && id && !String(id).startsWith("session_") && !String(id).startsWith("dev_session_")) {
-      await supabase
-        .from("sessions")
-        .update({ status: "selecting" })
-        .eq("id", id);
+      await expectRows(
+        "lobby: host cancels countdown (selecting)",
+        supabase.from("sessions").update({ status: "selecting" }).eq("id", id).select("id")
+      ).catch((err) => showWriteError(err, t));
     }
     channelRef.current?.send({
       type: "broadcast",
       event: "countdown_cancel",
       payload: {},
     });
-  }, [id, isCreator, setCountdownActive]);
+  }, [id, isCreator, setCountdownActive, t]);
 
   // Countdown is host-triggered (see handleFinalize below)
 
@@ -1167,27 +1168,35 @@ export default function SessionLobbyScreen() {
   const closeConfirmedSession = useCallback(async () => {
     if (!session) return;
     const isOfflineSession = session.id.startsWith("session_") || session.id.startsWith("dev_session_");
-    try {
-      if (isCreator && !isOfflineSession) {
-        await supabase
-          .from("sessions")
-          .update({ status: "closed" })
-          .eq("id", session.id);
-      } else if (!isCreator && !isOfflineSession && myId) {
-        await supabase
-          .from("session_participants")
-          .update({ status: "left" })
-          .eq("session_id", session.id)
-          .eq("user_id", myId);
-      }
-    } finally {
+    const leave = () => {
       clearSession();
       router.replace("/(app)");
+    };
+    try {
+      if (isCreator && !isOfflineSession) {
+        await expectRows(
+          "lobby: host ends session (closed)",
+          supabase.from("sessions").update({ status: "closed" }).eq("id", session.id).select("id")
+        );
+      } else if (!isCreator && !isOfflineSession && myId) {
+        await expectRows(
+          "lobby: participant leaves (left)",
+          supabase
+            .from("session_participants")
+            .update({ status: "left" })
+            .eq("session_id", session.id)
+            .eq("user_id", myId)
+            .select("id")
+        );
+      }
+      leave();
+    } catch (err) {
+      showLeaveWriteError(err, t, leave);
     }
-  }, [clearSession, isCreator, myId, session]);
+  }, [clearSession, isCreator, myId, session, t]);
 
   const confirmExitSession = useCallback(() => {
-    Alert.alert(
+    showDialog(
       isCreator ? t("lobby_confirm_end_title") : t("lobby_confirm_leave_title"),
       isCreator
         ? t("lobby_confirm_end_msg")
@@ -1235,12 +1244,15 @@ export default function SessionLobbyScreen() {
       payload: { userId: myId },
     });
     if (id && !String(id).startsWith("session_") && !String(id).startsWith("dev_session_")) {
-      supabase
-        .from("session_participants")
-        .update({ status: "selecting" })
-        .eq("session_id", id)
-        .eq("user_id", myId)
-        .then(() => {});
+      expectRows(
+        "lobby: mark selecting",
+        supabase
+          .from("session_participants")
+          .update({ status: "selecting" })
+          .eq("session_id", id)
+          .eq("user_id", myId)
+          .select("id")
+      ).catch((err) => showWriteError(err, t));
     }
     setGoingToSelection((prev) => new Set([...prev, myId]));
     router.push(`/(app)/selection/${id}?userId=${myId}&returnTo=lobby`);
@@ -1264,12 +1276,15 @@ export default function SessionLobbyScreen() {
       payload: { userId: myId, preserveSelections: true },
     });
     if (id && !String(id).startsWith("session_") && !String(id).startsWith("dev_session_")) {
-      supabase
-        .from("session_participants")
-        .update({ selections: [], status: "selecting" })
-        .eq("session_id", id)
-        .eq("user_id", myId)
-        .then(() => {});
+      expectRows(
+        "lobby: edit items (reset selections, selecting)",
+        supabase
+          .from("session_participants")
+          .update({ selections: [], status: "selecting" })
+          .eq("session_id", id)
+          .eq("user_id", myId)
+          .select("id")
+      ).catch((err) => showWriteError(err, t));
     }
     router.push(`/(app)/selection/${id}?userId=${myId}&returnTo=lobby`);
   };
@@ -1280,13 +1295,17 @@ export default function SessionLobbyScreen() {
     setSavedDraftIds((prev) => { const n = new Set(prev); n.delete(myId); return n; });
     useSessionStore.getState().updateSelections(myId, []);
     if (id && !(String(id).startsWith("session_") || String(id).startsWith("dev_session_"))) {
-      await supabase
-        .from("session_participants")
-        .update({ selections: [], status: "joined" })
-        .eq("session_id", id)
-        .eq("user_id", myId);
+      await expectRows(
+        "lobby: cancel draft (reset selections, joined)",
+        supabase
+          .from("session_participants")
+          .update({ selections: [], status: "joined" })
+          .eq("session_id", id)
+          .eq("user_id", myId)
+          .select("id")
+      ).catch((err) => showWriteError(err, t));
     }
-  }, [myId, id]);
+  }, [myId, id, t]);
 
   // Edit a saved draft — keep DB selections so selection screen can pre-populate
   const handleEditDraft = () => {
@@ -1300,7 +1319,7 @@ export default function SessionLobbyScreen() {
 
   const handleTakeover = useCallback((targetId: string) => {
     const target = participants.find((p) => p.userId === targetId);
-    Alert.alert(
+    showDialog(
       `${t("lobby_takeover_for")} ${target?.profile.name ?? "User"}?`,
       t("lobby_takeover_body"),
       [
@@ -1321,12 +1340,17 @@ export default function SessionLobbyScreen() {
               payload: { userId: targetId },
             });
             if (id && !String(id).startsWith("session_") && !String(id).startsWith("dev_session_")) {
-              supabase
-                .from("session_participants")
-                .update({ status: "selecting" })
-                .eq("session_id", id)
-                .eq("user_id", targetId)
-                .then(() => {});
+              // Another user's row: RLS only lets the host write it, so a
+              // non-host takeover affects 0 rows and is reported as such.
+              expectRows(
+                "lobby: takeover marks target selecting",
+                supabase
+                  .from("session_participants")
+                  .update({ status: "selecting" })
+                  .eq("session_id", id)
+                  .eq("user_id", targetId)
+                  .select("id")
+              ).catch((err) => showWriteError(err, t));
             }
             setGoingToSelection((prev) => new Set([...prev, targetId]));
             router.push(`/(app)/selection/${id}?userId=${targetId}&takenBy=${myId}&returnTo=lobby`);
@@ -1338,7 +1362,7 @@ export default function SessionLobbyScreen() {
 
   const handleHostSkipTimer = (targetId: string) => {
     const target = participants.find((p) => p.userId === targetId);
-    Alert.alert(
+    showDialog(
       `${t("lobby_stop_waiting_for")} ${target?.profile.name ?? "User"}?`,
       t("lobby_stop_waiting_body"),
       [
@@ -1375,26 +1399,31 @@ export default function SessionLobbyScreen() {
     countdownStarted.current = true;
     await syncSelectionsFromDB();
     if (id && !String(id).startsWith("session_") && !String(id).startsWith("dev_session_")) {
-      const { error } = await supabase
-        .from("sessions")
-        .update({ status: "awaiting_payment" })
-        .eq("id", id);
-      if (error) {
-        console.warn("[lobby] Failed to mark session awaiting_payment:", error);
+      // The DB status is what participants fall back on (and what moves the
+      // session forward server-side), so the countdown only starts once it's saved.
+      try {
+        await expectRows(
+          "lobby: host finalizes (awaiting_payment)",
+          supabase.from("sessions").update({ status: "awaiting_payment" }).eq("id", id).select("id")
+        );
+      } catch (err) {
+        countdownStarted.current = false;
+        showWriteError(err, t);
+        return;
       }
     }
     channelRef.current?.send({ type: "broadcast", event: "countdown_start", payload: {} });
     startFinalCountdown();
-  }, [id, startFinalCountdown, syncSelectionsFromDB]);
+  }, [id, startFinalCountdown, syncSelectionsFromDB, t]);
 
   const handleTakeOverAsHost = useCallback(async () => {
     if (!HOST_TAKEOVER_ENABLED) return; // FIX 49 — see the flag's comment
     if (!id || !myId || !session) return;
     try {
-      await supabase
-        .from("sessions")
-        .update({ host_id: myId })
-        .eq("id", id);
+      await expectRows(
+        "lobby: take over as host",
+        supabase.from("sessions").update({ host_id: myId }).eq("id", id).select("id")
+      );
       useSessionStore.getState().setSession({ ...session, creatorId: myId });
       setHostDisconnected(false);
       channelRef.current?.send({
@@ -1403,7 +1432,7 @@ export default function SessionLobbyScreen() {
         payload: { newHostId: myId },
       });
     } catch {
-      Alert.alert(t("error"), t("lobby_take_over_error"));
+      showDialog(t("error"), t("lobby_take_over_error"));
     }
   }, [id, myId, session]);
 
@@ -1445,13 +1474,17 @@ export default function SessionLobbyScreen() {
     });
     useSessionStore.getState().updateSelections(myId, []);
     if (id && !(String(id).startsWith("session_") || String(id).startsWith("dev_session_"))) {
-      await supabase
-        .from("session_participants")
-        .update({ selections: [], total_owed: 0, status: "joined" })
-        .eq("session_id", id)
-        .eq("user_id", myId);
+      await expectRows(
+        "lobby: cancel ready (reset selections, joined)",
+        supabase
+          .from("session_participants")
+          .update({ selections: [], total_owed: 0, status: "joined" })
+          .eq("session_id", id)
+          .eq("user_id", myId)
+          .select("id")
+      ).catch((err) => showWriteError(err, t));
     }
-  }, [myId, id]);
+  }, [myId, id, t]);
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1579,21 +1612,33 @@ export default function SessionLobbyScreen() {
                 <TouchableOpacity
                   style={styles.leaveSessionBtn}
                   onPress={() => {
-                    Alert.alert(t("session_leave"), t("lobby_leave_body"), [
+                    showDialog(t("session_leave"), t("lobby_leave_body"), [
                       { text: t("cancel"), style: "cancel" },
                       {
                         text: t("lobby_leave_btn"),
                         style: "destructive",
                         onPress: async () => {
+                          const leave = () => {
+                            useSessionStore.getState().clearSession();
+                            router.replace("/(app)");
+                          };
                           if (id && myId) {
-                            await supabase
-                              .from("session_participants")
-                              .update({ status: "left" })
-                              .eq("session_id", id)
-                              .eq("user_id", myId);
+                            try {
+                              await expectRows(
+                                "lobby: leave button (left)",
+                                supabase
+                                  .from("session_participants")
+                                  .update({ status: "left" })
+                                  .eq("session_id", id)
+                                  .eq("user_id", myId)
+                                  .select("id")
+                              );
+                            } catch (err) {
+                              showLeaveWriteError(err, t, leave);
+                              return;
+                            }
                           }
-                          useSessionStore.getState().clearSession();
-                          router.replace("/(app)");
+                          leave();
                         },
                       },
                     ]);

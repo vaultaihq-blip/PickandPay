@@ -5,11 +5,11 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Modal,
   Linking,
   InteractionManager,
 } from "react-native";
+import { showDialog } from "@/lib/dialog";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,6 +26,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { formatCurrency } from "@/utils/formatter";
 import { Colors as C } from "@/constants/colors";
 import { supabase } from "@/lib/supabase";
+import { expectRows, showWriteError } from "@/lib/checkedWrite";
 import { CentAdjustment, SessionParticipant, PaymentReminder } from "@/types";
 import { sendPushNotification } from "@/lib/notifications";
 import { toCents, fromCents } from "@/utils/validator";
@@ -141,7 +142,7 @@ export default function DashboardScreen() {
               .channel(`session-closed:${session.id}:${Date.now()}`)
               .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions", filter: `id=eq.${session.id}` }, (payload) => {
                 if ((payload.new?.status as string | undefined) === "closed") {
-                  Alert.alert(t("dashboard_bill_closed"), t("dashboard_bill_closed_msg"), [
+                  showDialog(t("dashboard_bill_closed"), t("dashboard_bill_closed_msg"), [
                     { text: t("dashboard_stay_payments"), style: "cancel" },
                     { text: t("dashboard_go_home_btn"), onPress: () => { addCompletedSession({ ...session, status: "closed" } as typeof session); clearSession(); router.replace("/(app)"); } },
                   ]);
@@ -223,19 +224,44 @@ export default function DashboardScreen() {
     }
     const isOffline = session?.id.startsWith("session_") || session?.id.startsWith("dev_session_");
     if (session && !isOffline) {
-      await supabase.from("session_participants").update({ paid }).eq("session_id", session.id).eq("user_id", userId);
+      try {
+        await expectRows(
+          "dashboard: mark paid",
+          supabase
+            .from("session_participants")
+            .update({ paid })
+            .eq("session_id", session.id)
+            .eq("user_id", userId)
+            .select("id")
+        );
+      } catch (err) {
+        // Undo the optimistic mark so the screen shows what the server has.
+        if (isReadOnly) markViewingPaid(userId, !paid);
+        else markPaid(userId, !paid);
+        showWriteError(err, t);
+      }
     }
   };
 
   const handleMarkCoveredBy = async (targetUserId: string, coveredByUserId: string | null) => {
     const isOffline = session?.id.startsWith("session_") || session?.id.startsWith("dev_session_");
+    const previous = session?.participants.find((p) => p.userId === targetUserId)?.coveredByUserId ?? null;
     markCoveredBy(targetUserId, coveredByUserId);
     if (session && !isOffline) {
-      await supabase
-        .from("session_participants")
-        .update({ covered_by_user_id: coveredByUserId })
-        .eq("session_id", session.id)
-        .eq("user_id", targetUserId);
+      try {
+        await expectRows(
+          "dashboard: mark covered by",
+          supabase
+            .from("session_participants")
+            .update({ covered_by_user_id: coveredByUserId })
+            .eq("session_id", session.id)
+            .eq("user_id", targetUserId)
+            .select("id")
+        );
+      } catch (err) {
+        markCoveredBy(targetUserId, previous);
+        showWriteError(err, t);
+      }
     }
   };
 
@@ -259,12 +285,20 @@ export default function DashboardScreen() {
     setClosing(true);
     try {
       if (!session.id.startsWith("session_")) {
-        await supabase.from("sessions").update({ status: "closed", closed_at: new Date().toISOString() }).eq("id", session.id);
+        // No closed_at: the column doesn't exist in production, and sending it
+        // made PostgREST reject the whole update — no bill was ever closed
+        // from here (the 27 sessions left in awaiting_payment).
+        await expectRows(
+          "dashboard: close bill (closed)",
+          supabase.from("sessions").update({ status: "closed" }).eq("id", session.id).select("id")
+        );
       }
       setStatus("closed");
       maybeShowReviewPrompt();
       clearSession();
       router.replace("/(app)");
+    } catch (err) {
+      showWriteError(err, t);
     } finally { setClosing(false); }
   };
 
@@ -272,7 +306,7 @@ export default function DashboardScreen() {
     if (!session) return;
     const unpaid = session.participants.filter((p) => !p.paid);
     if (unpaid.length === 0) { doClose(); return; }
-    Alert.alert("⚠️ Unpaid participants",
+    showDialog("⚠️ Unpaid participants",
       `${unpaid.length} ${unpaid.length === 1 ? "person hasn't" : "people haven't"} paid yet:\n\n${unpaid.map((p) => p.profile.name).join(", ")}\n\nClose bill anyway?`,
       [{ text: t("cancel"), style: "cancel" }, { text: t("dashboard_close_anyway"), style: "destructive", onPress: doClose }]);
   };
@@ -312,16 +346,16 @@ export default function DashboardScreen() {
   const handlePushReminder = async (p: SessionParticipant) => {
     try {
       await sendPushNotification({ to: p.userId, title: reminderTitle(p), body: reminderBody(p), data: { type: "payment_reminder", session_id: session?.id } });
-      Alert.alert("Lembrete enviado", `${p.profile.name} foi notificado.`);
+      showDialog("Lembrete enviado", `${p.profile.name} foi notificado.`);
       recordAndClose(p.userId, "push");
     } catch {
-      Alert.alert("Sem notificação push", `${p.profile.name} não tem notificações ativadas. Tenta por email ou WhatsApp.`, [{ text: "OK" }]);
+      showDialog("Sem notificação push", `${p.profile.name} não tem notificações ativadas. Tenta por email ou WhatsApp.`, [{ text: "OK" }]);
     }
   };
 
   const handleEmailReminder = async (p: SessionParticipant) => {
     try {
-      if (!p.profile.email) { Alert.alert("Sem email", `${p.profile.name} não tem email registado.`); return; }
+      if (!p.profile.email) { showDialog("Sem email", `${p.profile.name} não tem email registado.`); return; }
       const subject = isCoverageReminder(p)
         ? `Devolução pendente — ${receipt?.restaurant}`
         : `Payment Reminder: ${receipt?.restaurant}`;
@@ -332,11 +366,11 @@ export default function DashboardScreen() {
       if (available) { await MailComposer.composeAsync({ recipients: [p.profile.email], subject, body }); }
       else {
         const mailto = `mailto:${p.profile.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        if (!(await Linking.canOpenURL(mailto))) { Alert.alert("Email indisponível", "Nenhuma app de email configurada."); return; }
+        if (!(await Linking.canOpenURL(mailto))) { showDialog("Email indisponível", "Nenhuma app de email configurada."); return; }
         await Linking.openURL(mailto);
       }
       recordAndClose(p.userId, "email");
-    } catch { Alert.alert("Erro", "Não foi possível abrir o compositor de email."); }
+    } catch { showDialog("Erro", "Não foi possível abrir o compositor de email."); }
   };
 
   const handleWhatsAppReminder = async (p: SessionParticipant) => {
@@ -345,10 +379,10 @@ export default function DashboardScreen() {
         ? `Olá ${p.profile.name}! ${profile?.name} pagou a tua conta (${formatCurrency(p.totalOwed, receipt?.currency ?? "EUR")}) em ${receipt?.restaurant}. Não te esqueças de devolver! 🤝`
         : `Hi ${p.profile.name}, friendly reminder: you owe ${formatCurrency(p.totalOwed, receipt?.currency ?? "EUR")} for ${receipt?.restaurant}. Thanks!`;
       const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
-      if (!(await Linking.canOpenURL(url))) { Alert.alert("WhatsApp não instalado", "Instala o WhatsApp para enviar lembretes."); return; }
+      if (!(await Linking.canOpenURL(url))) { showDialog("WhatsApp não instalado", "Instala o WhatsApp para enviar lembretes."); return; }
       await Linking.openURL(url);
       recordAndClose(p.userId, "whatsapp");
-    } catch { Alert.alert("Erro", "Não foi possível abrir o WhatsApp."); }
+    } catch { showDialog("Erro", "Não foi possível abrir o WhatsApp."); }
   };
 
   const handlePersonCardTap = (p: SessionParticipant) => {

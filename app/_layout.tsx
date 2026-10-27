@@ -13,6 +13,7 @@ import { useI18nStore } from "@/store/i18nStore";
 import { handleDeepLink } from "@/lib/deeplink";
 import { initRevenueCat } from "@/lib/revenuecat";
 import { supabase, isAuthCallbackUrl } from "@/lib/supabase";
+import { DialogHost } from "@/components/ui/DialogHost";
 import "../global.css";
 
 export const ONBOARDING_KEY = "@pickandpay:onboardingComplete";
@@ -171,6 +172,7 @@ export default function RootLayout() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(app)" />
       </Stack>
+      <DialogHost />
     </>
   );
 }

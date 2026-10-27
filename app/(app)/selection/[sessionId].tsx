@@ -7,10 +7,10 @@ import {
   TextInput,
   StyleSheet,
   useColorScheme,
-  Alert,
   Modal,
   BackHandler,
 } from "react-native";
+import { showDialog } from "@/lib/dialog";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams, Stack } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -28,6 +28,7 @@ import { Card } from "@/components/ui/Card";
 import { formatCurrency } from "@/utils/formatter";
 import { ReceiptItem, ItemSelection } from "@/types";
 import { supabase } from "@/lib/supabase";
+import { expectRows, showLeaveWriteError, showWriteError } from "@/lib/checkedWrite";
 import { useI18nStore } from "@/store/i18nStore";
 
 const ORDERED_CATEGORIES = [
@@ -207,40 +208,49 @@ export default function SelectionScreen() {
       return;
     }
     hasSetSelectingRef.current = true;
-    supabase
-      .from("session_participants")
-      .update({ status: "selecting" })
-      .eq("session_id", sid)
-      .eq("user_id", activeParticipant.userId)
-      .then(({ error }) => {
-        if (error) console.error("[selection] Failed to mark selecting:", error);
-      });
-  }, [activeParticipant, returnTo, session?.id, sessionId]);
+    expectRows(
+      "selection: mark selecting",
+      supabase
+        .from("session_participants")
+        .update({ status: "selecting" })
+        .eq("session_id", sid)
+        .eq("user_id", activeParticipant.userId)
+        .select("id")
+    ).catch((err) => showWriteError(err, t));
+  }, [activeParticipant, returnTo, session?.id, sessionId, t]);
 
   const closeConfirmedSession = useCallback(async () => {
     if (!session) return;
     const isOfflineSession = session.id.startsWith("session_") || session.id.startsWith("dev_session_");
-    try {
-      if (isCreator && !isOfflineSession) {
-        await supabase
-          .from("sessions")
-          .update({ status: "closed" })
-          .eq("id", session.id);
-      } else if (!isCreator && !isOfflineSession && profile?.id) {
-        await supabase
-          .from("session_participants")
-          .update({ status: "left" })
-          .eq("session_id", session.id)
-          .eq("user_id", profile.id);
-      }
-    } finally {
+    const leave = () => {
       clearSession();
       router.replace("/(app)");
+    };
+    try {
+      if (isCreator && !isOfflineSession) {
+        await expectRows(
+          "selection: host ends session (closed)",
+          supabase.from("sessions").update({ status: "closed" }).eq("id", session.id).select("id")
+        );
+      } else if (!isCreator && !isOfflineSession && profile?.id) {
+        await expectRows(
+          "selection: participant leaves (left)",
+          supabase
+            .from("session_participants")
+            .update({ status: "left" })
+            .eq("session_id", session.id)
+            .eq("user_id", profile.id)
+            .select("id")
+        );
+      }
+      leave();
+    } catch (err) {
+      showLeaveWriteError(err, t, leave);
     }
-  }, [clearSession, isCreator, profile?.id, session]);
+  }, [clearSession, isCreator, profile?.id, session, t]);
 
   const confirmExitSession = useCallback(() => {
-    Alert.alert(
+    showDialog(
       isCreator ? "Terminar sessão?" : "Sair da sessão?",
       isCreator
         ? "A fatura já foi confirmada. Voltar atrás irá terminar a sessão para todos."
@@ -266,16 +276,19 @@ export default function SelectionScreen() {
     ) {
       const selectionsArray = Array.from(selections.values());
       // Save selections but keep status "selecting" — lobby shows Cancel+Edit for draft
-      supabase
-        .from("session_participants")
-        .update({ selections: selectionsArray, status: "selecting" })
-        .eq("session_id", sid)
-        .eq("user_id", activeParticipant.userId)
-        .then(() => {});
+      expectRows(
+        "selection: save draft (selecting)",
+        supabase
+          .from("session_participants")
+          .update({ selections: selectionsArray, status: "selecting" })
+          .eq("session_id", sid)
+          .eq("user_id", activeParticipant.userId)
+          .select("id")
+      ).catch((err) => showWriteError(err, t));
       updateSelections(activeParticipant.userId, selectionsArray);
     }
     router.back();
-  }, [activeParticipant, session?.id, sessionId, selections, updateSelections]);
+  }, [activeParticipant, session?.id, sessionId, selections, updateSelections, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -550,7 +563,7 @@ export default function SelectionScreen() {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : t("error_generic");
-      Alert.alert(t("error"), message);
+      showDialog(t("error"), message);
     } finally {
       setSaving(false);
     }

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Alert } from "react-native";
+import { showDialog } from "@/lib/dialog";
 import { router } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useSessionStore } from "@/store/sessionStore";
@@ -34,7 +34,7 @@ export function useSessionMonitor() {
           if (newStatus === "closed") {
             clearSession();
             router.replace("/(app)");
-            Alert.alert(
+            showDialog(
               "Session Ended",
               "The host has closed this session.",
               [{ text: "OK" }],

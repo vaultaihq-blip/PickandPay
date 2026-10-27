@@ -21,10 +21,6 @@ export async function restorePurchases(): Promise<{ success: false }> {
   return { success: false };
 }
 
-export async function syncCreditsWithSupabase(_customerInfo: unknown): Promise<null> {
-  return null;
-}
-
 export async function getCustomerInfo(): Promise<null> {
   return null;
 }
