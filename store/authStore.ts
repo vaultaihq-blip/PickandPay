@@ -184,18 +184,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!profile) return;
     const updated = { ...profile, phone: phone || undefined };
     set({ profile: updated });
-    try {
-      await upsertProfile({
-        id: profile.id,
-        name: profile.name,
-        email: profile.email,
-        phone: phone || undefined,
-        avatar_url: profile.avatarUrl,
-        avatar_icon: profile.avatarIcon,
-        color: profile.color,
-      });
-    } catch (err) {
-      console.error("[AuthStore] Failed to save phone:", err);
+    // upsertProfile returns { error } rather than throwing, so check it.
+    const { error } = await upsertProfile({
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      phone: phone || undefined,
+      avatar_url: profile.avatarUrl,
+      avatar_icon: profile.avatarIcon,
+      color: profile.color,
+    });
+    if (error) {
+      console.error("[AuthStore] Failed to save phone:", error);
+      set({ profile });
+      throw error;
     }
   },
 

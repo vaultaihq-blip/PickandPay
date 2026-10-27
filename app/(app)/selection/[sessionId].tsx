@@ -509,7 +509,9 @@ export default function SelectionScreen() {
       if (!isOfflineSession && !isTestUser) {
         const { data: savedParticipant, error: saveError } = await supabase
           .from("session_participants")
-          .update({ selections: selectionArray, total_owed: runningTotal, status: "items_picked" })
+          // total_owed is not client-writable (B.3); every device computes the
+          // split from the selections, and the server fills total_owed in C.
+          .update({ selections: selectionArray, status: "items_picked" })
           .eq("session_id", session.id)
           .eq("user_id", activeParticipant.userId)
           .select("user_id")

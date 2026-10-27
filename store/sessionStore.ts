@@ -181,6 +181,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const session = get().currentSession;
     if (!session) return;
     set({ currentSession: { ...session, centAdjustment } });
+    // The adjustment changes the assigned person's share (calculateSplit).
+    get().recalculateSplit();
   },
 
   markPaid: (userId, paid) => {

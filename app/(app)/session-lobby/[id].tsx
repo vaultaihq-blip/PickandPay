@@ -1478,7 +1478,7 @@ export default function SessionLobbyScreen() {
         "lobby: cancel ready (reset selections, joined)",
         supabase
           .from("session_participants")
-          .update({ selections: [], total_owed: 0, status: "joined" })
+          .update({ selections: [], status: "joined" })
           .eq("session_id", id)
           .eq("user_id", myId)
           .select("id")

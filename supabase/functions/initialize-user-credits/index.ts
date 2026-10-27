@@ -5,10 +5,10 @@ const SUPABASE_ANON_KEY        = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const HIBP_API_KEY             = Deno.env.get("HIBP_API_KEY") ?? "";
 
-// The only place the sign-up amount is defined. Granted once per account by
-// grant_signup_credits (one email_signup_audit row per user). The HIBP check
-// below is recorded in the audit row; it no longer changes the amount.
-const SIGNUP_CREDITS = 3;
+// Sign-up credits are granted once per account by grant_signup_credits, which
+// also defines the amount. handle_new_user already calls it when the account is
+// created; this call is the redundant, idempotent path and records the HIBP
+// result in the audit row (the database can't call HIBP itself).
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -98,7 +98,6 @@ Deno.serve(async (req: Request) => {
     // ── 2. Grant sign-up credits + write the audit row, once per account ──────
     const { data: result, error: rpcError } = await admin.rpc("grant_signup_credits", {
       p_user_id:        userId,
-      p_amount:         SIGNUP_CREDITS,
       p_email:          email,
       p_in_breaches:    reputation.inBreaches,
       p_is_established: reputation.isEstablished,
@@ -113,18 +112,20 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const granted = (result as { status?: string }).status === "granted";
-    const balance = granted
-      ? (result as { new_balance: number }).new_balance
-      : (result as { balance: number }).balance;
+    const { status, credits_granted: creditsGranted, balance } = result as {
+      status: "granted" | "already_granted";
+      credits_granted: number;
+      balance: number;
+    };
     console.log(
-      `[initialize-user-credits] ${granted ? `granted ${SIGNUP_CREDITS}` : "already granted, nothing added"}, balance=${balance}`
+      `[initialize-user-credits] ${status === "granted" ? `granted ${creditsGranted}` : "already granted at sign-up, nothing added"}, balance=${balance}`
     );
 
     return new Response(
       JSON.stringify({
-        freeCredits:   granted ? SIGNUP_CREDITS : 0,
-        alreadyGranted: !granted,
+        // What this account received at sign-up, whichever call granted it.
+        freeCredits:    creditsGranted,
+        alreadyGranted: status !== "granted",
         balance,
         isEstablished: reputation.isEstablished,
       }),

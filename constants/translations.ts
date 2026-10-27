@@ -1,3 +1,8 @@
+// NOTE — the sign-up credit amount (3) is written by hand in these keys, in
+// every language: home_share_msg, profile_invite_msg, onboarding_cta_hero.
+// t() has no interpolation. If the amount changes (c_signup_credits in the
+// grant_signup_credits SQL function, FREE_CREDITS_ON_SIGNUP in constants/packs.ts),
+// edit those strings too.
 export type Language = "en" | "pt" | "fr" | "es" | "zh";
 
 export const LANGUAGE_META: Record<Language, { flag: string; label: string }> = {

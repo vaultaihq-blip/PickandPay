@@ -196,7 +196,18 @@ export function calculateSplit(session: Session): Map<string, SplitResult> {
     }
   }
 
-  // ── 4. Convert cent accumulators to display amounts ────────────────────────
+  // ── 4. Rounding adjustment stored on the session (B.2): the chosen person
+  //      pays the leftover cents, so the shares add up to the bill exactly
+  //      and every device that has the same session data shows the same split.
+  const adjustment = session.centAdjustment;
+  if (adjustment && totalCentsMap.has(adjustment.assignedTo)) {
+    totalCentsMap.set(
+      adjustment.assignedTo,
+      (totalCentsMap.get(adjustment.assignedTo) ?? 0) + toCents(adjustment.amount)
+    );
+  }
+
+  // ── 5. Convert cent accumulators to display amounts ────────────────────────
   for (const [userId, result] of results) {
     result.amount = fromCents(totalCentsMap.get(userId) ?? 0);
     result.globalCostsShare = fromCents(globalCentsCentsMap.get(userId) ?? 0);

@@ -475,14 +475,14 @@ export default function ReviewScreen() {
         if (error) throw error;
         sessionId = data.id;
         existingParticipants = [];
-        await supabase.from("session_participants").insert({
+        // Only these columns are client-insertable (B.3); the rest default.
+        const { error: hostRowError } = await supabase.from("session_participants").insert({
           session_id: sessionId,
           user_id: user.id,
-          selections: [],
-          total_owed: 0,
-          paid: false,
-          confirmed_by_creator: true,
+          role: "host",
+          status: "joined",
         });
+        if (hostRowError) throw hostRowError;
       } else {
         sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2)}`;
         existingParticipants = [];

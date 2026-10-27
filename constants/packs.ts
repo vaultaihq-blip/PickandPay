@@ -45,7 +45,9 @@ export const CREDIT_PACKS: CreditPack[] = [
   },
 ];
 
-// Display only. The amount actually granted is SIGNUP_CREDITS in
-// supabase/functions/initialize-user-credits/index.ts — keep the two equal.
+// Display only. The amount actually granted is c_signup_credits in the
+// grant_signup_credits SQL function (migration 20261027150000_b_session_data.sql)
+// — keep the two equal. The same number is also written by hand in
+// constants/translations.ts (see the note at the top of that file).
 export const FREE_CREDITS_ON_SIGNUP = 3;
 export const FREE_CREDITS_PER_REFERRAL = 1;

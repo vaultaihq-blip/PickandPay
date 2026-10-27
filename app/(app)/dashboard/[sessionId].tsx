@@ -38,7 +38,16 @@ const BORDER = "#252A32";
 const TEXT = "#F8FAFC";
 const MUTED = "#6B7280";
 
-type CentMethod = "creator" | "highest" | "roulette" | null;
+
+
+// sessions row (or realtime payload) → the adjustment, if one has been saved.
+function centAdjustmentFromRow(row: Record<string, unknown> | null | undefined): CentAdjustment | null {
+  const cents = row?.cent_adjustment_cents as number | null | undefined;
+  const userId = row?.cent_adjustment_user_id as string | null | undefined;
+  const method = row?.cent_adjustment_method as CentAdjustment["method"] | null | undefined;
+  if (!cents || !userId || !method) return null;
+  return { amount: fromCents(cents), assignedTo: userId, method };
+}
 
 export default function DashboardScreen() {
   const { sessionId, readOnly, viewSplit: viewSplitParam, source } = useLocalSearchParams<{
@@ -61,7 +70,6 @@ export default function DashboardScreen() {
   void language;
 
   const [rouletteVisible, setRouletteVisible] = useState(false);
-  const [centMethod, setCentMethod] = useState<CentMethod>(null);
   const [closing, setClosing] = useState(false);
   const [remindTarget, setRemindTarget] = useState<SessionParticipant | null>(null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -125,6 +133,23 @@ export default function DashboardScreen() {
     });
   }, [isReadOnly, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // B.2 — rounding adjustment saved on the session (by the host). Read it once
+  // on open; participants also get later changes from the sessions channel below.
+  useEffect(() => {
+    if (isReadOnly || !session) return;
+    if (session.id.startsWith("session_") || session.id.startsWith("dev_session_")) return;
+    supabase
+      .from("sessions")
+      .select("cent_adjustment_cents, cent_adjustment_user_id, cent_adjustment_method")
+      .eq("id", session.id)
+      .single()
+      .then(({ data, error }) => {
+        if (error) { console.error("[dashboard] Failed to load rounding adjustment:", error); return; }
+        const adjustment = centAdjustmentFromRow(data);
+        if (adjustment) setCentAdjustment(adjustment);
+      });
+  }, [isReadOnly, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // All realtime subscriptions in one delayed batch — avoids concurrent channel setup during navigation animation
   useEffect(() => {
     if (!session) return;
@@ -141,6 +166,8 @@ export default function DashboardScreen() {
             supabase
               .channel(`session-closed:${session.id}:${Date.now()}`)
               .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions", filter: `id=eq.${session.id}` }, (payload) => {
+                const adjustment = centAdjustmentFromRow(payload.new);
+                if (adjustment) setCentAdjustment(adjustment);
                 if ((payload.new?.status as string | undefined) === "closed") {
                   showDialog(t("dashboard_bill_closed"), t("dashboard_bill_closed_msg"), [
                     { text: t("dashboard_stay_payments"), style: "cancel" },
@@ -225,14 +252,10 @@ export default function DashboardScreen() {
     const isOffline = session?.id.startsWith("session_") || session?.id.startsWith("dev_session_");
     if (session && !isOffline) {
       try {
+        // paid is not client-writable (B.3): host-only RPC.
         await expectRows(
           "dashboard: mark paid",
-          supabase
-            .from("session_participants")
-            .update({ paid })
-            .eq("session_id", session.id)
-            .eq("user_id", userId)
-            .select("id")
+          supabase.rpc("set_participant_paid", { p_session_id: session.id, p_user_id: userId, p_paid: paid })
         );
       } catch (err) {
         // Undo the optimistic mark so the screen shows what the server has.
@@ -249,14 +272,14 @@ export default function DashboardScreen() {
     markCoveredBy(targetUserId, coveredByUserId);
     if (session && !isOffline) {
       try {
+        // covered_by_user_id is not client-writable (B.3): host-only RPC.
         await expectRows(
           "dashboard: mark covered by",
-          supabase
-            .from("session_participants")
-            .update({ covered_by_user_id: coveredByUserId })
-            .eq("session_id", session.id)
-            .eq("user_id", targetUserId)
-            .select("id")
+          supabase.rpc("set_participant_covered_by", {
+            p_session_id: session.id,
+            p_user_id: targetUserId,
+            p_covered_by: coveredByUserId,
+          })
         );
       } catch (err) {
         markCoveredBy(targetUserId, previous);
@@ -265,19 +288,42 @@ export default function DashboardScreen() {
     }
   };
 
+  // B.2 — the choice is saved on the session first; every device (host and
+  // participants) applies it from there, so the shares add up to the bill.
+  const saveCentAdjustment = async (adjustment: CentAdjustment): Promise<boolean> => {
+    if (!session) return false;
+    const isOffline = session.id.startsWith("session_") || session.id.startsWith("dev_session_");
+    if (!isOffline) {
+      try {
+        await expectRows(
+          "dashboard: assign rounding difference",
+          supabase.rpc("set_cent_adjustment", {
+            p_session_id: session.id,
+            p_user_id: adjustment.assignedTo,
+            p_cents: centDiffCents,
+            p_method: adjustment.method,
+          })
+        );
+      } catch (err) {
+        showWriteError(err, t);
+        return false;
+      }
+    }
+    setCentAdjustment(adjustment);
+    return true;
+  };
+
   const handleCentAssign = (method: "creator" | "highest") => {
     if (!session) return;
     let assignedTo = profile?.id ?? "";
     if (method === "creator") assignedTo = session.creatorId;
     else { let max = 0; for (const p of session.participants) { if (p.totalOwed > max) { max = p.totalOwed; assignedTo = p.userId; } } }
-    setCentAdjustment({ amount: centDiff, assignedTo, method } as CentAdjustment);
-    setCentMethod(method);
+    void saveCentAdjustment({ amount: centDiff, assignedTo, method });
   };
 
-  const handleRouletteAccept = (userId: string) => {
-    setCentAdjustment({ amount: centDiff, assignedTo: userId, method: "roulette" } as CentAdjustment);
-    setCentMethod("roulette");
-    setRouletteVisible(false);
+  const handleRouletteAccept = async (userId: string) => {
+    const saved = await saveCentAdjustment({ amount: centDiff, assignedTo: userId, method: "roulette" });
+    if (saved) setRouletteVisible(false);
   };
 
   const doClose = async () => {
@@ -451,7 +497,7 @@ export default function DashboardScreen() {
             <Text style={[styles.totalRowValue, { color: TEXT, fontWeight: "800", fontSize: 16 }]}>{formatCurrency(displayTotal, receipt.currency)}</Text>
           </View>
 
-          {hasCentDiff && !centMethod && (
+          {hasCentDiff && !session.centAdjustment && (
             <>
               <View style={[styles.centAlert, { borderColor: C.warning }]}>
                 <Ionicons name="warning-outline" size={16} color={C.warning} />
@@ -460,6 +506,7 @@ export default function DashboardScreen() {
                 </Text>
               </View>
               <Text style={styles.centHelperText}>{t("dashboard_someone_needs")}</Text>
+              {isCreator && (
               <View style={styles.centActions}>
                 <TouchableOpacity style={styles.centBtn} onPress={() => handleCentAssign("creator")}>
                   <Text style={styles.centBtnText}>{t("dashboard_assign_host")}</Text>
@@ -471,13 +518,14 @@ export default function DashboardScreen() {
                   <Text style={styles.rouletteBtnText}>{t("dashboard_spin_text")} {formatCurrency(Math.abs(centDiff), receipt.currency)} {t("dashboard_spin_adjustment")}</Text>
                 </TouchableOpacity>
               </View>
+              )}
             </>
           )}
-          {centMethod && session.centAdjustment && (
+          {session.centAdjustment && (
             <View style={[styles.centResolved, { backgroundColor: C.success + "22" }]}>
               <Ionicons name="checkmark-circle" size={14} color={C.success} />
               <Text style={[styles.centResolvedText, { color: C.success }]}>
-                {formatCurrency(Math.abs(centDiff), receipt.currency)} {t("dashboard_assigned_to")}{" "}
+                {formatCurrency(Math.abs(session.centAdjustment.amount), receipt.currency)} {t("dashboard_assigned_to")}{" "}
                 {session.participants.find((p) => p.userId === session.centAdjustment?.assignedTo)?.profile.name ?? "unknown"}
               </Text>
             </View>
