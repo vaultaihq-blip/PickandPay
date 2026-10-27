@@ -34,6 +34,7 @@ interface SessionState {
   updateSelections: (userId: string, selections: ItemSelection[], tipContribution?: number) => void;
   setStatus: (status: SessionStatus) => void;
   setCentAdjustment: (adjustment: CentAdjustment) => void;
+  setSplitUserIds: (userIds: string[]) => void;
   markPaid: (userId: string, paid: boolean) => void;
   markCoveredBy: (userId: string, coveredByUserId: string | null) => void;
   recalculateSplit: () => void;
@@ -105,6 +106,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       set({
         currentSession: {
           ...session,
+          splitUserIds: session.splitUserIds ?? existing.splitUserIds,
           participants: applySessionParticipantColors(session.id, mergedParticipants),
         },
       });
@@ -185,6 +187,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     get().recalculateSplit();
   },
 
+  setSplitUserIds: (splitUserIds) => {
+    const session = get().currentSession;
+    if (!session) return;
+    set({ currentSession: { ...session, splitUserIds } });
+    get().recalculateSplit();
+  },
+
   markPaid: (userId, paid) => {
     const session = get().currentSession;
     if (!session) return;
@@ -210,7 +219,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return;
     }
     try {
-      const splitResults = calculateSplit(session as Session & { receipt: NonNullable<Session["receipt"]> });
+      // Once the server froze who is in the split (R1), divide between exactly
+      // those people on every device, whoever else this store still lists.
+      const frozen = session.splitUserIds ? new Set(session.splitUserIds) : null;
+      const splitSession = frozen
+        ? { ...session, participants: session.participants.filter((p) => frozen.has(p.userId)) }
+        : session;
+      const splitResults = calculateSplit(splitSession as Session & { receipt: NonNullable<Session["receipt"]> });
       // Update totalOwed on each participant
       const participants = session.participants.map((p) => ({
         ...p,

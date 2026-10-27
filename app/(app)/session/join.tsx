@@ -250,9 +250,10 @@ export default function JoinSessionScreen() {
       if (error || !sessionData) throw error ?? new Error("Session not found");
 
       // Busca perfis reais de todos os participantes
-      // A cancelled scan is not a participant.
+      // Someone still pending (scanned, not confirmed) or cancelled is not a
+      // participant, and must not count in the split's divisor (C.2).
       const participantRows: any[] = (sessionData.session_participants ?? []).filter(
-        (sp: any) => sp.status !== "cancelled"
+        (sp: any) => sp.status !== "cancelled" && sp.status !== "pending"
       );
       const userIds = participantRows.map((sp: any) => sp.user_id as string);
       const profileMap = await fetchProfiles(userIds);

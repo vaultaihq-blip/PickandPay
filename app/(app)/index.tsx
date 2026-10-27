@@ -174,9 +174,10 @@ export default function HomeScreen() {
 
       if (error || !sessionData) throw new Error("Session not found");
 
-      // A cancelled scan is not a participant.
+      // Someone still pending (scanned, not confirmed) or cancelled is not a
+      // participant, and must not count in the split's divisor (C.2).
       const participantRows: any[] = (sessionData.session_participants ?? []).filter(
-        (sp: any) => sp.status !== "cancelled"
+        (sp: any) => sp.status !== "cancelled" && sp.status !== "pending"
       );
       const userIds: string[] = participantRows.map((sp: any) => sp.user_id as string);
 

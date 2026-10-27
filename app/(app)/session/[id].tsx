@@ -396,7 +396,8 @@ export default function SessionScreen() {
       .forEach((c: any) => supabase.removeChannel(c));
 
     const bcChannel = supabase
-      .channel(bcChannelName)
+      // C.2 — session channels are private (realtime.messages RLS: host or member).
+      .channel(bcChannelName, { config: { private: true } })
       .on("broadcast", { event: "session_locked" }, () => {
         setSessionLocked(true);
       })

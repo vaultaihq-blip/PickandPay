@@ -25,6 +25,7 @@ import { useSessionMonitor } from "@/hooks/useSessionMonitor";
 import { formatCurrency } from "@/utils/formatter";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showLeaveWriteError, showWriteError, withTimeout } from "@/lib/checkedWrite";
+import { fetchFreshCredits } from "@/lib/credits";
 import { ReceiptItem, ItemSelection, SessionParticipant, ParsedReceipt } from "@/types";
 import { isDeveloperUser } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
@@ -245,13 +246,6 @@ export default function SessionLobbyScreen() {
   // Fetch profiles immediately on mount so avatars show without waiting for focus
   useEffect(() => { fetchFreshProfiles(); }, [fetchFreshProfiles]);
 
-  // Deduzir crédito no último segundo do countdown
-  useEffect(() => {
-    if (finalCountdown === 1) {
-      useAuthStore.getState().deductCredit();
-    }
-  }, [finalCountdown]);
-
   // ── DB fetch: sync all participant selections (fallback for missed broadcasts) ──
   // Returns the raw DB selections map so callers can make decisions without re-reading state
   const syncSelectionsFromDB = useCallback(async (): Promise<Map<string, { selections: ItemSelection[]; status: string }>> => {
@@ -442,8 +436,9 @@ export default function SessionLobbyScreen() {
       ?.filter((c: any) => c.topic === `realtime:${channelName}`)
       .forEach((c: any) => supabase.removeChannel(c));
 
+    // C.2 — session channels are private (realtime.messages RLS: host or member).
     const ch = supabase.channel(channelName, {
-      config: { presence: { key: myId } },
+      config: { presence: { key: myId }, private: true },
     });
 
     ch
@@ -1422,10 +1417,25 @@ export default function SessionLobbyScreen() {
       try {
         // This read used to hang with no network (no error, no countdown, no message).
         await withTimeout("lobby: sync selections before finalize", syncSelectionsFromDB());
-        await expectRows(
-          "lobby: host finalizes (awaiting_payment)",
-          supabase.from("sessions").update({ status: "awaiting_payment" }).eq("id", id).select("id")
+        // R1: the server spends 1 credit per person present (once per session,
+        // however often the countdown restarts), freezes who is in the split
+        // and moves the session to awaiting_payment — all in finalize_session.
+        const [result] = await expectRows<{ status?: string; user_ids?: string[]; split_user_ids?: string[]; newly_charged?: number }>(
+          "lobby: host finalizes (finalize_session)",
+          supabase.rpc("finalize_session", { p_session_id: id })
         );
+        if (result?.status === "insufficient_credits") {
+          const names = (result.user_ids ?? []).map((uid) =>
+            participants.find((p) => p.userId === uid)?.profile.name ?? "User"
+          );
+          console.log(`[session-lobby] finalize refused: ${names.length} without credits`);
+          countdownStarted.current = false;
+          showDialog(t("scan_no_credits"), `${t("lobby_finalize_no_credits")}\n\n${names.join(", ")}`);
+          return;
+        }
+        console.log(`[session-lobby] finalized: n=${result?.split_user_ids?.length ?? "?"} newly charged=${result?.newly_charged ?? "?"}`);
+        if (result?.split_user_ids) useSessionStore.getState().setSplitUserIds(result.split_user_ids);
+        if (myId) void fetchFreshCredits(myId);
       } catch (err) {
         countdownStarted.current = false;
         showWriteError(err, t);
@@ -1434,7 +1444,7 @@ export default function SessionLobbyScreen() {
     }
     channelRef.current?.send({ type: "broadcast", event: "countdown_start", payload: {} });
     startFinalCountdown();
-  }, [id, startFinalCountdown, syncSelectionsFromDB, t]);
+  }, [id, myId, participants, startFinalCountdown, syncSelectionsFromDB, t]);
 
   const handleTakeOverAsHost = useCallback(async () => {
     if (!HOST_TAKEOVER_ENABLED) return; // FIX 49 — see the flag's comment

@@ -38,7 +38,7 @@ export default function ReviewAcceptScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const isDark = useColorScheme() === "dark";
   const { currentSession, recalculateSplit } = useSessionStore();
-  const { profile, deductCredit } = useAuthStore();
+  const { profile } = useAuthStore();
   const { t, language } = useI18nStore();
   void language;
 
@@ -90,7 +90,7 @@ export default function ReviewAcceptScreen() {
     if (isOffline) return;
 
     const ch = supabase
-      .channel(`review-accept:${sessionId}`)
+      .channel(`review-accept:${sessionId}`, { config: { private: true } })
       .on("broadcast", { event: "accept" }, ({ payload }) => {
         setAcceptances((prev) => ({ ...prev, [payload.userId as string]: true }));
       })
@@ -194,7 +194,7 @@ export default function ReviewAcceptScreen() {
   };
 
   const handleProceed = () => {
-    if (profile && !profile.isPro) deductCredit();
+    // No credit here any more: the server spends it once, at finalize (R1).
     router.push(`/(app)/selection/${sessionId}`);
   };
 

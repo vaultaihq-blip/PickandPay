@@ -180,7 +180,8 @@ export default function SelectionScreen() {
         channelRef.current = null;
       };
     }
-    const ch = supabase.channel(channelName).subscribe();
+    // C.2 — session channels are private (realtime.messages RLS: host or member).
+    const ch = supabase.channel(channelName, { config: { private: true } }).subscribe();
     channelRef.current = ch;
     return () => {
       channelRef.current = null;

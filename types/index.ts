@@ -172,6 +172,9 @@ export interface Session {
   createdAt: string;
   closedAt?: string;
   centAdjustment?: CentAdjustment;
+  // Frozen by the server (finalize_session) when the split moves to
+  // awaiting_payment: exactly the people the bill is divided between (R1).
+  splitUserIds?: string[];
   reminders?: PaymentReminder[];
   confirmedBy?: string[];
 }

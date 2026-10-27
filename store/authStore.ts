@@ -21,7 +21,6 @@ interface AuthState {
   loadProfile: (userId: string) => Promise<void>;
   updatePhone: (phone: string) => Promise<void>;
   signOut: () => Promise<void>;
-  deductCredit: () => boolean;
   processReferral: (referrerId: string) => Promise<void>;
   updateAvatar: (avatarUrl?: string, avatarIcon?: string) => Promise<void>;
   isEmailVerified: () => boolean;
@@ -217,26 +216,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return !!user.email_confirmed_at;
   },
 
-  deductCredit: () => {
-    const profile = get().profile;
-    if (!profile) return false;
-    // Block unverified email accounts from using credits
-    if (!get().isEmailVerified()) return false;
-    // Optimistic check — server RPC is the authoritative gate
-    if (!profile.isPro && profile.billCredits <= 0) return false;
-    // Optimistic UI update
-    const updated = { ...profile, billCredits: Math.max(0, profile.billCredits - 1) };
-    set({ profile: updated });
-    // Server-side atomic deduction — if it returns false, revert local state
-    supabase.rpc("deduct_credit").then(({ data, error }) => {
-      if (error || data === false) {
-        // Server rejected — revert optimistic update and reload
-        set({ profile });
-        get().loadProfile(profile.id);
-      }
-    });
-    return true;
-  },
 
   updateAvatar: async (avatarUrl?: string, avatarIcon?: string) => {
     const profile = get().profile;

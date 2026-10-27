@@ -17,6 +17,7 @@ import * as MailComposer from "expo-mail-composer";
 import { maybeShowReviewPrompt } from "@/utils/review";
 import { Colors } from "@/constants/colors";
 import { useSessionStore } from "@/store/sessionStore";
+import { fetchFreshCredits } from "@/lib/credits";
 import { useAuthStore } from "@/store/authStore";
 import { BarChart } from "@/components/dashboard/BarChart";
 import { BreakdownCard } from "@/components/dashboard/BreakdownCard";
@@ -61,7 +62,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
 
   const {
-    currentSession, markPaid, markViewingPaid, markCoveredBy, setStatus, setCentAdjustment,
+    currentSession, markPaid, markViewingPaid, markCoveredBy, setStatus, setCentAdjustment, setSplitUserIds,
     splitResults: storeSplitResults, addReminder, clearSession, addCompletedSession,
     viewingSession, viewingSplitResults, setViewingSession,
   } = useSessionStore();
@@ -84,6 +85,15 @@ export default function DashboardScreen() {
   const receipt = session?.receipt;
   const isCreator = session?.creatorId === profile?.id;
 
+  const applySplitUserIds = (value: unknown) => {
+    if (!Array.isArray(value) || value.length === 0) return;
+    const ids = value as string[];
+    const current = useSessionStore.getState().currentSession?.splitUserIds;
+    if (current && current.length === ids.length && current.every((id, i) => id === ids[i])) return;
+    console.log(`[dashboard] split frozen by the server: n=${ids.length}`);
+    setSplitUserIds(ids);
+  };
+
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const task = InteractionManager.runAfterInteractions(() => {
@@ -105,12 +115,15 @@ export default function DashboardScreen() {
 
   const sortedParticipants = useMemo(() => {
     if (!session) return [];
-    return [...session.participants].sort((a, b) => {
+    // R1: once finalized, the bill is divided between the frozen set only.
+    const frozen = session.splitUserIds ? new Set(session.splitUserIds) : null;
+    const inSplit = frozen ? session.participants.filter((p) => frozen.has(p.userId)) : session.participants;
+    return [...inSplit].sort((a, b) => {
       if (a.userId === profile?.id) return -1;
       if (b.userId === profile?.id) return 1;
       return b.totalOwed - a.totalOwed;
     });
-  }, [session?.participants, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [session?.participants, session?.splitUserIds, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const headerDate = useMemo(() => {
     if (receipt?.date) {
@@ -133,21 +146,25 @@ export default function DashboardScreen() {
     });
   }, [isReadOnly, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // B.2 — rounding adjustment saved on the session (by the host). Read it once
-  // on open; participants also get later changes from the sessions channel below.
+  // B.2 — rounding adjustment saved on the session (by the host), and (C.2)
+  // the participant set the server froze at finalize. Read once on open;
+  // participants also get later changes from the sessions channel below.
   useEffect(() => {
     if (isReadOnly || !session) return;
     if (session.id.startsWith("session_") || session.id.startsWith("dev_session_")) return;
     supabase
       .from("sessions")
-      .select("cent_adjustment_cents, cent_adjustment_user_id, cent_adjustment_method")
+      .select("cent_adjustment_cents, cent_adjustment_user_id, cent_adjustment_method, split_user_ids")
       .eq("id", session.id)
       .single()
       .then(({ data, error }) => {
-        if (error) { console.error("[dashboard] Failed to load rounding adjustment:", error); return; }
+        if (error) { console.error("[dashboard] Failed to load session split data:", error); return; }
+        applySplitUserIds(data?.split_user_ids);
         const adjustment = centAdjustmentFromRow(data);
         if (adjustment) setCentAdjustment(adjustment);
       });
+    // The credit was spent server-side at finalize; show the real balance.
+    if (profile?.id) void fetchFreshCredits(profile.id);
   }, [isReadOnly, session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // All realtime subscriptions in one delayed batch — avoids concurrent channel setup during navigation animation
@@ -166,6 +183,7 @@ export default function DashboardScreen() {
             supabase
               .channel(`session-closed:${session.id}:${Date.now()}`)
               .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions", filter: `id=eq.${session.id}` }, (payload) => {
+                applySplitUserIds(payload.new?.split_user_ids);
                 const adjustment = centAdjustmentFromRow(payload.new);
                 if (adjustment) setCentAdjustment(adjustment);
                 if ((payload.new?.status as string | undefined) === "closed") {
