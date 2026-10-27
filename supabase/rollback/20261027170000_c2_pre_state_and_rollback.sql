@@ -7,13 +7,15 @@
 --   set_participant_covered_by(uuid,uuid,uuid)  (B)  acl {postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
 --   deduct_credit()                                 acl {postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
 --   trigger: CREATE TRIGGER enforce_participant_credit BEFORE INSERT OR UPDATE OF status ON public.session_participants FOR EACH ROW EXECUTE FUNCTION enforce_session_credit()
---   no realtime.messages policies; no session_credit_consumptions; no
+--   no realtime.messages policies; no session_credit_consumptions /
+--   session_credit_ledger; no
 --   sessions.finalized_at / split_user_ids; no finalize_session,
 --   guard_session_finalize, can_use_session_channel, has_session_consumption.
 --
 -- WARNING: running this drops session_credit_consumptions (the record of who
--- spent a credit on which session) and sessions.finalized_at / split_user_ids.
--- Credits already spent stay spent. The app build with C.2 calls
+-- spent a credit on which session), session_credit_ledger (the charge/refund
+-- audit) and sessions.finalized_at / split_user_ids. Export both tables first
+-- if the audit must be kept. Credits already spent or refunded stay as they are. The app build with C.2 calls
 -- finalize_session and uses private channels; roll back the app too.
 
 BEGIN;
@@ -102,6 +104,7 @@ DROP TRIGGER IF EXISTS enforce_participant_credit ON public.session_participants
 CREATE TRIGGER enforce_participant_credit BEFORE INSERT OR UPDATE OF status ON public.session_participants FOR EACH ROW EXECUTE FUNCTION enforce_session_credit();
 
 DROP FUNCTION IF EXISTS public.has_session_consumption(uuid, uuid);
+DROP TABLE IF EXISTS public.session_credit_ledger;
 DROP TABLE IF EXISTS public.session_credit_consumptions;
 ALTER TABLE public.sessions DROP COLUMN IF EXISTS finalized_at, DROP COLUMN IF EXISTS split_user_ids;
 

@@ -61,6 +61,19 @@ export function showNoCreditsDialog(t: T): void {
   ]);
 }
 
+// R1 — shown on the device of someone present at 0 credits when the host's
+// finalize was refused for it. The host tries again after the purchase.
+export function showFinalizeNoCreditsDialog(t: T): void {
+  if (Platform.OS === "web") {
+    showDialog(t("scan_no_credits"), `${t("lobby_you_need_credit_msg")}\n\n${t("credits_install_app_msg")}`);
+    return;
+  }
+  showDialog(t("scan_no_credits"), t("lobby_you_need_credit_msg"), [
+    { text: t("cancel"), style: "cancel" },
+    { text: t("credits_buy_btn"), onPress: () => router.push("/(app)/pricing") },
+  ]);
+}
+
 // true = go ahead. Shows the dialog and returns false only when the server
 // confirms 0 credits and not pro.
 export async function ensureCreditsForNewSession(userId: string, t: T): Promise<boolean> {

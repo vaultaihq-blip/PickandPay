@@ -25,7 +25,7 @@ import { useSessionMonitor } from "@/hooks/useSessionMonitor";
 import { formatCurrency } from "@/utils/formatter";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showLeaveWriteError, showWriteError, withTimeout } from "@/lib/checkedWrite";
-import { fetchFreshCredits } from "@/lib/credits";
+import { fetchFreshCredits, showFinalizeNoCreditsDialog } from "@/lib/credits";
 import { ReceiptItem, ItemSelection, SessionParticipant, ParsedReceipt } from "@/types";
 import { isDeveloperUser } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
@@ -675,6 +675,15 @@ export default function SessionLobbyScreen() {
         const { targetId, takerId } = payload as { targetId: string; takerId: string };
         setTakenOver((prev) => new Map([...prev, [targetId, takerId]]));
       })
+      .on("broadcast", { event: "finalize_no_credits" }, ({ payload }) => {
+        // The host's finalize was refused because these people have 0 credits.
+        const me = useAuthStore.getState().profile?.id;
+        const userIds = (payload?.userIds ?? []) as string[];
+        if (!me || !userIds.includes(me)) return;
+        console.log("[session-lobby] finalize refused: I have no credits");
+        void fetchFreshCredits(me);
+        showFinalizeNoCreditsDialog(useI18nStore.getState().t);
+      })
       .subscribe(async (status) => {
         // Fires again on every rejoin after a dropped socket — re-track the
         // last known status rather than resetting to "waiting".
@@ -1302,6 +1311,9 @@ export default function SessionLobbyScreen() {
     }
     router.push(`/(app)/selection/${id}?userId=${myId}&returnTo=lobby`);
   };
+  // handleFinalize (memoized) opens the host's selection for unowned items.
+  const editMyItemsRef = useRef(handleEditMyItems);
+  editMyItemsRef.current = handleEditMyItems;
 
   // Cancel a saved draft (Back was pressed in selection) — no broadcast needed (no one knows about draft)
   const handleCancelDraft = useCallback(async () => {
@@ -1420,20 +1432,47 @@ export default function SessionLobbyScreen() {
         // R1: the server spends 1 credit per person present (once per session,
         // however often the countdown restarts), freezes who is in the split
         // and moves the session to awaiting_payment — all in finalize_session.
-        const [result] = await expectRows<{ status?: string; user_ids?: string[]; split_user_ids?: string[]; newly_charged?: number }>(
+        const [result] = await expectRows<{
+          status?: string;
+          user_ids?: string[];
+          items?: { item_id: string; name: string; amount: number; names?: string[] }[];
+          split_user_ids?: string[];
+          newly_charged?: number;
+          refunded?: number;
+        }>(
           "lobby: host finalizes (finalize_session)",
           supabase.rpc("finalize_session", { p_session_id: id })
         );
+        if (result?.status === "unowned_items") {
+          // Items picked only by people no longer in the split: nobody would
+          // pay for them. The host picks them (or the person comes back).
+          const items = result.items ?? [];
+          console.log(`[session-lobby] finalize refused: ${items.length} item(s) without an owner`);
+          countdownStarted.current = false;
+          const lines = items.map((it) => {
+            const price = receipt ? formatCurrency(it.amount, receipt.currency) : it.amount.toFixed(2);
+            const who = (it.names ?? []).filter(Boolean).join(", ");
+            return `• ${it.name} — ${price}${who ? ` (${who})` : ""}`;
+          });
+          showDialog(t("lobby_unowned_title"), `${t("lobby_unowned_msg")}\n\n${lines.join("\n")}`, [
+            { text: t("cancel"), style: "cancel" },
+            { text: t("lobby_unowned_pick"), onPress: () => editMyItemsRef.current() },
+          ]);
+          return;
+        }
         if (result?.status === "insufficient_credits") {
-          const names = (result.user_ids ?? []).map((uid) =>
+          const userIds = result.user_ids ?? [];
+          const names = userIds.map((uid) =>
             participants.find((p) => p.userId === uid)?.profile.name ?? "User"
           );
           console.log(`[session-lobby] finalize refused: ${names.length} without credits`);
           countdownStarted.current = false;
-          showDialog(t("scan_no_credits"), `${t("lobby_finalize_no_credits")}\n\n${names.join(", ")}`);
+          // Each of them also gets the message, with the way to buy credits.
+          channelRef.current?.send({ type: "broadcast", event: "finalize_no_credits", payload: { userIds } });
+          showDialog(t("scan_no_credits"), `${t("lobby_finalize_no_credits")}\n\n${names.join(", ")}\n\n${t("lobby_finalize_retry_after_buy")}`);
           return;
         }
-        console.log(`[session-lobby] finalized: n=${result?.split_user_ids?.length ?? "?"} newly charged=${result?.newly_charged ?? "?"}`);
+        console.log(`[session-lobby] finalized: n=${result?.split_user_ids?.length ?? "?"} newly charged=${result?.newly_charged ?? "?"} refunded=${result?.refunded ?? "?"}`);
         if (result?.split_user_ids) useSessionStore.getState().setSplitUserIds(result.split_user_ids);
         if (myId) void fetchFreshCredits(myId);
       } catch (err) {
@@ -1444,7 +1483,7 @@ export default function SessionLobbyScreen() {
     }
     channelRef.current?.send({ type: "broadcast", event: "countdown_start", payload: {} });
     startFinalCountdown();
-  }, [id, myId, participants, startFinalCountdown, syncSelectionsFromDB, t]);
+  }, [id, myId, participants, receipt, startFinalCountdown, syncSelectionsFromDB, t]);
 
   const handleTakeOverAsHost = useCallback(async () => {
     if (!HOST_TAKEOVER_ENABLED) return; // FIX 49 — see the flag's comment
