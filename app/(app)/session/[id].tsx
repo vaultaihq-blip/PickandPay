@@ -194,6 +194,55 @@ export default function SessionScreen() {
     if (!id || id.startsWith("session_")) return;
 
     // --- postgres_changes channel (unique per mount to avoid "after subscribed" error) ---
+    // A pending row arrives as an INSERT, or as an UPDATE → pending when a
+    // cancelled row is reused by a second scan.
+    const onPendingRow = async (newUserId: string) => {
+      console.log("[session] New participant joining:", newUserId);
+
+      const already = useSessionStore.getState().currentSession?.participants.find(
+        (p) => p.userId === newUserId
+      );
+      if (already) return;
+
+      // Mark as pending (scanned but not yet confirmed)
+      setPendingUserIds((prev) => new Set([...prev, newUserId]));
+
+      const { data: p } = await supabase
+        .from("profiles")
+        .select("id, name, color, avatar_icon, avatar_url, bill_credits, referral_count, is_pro")
+        .eq("id", newUserId)
+        .single();
+
+      const newParticipant: SessionParticipant = {
+        userId: newUserId,
+        profile: p
+          ? {
+              id: p.id,
+              name: p.name ?? "User",
+              color: p.color ?? getColorForUser(newUserId),
+              avatarIcon: p.avatar_icon ?? undefined,
+              avatarUrl: p.avatar_url ?? undefined,
+              billCredits: p.bill_credits ?? 0,
+              referralCount: p.referral_count ?? 0,
+              isPro: p.is_pro ?? false,
+            }
+          : {
+              id: newUserId,
+              name: "User",
+              color: getColorForUser(newUserId),
+              billCredits: 0,
+              referralCount: 0,
+              isPro: false,
+            },
+        selections: [],
+        totalOwed: 0,
+        paid: false,
+        confirmedByCreator: false,
+      };
+
+      addParticipant(newParticipant);
+    };
+
     const pgChannelName = `sp-pg:${id}:${Date.now()}`;
     const pgChannel = supabase
       .channel(pgChannelName)
@@ -208,50 +257,7 @@ export default function SessionScreen() {
         async (payload) => {
           const newUserId = payload.new?.user_id as string | undefined;
           if (!newUserId) return;
-          console.log("[session] New participant joining:", newUserId);
-
-          const already = useSessionStore.getState().currentSession?.participants.find(
-            (p) => p.userId === newUserId
-          );
-          if (already) return;
-
-          // Mark as pending (scanned but not yet confirmed)
-          setPendingUserIds((prev) => new Set([...prev, newUserId]));
-
-          const { data: p } = await supabase
-            .from("profiles")
-            .select("id, name, color, avatar_icon, avatar_url, bill_credits, referral_count, is_pro")
-            .eq("id", newUserId)
-            .single();
-
-          const newParticipant: SessionParticipant = {
-            userId: newUserId,
-            profile: p
-              ? {
-                  id: p.id,
-                  name: p.name ?? "User",
-                  color: p.color ?? getColorForUser(newUserId),
-                  avatarIcon: p.avatar_icon ?? undefined,
-                  avatarUrl: p.avatar_url ?? undefined,
-                  billCredits: p.bill_credits ?? 0,
-                  referralCount: p.referral_count ?? 0,
-                  isPro: p.is_pro ?? false,
-                }
-              : {
-                  id: newUserId,
-                  name: "User",
-                  color: getColorForUser(newUserId),
-                  billCredits: 0,
-                  referralCount: 0,
-                  isPro: false,
-                },
-            selections: [],
-            totalOwed: 0,
-            paid: false,
-            confirmedByCreator: false,
-          };
-
-          addParticipant(newParticipant);
+          await onPendingRow(newUserId);
         }
       )
       .on(
@@ -266,7 +272,18 @@ export default function SessionScreen() {
           const updatedUserId = payload.new?.user_id as string | undefined;
           const newStatus = payload.new?.status as string | undefined;
           if (!updatedUserId) return;
-          if (newStatus === "joined") {
+          if (newStatus === "pending") {
+            await onPendingRow(updatedUserId);
+          } else if (newStatus === "cancelled") {
+            // Scanned, then cancelled on the join screen: never a participant.
+            console.log("[session] Participant cancelled joining:", updatedUserId);
+            setPendingUserIds((prev) => {
+              const next = new Set(prev);
+              next.delete(updatedUserId);
+              return next;
+            });
+            removeParticipant(updatedUserId);
+          } else if (newStatus === "joined") {
             console.log("[session] Participant confirmed join:", updatedUserId);
             setPendingUserIds((prev) => {
               const next = new Set(prev);

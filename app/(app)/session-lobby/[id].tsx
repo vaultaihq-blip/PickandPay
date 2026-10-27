@@ -24,7 +24,7 @@ import { CountdownModal } from "@/components/CountdownModal";
 import { useSessionMonitor } from "@/hooks/useSessionMonitor";
 import { formatCurrency } from "@/utils/formatter";
 import { supabase } from "@/lib/supabase";
-import { expectRows, showLeaveWriteError, showWriteError } from "@/lib/checkedWrite";
+import { expectRows, showLeaveWriteError, showWriteError, withTimeout } from "@/lib/checkedWrite";
 import { ReceiptItem, ItemSelection, SessionParticipant, ParsedReceipt } from "@/types";
 import { isDeveloperUser } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
@@ -908,6 +908,29 @@ export default function SessionLobbyScreen() {
     };
     fetchDoneStatus();
 
+    // "X is joining": a new pending row (INSERT), or a cancelled row reused
+    // by a second scan (UPDATE → pending).
+    const showPending = (uid: string) => {
+      supabase
+        .from("profiles")
+        .select("id, name, color, avatar_icon, avatar_url")
+        .eq("id", uid)
+        .single()
+        .then(({ data }) => {
+          if (!data) return;
+          setPendingParticipants((prev) => {
+            const next = new Map(prev);
+            next.set(uid, {
+              name: (data.name as string | null) ?? "User",
+              color: (data.color as string | null) ?? HOME_THEME.primary,
+              avatarIcon: (data.avatar_icon as string | null) ?? undefined,
+              avatarUrl: (data.avatar_url as string | null) ?? undefined,
+            });
+            return next;
+          });
+        });
+    };
+
     const pgName = `lobby-pg:${id}:${Date.now()}`;
     const pgCh = supabase
       .channel(pgName)
@@ -920,26 +943,7 @@ export default function SessionLobbyScreen() {
         const uid = payload.new?.user_id as string | undefined;
         const status = payload.new?.status as string | undefined;
         if (!uid || uid === myId) return;
-        if (status === "pending") {
-          supabase
-            .from("profiles")
-            .select("id, name, color, avatar_icon, avatar_url")
-            .eq("id", uid)
-            .single()
-            .then(({ data }) => {
-              if (!data) return;
-              setPendingParticipants((prev) => {
-                const next = new Map(prev);
-                next.set(uid, {
-                  name: (data.name as string | null) ?? "User",
-                  color: (data.color as string | null) ?? HOME_THEME.primary,
-                  avatarIcon: (data.avatar_icon as string | null) ?? undefined,
-                  avatarUrl: (data.avatar_url as string | null) ?? undefined,
-                });
-                return next;
-              });
-            });
-        }
+        if (status === "pending") showPending(uid);
       })
       .on("postgres_changes", {
         event: "UPDATE",
@@ -951,6 +955,21 @@ export default function SessionLobbyScreen() {
         const sels = payload.new?.selections;
         const status = payload.new?.status as string | undefined;
         if (!uid) return;
+        if (status === "pending" || status === "cancelled") {
+          if (uid === myId) return;
+          if (status === "pending") {
+            showPending(uid);
+          } else {
+            console.log(`[session-lobby] ${uid} cancelled joining`);
+            setPendingParticipants((prev) => {
+              if (!prev.has(uid)) return prev;
+              const next = new Map(prev);
+              next.delete(uid);
+              return next;
+            });
+          }
+          return;
+        }
         if (status === "selecting") {
           setSelectionDone((prev) => {
             if (!prev.has(uid)) return prev;
@@ -1397,11 +1416,12 @@ export default function SessionLobbyScreen() {
   const handleFinalize = useCallback(async () => {
     if (countdownStarted.current) return;
     countdownStarted.current = true;
-    await syncSelectionsFromDB();
     if (id && !String(id).startsWith("session_") && !String(id).startsWith("dev_session_")) {
       // The DB status is what participants fall back on (and what moves the
       // session forward server-side), so the countdown only starts once it's saved.
       try {
+        // This read used to hang with no network (no error, no countdown, no message).
+        await withTimeout("lobby: sync selections before finalize", syncSelectionsFromDB());
         await expectRows(
           "lobby: host finalizes (awaiting_payment)",
           supabase.from("sessions").update({ status: "awaiting_payment" }).eq("id", id).select("id")

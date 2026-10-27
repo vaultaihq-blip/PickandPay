@@ -1,15 +1,15 @@
 import React from "react";
-import { AlertButton, Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { AlertButton, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { Colors } from "@/constants/colors";
 import { useDialogStore } from "@/lib/dialog";
 
-// Web renderer for showDialog(). On native, showDialog() uses the system
-// Alert and this component renders nothing.
+// Renderer for showDialog() on every platform (web and native), so dialogs
+// share the app's design. Android back closes it only when cancelable.
 export function DialogHost() {
   const dialog = useDialogStore((s) => s.queue[0]);
   const shift = useDialogStore((s) => s.shift);
 
-  if (Platform.OS !== "web" || !dialog) return null;
+  if (!dialog) return null;
 
   const press = (button: AlertButton) => {
     shift();
@@ -23,7 +23,7 @@ export function DialogHost() {
   };
 
   return (
-    <Modal transparent visible animationType="fade" onRequestClose={dismiss}>
+    <Modal transparent visible statusBarTranslucent animationType="fade" onRequestClose={dismiss}>
       <Pressable style={styles.backdrop} onPress={dismiss}>
         <Pressable style={styles.card} onPress={() => {}} accessibilityRole="alert">
           <Text style={styles.title}>{dialog.title}</Text>

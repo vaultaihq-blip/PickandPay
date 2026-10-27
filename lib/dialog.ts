@@ -1,10 +1,10 @@
-import { Alert, AlertButton, AlertOptions, Platform } from "react-native";
+import { AlertButton, AlertOptions } from "react-native";
 import { create } from "zustand";
 
-// Drop-in replacement for Alert.alert. react-native-web implements
-// Alert.alert as a no-op, so on web every error and confirmation shown
-// through it simply vanished. Native keeps the system Alert; web queues the
-// dialog for <DialogHost /> (mounted once in app/_layout.tsx).
+// Drop-in replacement for Alert.alert, rendered by <DialogHost /> (mounted
+// once in app/_layout.tsx) on every platform. Web needs it because
+// react-native-web implements Alert.alert as a no-op; native uses it too so
+// dialogs follow the app's design instead of the system Alert.
 
 export interface QueuedDialog {
   id: number;
@@ -35,10 +35,6 @@ export function showDialog(
   buttons?: AlertButton[],
   options?: AlertOptions
 ): void {
-  if (Platform.OS !== "web") {
-    Alert.alert(title, message, buttons, options);
-    return;
-  }
   useDialogStore.getState().push({
     id: nextId++,
     title,

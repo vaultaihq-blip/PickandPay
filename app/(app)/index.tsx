@@ -27,6 +27,7 @@ import { useReceiptStore } from "@/store/receiptStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { Session, SessionParticipant } from "@/types";
 import { supabase } from "@/lib/supabase";
+import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
 import { DevPanel } from "@/components/dev/DevPanel";
 import { isDeveloperUser, DEV_PIN } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
@@ -154,11 +155,15 @@ export default function HomeScreen() {
     if (!rejoinSession || !profile) return;
     setIsRejoining(true);
     try {
-      await supabase
-        .from("session_participants")
-        .update({ status: "joined" })
-        .eq("session_id", rejoinSession.id)
-        .eq("user_id", profile.id);
+      await expectRows(
+        "home: rejoin (→ joined)",
+        supabase
+          .from("session_participants")
+          .update({ status: "joined" })
+          .eq("session_id", rejoinSession.id)
+          .eq("user_id", profile.id)
+          .select("id")
+      );
 
       const { data: sessionData, error } = await supabase
         .from("sessions")
@@ -168,7 +173,10 @@ export default function HomeScreen() {
 
       if (error || !sessionData) throw new Error("Session not found");
 
-      const participantRows: any[] = sessionData.session_participants ?? [];
+      // A cancelled scan is not a participant.
+      const participantRows: any[] = (sessionData.session_participants ?? []).filter(
+        (sp: any) => sp.status !== "cancelled"
+      );
       const userIds: string[] = participantRows.map((sp: any) => sp.user_id as string);
 
       const { data: profilesData } = await supabase
@@ -223,7 +231,8 @@ export default function HomeScreen() {
 
       router.push(`/(app)/session-lobby/${rejoinSession.id}`);
     } catch (err: any) {
-      Alert.alert(t("error"), t("home_rejoin_error"));
+      if (err instanceof WriteError) showWriteError(err, t);
+      else Alert.alert(t("error"), t("home_rejoin_error"));
     } finally {
       setIsRejoining(false);
     }

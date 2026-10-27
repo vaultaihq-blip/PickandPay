@@ -2,8 +2,13 @@
 -- Pick&Pay — B: session data the server can vouch for
 -- ─────────────────────────────────────────────────────────────────────────────
 --
--- B.1  Participants can delete their own *pending* row (join "Cancel"). There
---      was no DELETE policy, so the delete always matched 0 rows.
+-- B.1  Join "Cancel" sets the participant's own pending row to 'cancelled'
+--      (an UPDATE the existing policy already allows) instead of deleting it:
+--      Realtime does not deliver DELETE to a subscription filtered by
+--      session_id, so the host never saw the cancel (tested: the filtered
+--      DELETE never arrived; an unfiltered one arrives with only the row id).
+--      No DELETE policy is needed, and clients get no DELETE privilege. A
+--      cancelled row is not an active participant anywhere below.
 -- B.2  The rounding adjustment (who pays the leftover cents, how many, chosen
 --      how) is stored on the session, so every device computes the same split.
 --      Until now it lived only in the host's in-memory store.
@@ -21,14 +26,6 @@
 --
 -- Deploy order: this migration, then `supabase functions deploy
 -- initialize-user-credits` (it calls the new grant_signup_credits signature).
-
--- ── B.1 ─────────────────────────────────────────────────────────────────────
-CREATE POLICY "Users can delete own pending participation"
-  ON public.session_participants
-  AS PERMISSIVE
-  FOR DELETE
-  TO authenticated
-  USING (auth.uid() = user_id AND status = 'pending');
 
 -- ── B.2 ─────────────────────────────────────────────────────────────────────
 ALTER TABLE public.sessions
@@ -67,7 +64,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.session_participants
     WHERE session_id = p_session_id AND user_id = p_user_id
-      AND status NOT IN ('pending', 'left')
+      AND status NOT IN ('pending', 'cancelled', 'left')
   ) THEN
     RAISE EXCEPTION 'User % is not an active participant of this session', p_user_id USING ERRCODE = '22023';
   END IF;
@@ -95,7 +92,6 @@ GRANT UPDATE (host_id, receipt_data, status)  ON public.sessions TO authenticate
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON public.session_participants FROM anon, authenticated;
 GRANT INSERT (session_id, user_id, role, status) ON public.session_participants TO authenticated;
 GRANT UPDATE (status, selections)                ON public.session_participants TO authenticated;
-GRANT DELETE                                     ON public.session_participants TO authenticated;
 
 -- A participant joins as pending; only the session's host inserts a host row.
 DROP POLICY IF EXISTS "Users can join sessions" ON public.session_participants;
@@ -168,7 +164,7 @@ BEGIN
     IF NOT EXISTS (
       SELECT 1 FROM public.session_participants
       WHERE session_id = p_session_id AND user_id = p_covered_by
-        AND status NOT IN ('pending', 'left')
+        AND status NOT IN ('pending', 'cancelled', 'left')
     ) THEN
       RAISE EXCEPTION 'User % is not an active participant of this session', p_covered_by USING ERRCODE = '22023';
     END IF;

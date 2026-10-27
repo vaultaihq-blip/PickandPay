@@ -28,7 +28,7 @@ import { Card } from "@/components/ui/Card";
 import { formatCurrency } from "@/utils/formatter";
 import { ReceiptItem, ItemSelection } from "@/types";
 import { supabase } from "@/lib/supabase";
-import { expectRows, showLeaveWriteError, showWriteError } from "@/lib/checkedWrite";
+import { expectRows, showLeaveWriteError, showWriteError, withTimeout, WriteError } from "@/lib/checkedWrite";
 import { useI18nStore } from "@/store/i18nStore";
 
 const ORDERED_CATEGORIES = [
@@ -507,7 +507,7 @@ export default function SelectionScreen() {
       const isTestUser = activeParticipant.userId.startsWith("test_") || activeParticipant.userId.startsWith("dev_");
       const isOfflineSession = session.id.startsWith("session_") || session.id.startsWith("dev_session_");
       if (!isOfflineSession && !isTestUser) {
-        const { data: savedParticipant, error: saveError } = await supabase
+        const { data: savedParticipant, error: saveError } = await withTimeout("selection: save Done", supabase
           .from("session_participants")
           // total_owed is not client-writable (B.3); every device computes the
           // split from the selections, and the server fills total_owed in C.
@@ -515,7 +515,7 @@ export default function SelectionScreen() {
           .eq("session_id", session.id)
           .eq("user_id", activeParticipant.userId)
           .select("user_id")
-          .single();
+          .single());
         if (saveError || !savedParticipant) {
           console.error("[selection] Failed to save participant selections:", {
             error: saveError,
@@ -564,8 +564,12 @@ export default function SelectionScreen() {
         router.back();
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : t("error_generic");
-      showDialog(t("error"), message);
+      if (err instanceof WriteError) {
+        showWriteError(err, t);
+      } else {
+        const message = err instanceof Error ? err.message : t("error_generic");
+        showDialog(t("error"), message);
+      }
     } finally {
       setSaving(false);
     }

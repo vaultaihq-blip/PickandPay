@@ -26,7 +26,7 @@ import { extractSessionIdFromQR } from "@/lib/deeplink";
 import { useAuthStore } from "@/store/authStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { supabase } from "@/lib/supabase";
-import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
+import { expectRows, showWriteError, withTimeout, WriteError } from "@/lib/checkedWrite";
 import { Session, SessionParticipant, UserProfile } from "@/types";
 import { getColorForIndex } from "@/constants/colors";
 import { getAvatarEmoji } from "@/constants/avatars";
@@ -88,12 +88,12 @@ export default function JoinSessionScreen() {
 
     setLoading(true);
     try {
-      // Inserir participante PRIMEIRO — sem onConflict (sem unique constraint ainda).
-      // 23505 = já existe → OK, continua.
+      // Inserir participante PRIMEIRO. (session_id, user_id) é único na BD:
+      // 23505 = a linha já existe e é reaproveitada (ver abaixo).
       console.log("[join] Inserting pending participant record...");
-      const { error: participantError } = await supabase
+      const { error: participantError } = await withTimeout("join: insert pending row", supabase
         .from("session_participants")
-        .insert({ session_id: sessionId, user_id: profile.id, role: "participant", status: "pending" });
+        .insert({ session_id: sessionId, user_id: profile.id, role: "participant", status: "pending" }));
 
       let isRejoin = false;
       let isLeftRejoin = false;
@@ -113,7 +113,23 @@ export default function JoinSessionScreen() {
         isRejoin = existingStatus === "joined" || existingStatus === "left" ||
           existingStatus === "selecting" || existingStatus === "items_picked";
         isLeftRejoin = existingStatus === "left";
-        console.log("[join]", isRejoin ? (isLeftRejoin ? "Rejoining after left" : "Rejoining session") : "Already pending");
+        if (existingStatus === "cancelled") {
+          // Cancelled an earlier scan: same row goes back to pending, and this is
+          // a first join again (the host's lobby shows "joining" from this UPDATE).
+          await expectRows(
+            "join: cancelled → pending",
+            supabase
+              .from("session_participants")
+              .update({ status: "pending" })
+              .eq("session_id", sessionId)
+              .eq("user_id", profile.id)
+              .eq("status", "cancelled")
+              .select("id")
+          );
+          console.log("[join] Joining again after cancel (row reused, pending)");
+        } else {
+          console.log("[join]", isRejoin ? (isLeftRejoin ? "Rejoining after left" : "Rejoining session") : "Already pending");
+        }
       } else {
         console.log("[join] Participant inserted (pending)");
       }
@@ -129,10 +145,10 @@ export default function JoinSessionScreen() {
       if (error) {
         // Best-effort cleanup of our pending row; the load error is what the user sees.
         await expectRows(
-          "join: remove pending row after failed load",
+          "join: cancel pending row after failed load",
           supabase
             .from("session_participants")
-            .delete()
+            .update({ status: "cancelled" })
             .eq("session_id", sessionId)
             .eq("user_id", profile.id)
             .eq("status", "pending")
@@ -160,21 +176,25 @@ export default function JoinSessionScreen() {
       });
     } catch (err: any) {
       console.error("[join] fetchSessionPreview error:", err);
-      showDialog(t("error"), err?.message ?? t("join_error_load"));
+      if (err instanceof WriteError) showWriteError(err, t);
+      else showDialog(t("error"), err?.message ?? t("join_error_load"));
     } finally {
       setLoading(false);
     }
   };
 
   const handleCancel = async () => {
-    // A rejoin has no pending row to remove (status is joined/left/…).
+    // A rejoin has no pending row to cancel (status is joined/left/…).
+    // The row is marked cancelled, not deleted: Realtime does not deliver a
+    // DELETE to a filtered subscription, so the host's lobby never heard of it
+    // and kept showing "joining". The UPDATE reaches it like any other change.
     if (preview && profile && !preview.isRejoin) {
       try {
         await expectRows(
-          "join: cancel (remove pending row)",
+          "join: cancel (pending → cancelled)",
           supabase
             .from("session_participants")
-            .delete()
+            .update({ status: "cancelled" })
             .eq("session_id", preview.id)
             .eq("user_id", profile.id)
             .eq("status", "pending")
@@ -229,7 +249,10 @@ export default function JoinSessionScreen() {
       if (error || !sessionData) throw error ?? new Error("Session not found");
 
       // Busca perfis reais de todos os participantes
-      const participantRows: any[] = sessionData.session_participants ?? [];
+      // A cancelled scan is not a participant.
+      const participantRows: any[] = (sessionData.session_participants ?? []).filter(
+        (sp: any) => sp.status !== "cancelled"
+      );
       const userIds = participantRows.map((sp: any) => sp.user_id as string);
       const profileMap = await fetchProfiles(userIds);
 
