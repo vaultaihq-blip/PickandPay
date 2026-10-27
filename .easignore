@@ -25,3 +25,6 @@ pickandpay-ocr-0cd12f7b4f97-google-cloud.json
 *.keystore
 android/keystores/
 .mcp.json
+
+# Extracted APKs: the old bundle inlined an API key.
+_apk_inspect/

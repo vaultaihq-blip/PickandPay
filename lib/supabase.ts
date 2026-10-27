@@ -416,17 +416,32 @@ export async function parseReceiptImage(image: string) {
     ? { Authorization: `Bearer ${session.access_token}` }
     : undefined;
 
-  const { data, error } = await supabase.functions.invoke("parse-receipt", {
-    body: { imageBase64: base64 },
-    headers: authHeaders,
-  });
-  // A non-2xx answer arrives as FunctionsHttpError; its body carries the
-  // function's error code (NO_CREDITS, RATE_LIMITED, IMAGE_TOO_LARGE, …).
-  let code: string | undefined;
-  const context = (error as { context?: { json?: () => Promise<unknown> } } | null)?.context;
-  if (context && typeof context.json === "function") {
-    const body = (await context.json().catch(() => null)) as { error?: unknown } | null;
-    if (typeof body?.error === "string") code = body.error;
+  const call = async () => {
+    const { data, error } = await supabase.functions.invoke("parse-receipt", {
+      body: { imageBase64: base64 },
+      headers: authHeaders,
+    });
+    // A non-2xx answer arrives as FunctionsHttpError; its body carries the
+    // function's error code (NO_CREDITS, RATE_LIMITED, IMAGE_TOO_LARGE, …).
+    let code: string | undefined;
+    const context = (error as { context?: { status?: number; json?: () => Promise<unknown> } } | null)?.context;
+    if (context && typeof context.json === "function") {
+      const body = (await context.json().catch(() => null)) as { error?: unknown } | null;
+      if (typeof body?.error === "string") code = body.error;
+    }
+    return { data, error, code, status: context?.status };
+  };
+
+  const first = await call();
+  // One automatic retry for a 503 that is not a paid failure: the platform's
+  // own 503 (no function error code — seen right after a deploy) or
+  // SCAN_UNAVAILABLE (the gate refused before any Vision / GPT call). Never
+  // for PROVIDER_ERROR / timeouts, which may already have been paid for.
+  if (first.status === 503 && (first.code === undefined || first.code === "SCAN_UNAVAILABLE")) {
+    console.log(`[parse-receipt] 503 (${first.code ?? "no code"}) — retrying once`);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const second = await call();
+    return { data: second.data, error: second.error, code: second.code };
   }
-  return { data, error, code };
+  return { data: first.data, error: first.error, code: first.code };
 }
