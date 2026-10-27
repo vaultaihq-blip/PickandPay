@@ -103,6 +103,13 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RATE_LIMIT_MAX = 20;
+const RATE_LIMIT_WINDOW_SECONDS = 60 * 60;
+// C.1 — input limits, checked before any provider call. The app sends a JPEG
+// resized to ≤ 2000 px (well under 2 MB); a 4000 px phone original is ~8 MB of
+// base64. Google Vision refuses request bodies over 10 MB anyway.
+const MAX_IMAGE_BASE64_CHARS = 10_000_000;
+const MAX_BODY_BYTES = MAX_IMAGE_BASE64_CHARS + 64 * 1024;
+const ALLOWED_DATA_URL = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 const GOOGLE_CLOUD_API_KEY = Deno.env.get("GOOGLE_CLOUD_API_KEY") ?? "";
 // Pinned to a dated snapshot, not the "gpt-4o" alias: OpenAI documents that
@@ -354,12 +361,43 @@ type ErrorCode =
   | "MISSING_IMAGE"
   | "NOT_CONFIGURED"
   | "RATE_LIMITED"
+  | "NO_CREDITS"
+  | "IMAGE_TOO_LARGE"
+  | "UNSUPPORTED_IMAGE"
+  | "SCAN_UNAVAILABLE"
   | "PROVIDER_ERROR"
   | "UNREADABLE_RECEIPT"
   | "INTERNAL_ERROR";
 
 function errorResponse(code: ErrorCode, status: number): Response {
   return jsonResponse({ error: code }, status);
+}
+
+/**
+ * C.1 — size and format check on the raw request string. Reads only the
+ * first bytes (magic number); the image itself is passed on unchanged.
+ * Accepts JPEG, PNG and WebP, as a data URL or bare base64.
+ */
+function checkImage(image: string): "IMAGE_TOO_LARGE" | "UNSUPPORTED_IMAGE" | null {
+  let base64 = image;
+  if (image.startsWith("data:")) {
+    if (!ALLOWED_DATA_URL.test(image.slice(0, 40))) return "UNSUPPORTED_IMAGE";
+    base64 = image.slice(image.indexOf(",") + 1);
+  }
+  if (base64.length > MAX_IMAGE_BASE64_CHARS) return "IMAGE_TOO_LARGE";
+  if (base64.length < 16) return "UNSUPPORTED_IMAGE";
+  let head: number[];
+  try {
+    head = Array.from(atob(base64.slice(0, 16)), (ch) => ch.charCodeAt(0));
+  } catch {
+    return "UNSUPPORTED_IMAGE";
+  }
+  const isJpeg = head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+  const isPng = head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47;
+  const isWebp =
+    head[0] === 0x52 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x46 &&
+    head[8] === 0x57 && head[9] === 0x45 && head[10] === 0x42 && head[11] === 0x50;
+  return isJpeg || isPng || isWebp ? null : "UNSUPPORTED_IMAGE";
 }
 
 serve(async (req: Request) => {
@@ -380,33 +418,51 @@ serve(async (req: Request) => {
     return errorResponse("UNAUTHORIZED", 401);
   }
 
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count, error: rateError } = await admin
-    .from("ocr_requests")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .gte("created_at", oneHourAgo);
-
-  if (rateError) {
-    console.error("[parse-receipt] rate limit lookup failed:", rateError.message);
-  } else if ((count ?? 0) >= RATE_LIMIT_MAX) {
-    return errorResponse("RATE_LIMITED", 429);
+  // ── C.1: input checks, then credits + rate limit — all before any provider
+  // cost. Every failure here refuses the request (fails closed).
+  const declaredLength = Number(req.headers.get("Content-Length") ?? "0");
+  if (declaredLength > MAX_BODY_BYTES) {
+    return errorResponse("IMAGE_TOO_LARGE", 413);
   }
 
-  const { error: insertRateError } = await admin.from("ocr_requests").insert({ user_id: user.id });
-  if (insertRateError) {
-    console.error("[parse-receipt] rate limit insert failed:", insertRateError.message);
+  let body: { image?: unknown; imageBase64?: unknown } | null;
+  try {
+    body = await req.json();
+  } catch {
+    return errorResponse("MISSING_IMAGE", 400);
+  }
+  const image = body?.image ?? body?.imageBase64;
+  if (typeof image !== "string" || image.length === 0) {
+    return errorResponse("MISSING_IMAGE", 400);
+  }
+  const imageProblem = checkImage(image);
+  if (imageProblem !== null) {
+    return errorResponse(imageProblem, imageProblem === "IMAGE_TOO_LARGE" ? 413 : 415);
+  }
+
+  // One atomic call: credits (≥ 1 or pro, nothing deducted), the per-user
+  // count under an advisory lock, and the request record. See the migration
+  // 20261027160000_c1_ocr_gate_r3.sql.
+  const { data: gate, error: gateError } = await admin.rpc("ocr_gate", {
+    p_user_id: user.id,
+    p_max: RATE_LIMIT_MAX,
+    p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
+  });
+  if (gateError || gate === null || typeof gate !== "object") {
+    console.error("[parse-receipt] ocr_gate failed, refusing:", gateError?.message ?? "no result");
+    return errorResponse("SCAN_UNAVAILABLE", 503);
+  }
+  const gateResult = gate as { allowed?: boolean; reason?: string };
+  if (gateResult.allowed !== true) {
+    if (gateResult.reason === "no_credits") return errorResponse("NO_CREDITS", 402);
+    if (gateResult.reason === "rate_limited") return errorResponse("RATE_LIMITED", 429);
+    console.error("[parse-receipt] ocr_gate refused with unknown reason:", gateResult.reason);
+    return errorResponse("SCAN_UNAVAILABLE", 503);
   }
 
   const startedAt = Date.now();
 
   try {
-    const body = (await req.json()) as { image?: string; imageBase64?: string };
-    const image = body.image ?? body.imageBase64;
-
-    if (typeof image !== "string" || image.length === 0) {
-      return errorResponse("MISSING_IMAGE", 400);
-    }
     if (OPENAI_API_KEY.length === 0 || GOOGLE_CLOUD_API_KEY.length === 0) {
       console.error("[parse-receipt] OPENAI_API_KEY or GOOGLE_CLOUD_API_KEY is not configured");
       return errorResponse("NOT_CONFIGURED", 500);
