@@ -239,7 +239,8 @@ export async function upsertProfile(profile: {
   avatar_url?: string | null;
   avatar_icon?: string | null;
   color: string;
-  provider?: string;
+  // No `provider`: profiles has no such column in production, and PostgREST
+  // rejects the whole upsert (PGRST204) when the payload carries it.
 }) {
   return supabase.from("profiles").upsert(profile);
 }

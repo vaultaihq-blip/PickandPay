@@ -125,7 +125,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               avatar_url: publicAvatarUrl,
               avatar_icon: undefined,
               color: (data.color as string | undefined) ?? getColorForIndex(0),
-              provider: mapProvider(data.provider),
             });
             data.avatar_url = publicAvatarUrl;
             data.avatar_icon = undefined;
@@ -147,7 +146,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               avatar_url: authAvatarUrl,
               avatar_icon: (data.avatar_icon as string | undefined) ?? undefined,
               color: (data.color as string | undefined) ?? getColorForIndex(0),
-              provider: mapProvider(data.provider),
             });
             data.avatar_url = authAvatarUrl;
             if (!data.name && authName) data.name = authName;
@@ -195,7 +193,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         avatar_url: profile.avatarUrl,
         avatar_icon: profile.avatarIcon,
         color: profile.color,
-        provider: profile.provider,
       });
     } catch (err) {
       console.error("[AuthStore] Failed to save phone:", err);
@@ -252,7 +249,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       avatar_url: avatarUrl ?? null,
       avatar_icon: avatarIcon ?? null,
       color: profile.color,
-      provider: profile.provider,
     });
     if (error) {
       set({ profile });

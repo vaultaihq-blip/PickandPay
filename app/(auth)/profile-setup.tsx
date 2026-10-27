@@ -101,11 +101,12 @@ export default function ProfileSetupScreen() {
         avatar_url: uploadedAvatarUrl ?? undefined,
         avatar_icon: uploadedAvatarUrl ? undefined : selectedIcon ?? "star",
         color: userColor,
-        provider: user?.app_metadata?.provider,
       };
+      const provider = user?.app_metadata?.provider as string | undefined;
 
       if (user) {
-        await upsertProfile(profile);
+        const { error: upsertError } = await upsertProfile(profile);
+        if (upsertError) throw upsertError;
       }
 
       // Sign-up credits are granted once, server-side (initialize-user-credits).
@@ -120,7 +121,7 @@ export default function ProfileSetupScreen() {
         avatarUrl: profile.avatar_url,
         avatarIcon: profile.avatar_icon,
         color: profile.color,
-        provider: mapProvider(profile.provider),
+        provider: mapProvider(provider),
         billCredits,
         referralCount: 0,
         isPro: false,
