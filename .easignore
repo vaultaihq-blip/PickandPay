@@ -12,3 +12,16 @@ ios/Pods
 coverage
 __tests__
 docs
+
+# Secrets. With an .easignore present, EAS ignores .gitignore entirely, so
+# every secret pattern from .gitignore has to be repeated here.
+pickandpay-ocr-0cd12f7b4f97-google-cloud.json
+*-google-cloud.json
+.env*.local
+.env.production
+*.env.backup
+.env.backup.*
+*.key
+*.keystore
+android/keystores/
+.mcp.json
