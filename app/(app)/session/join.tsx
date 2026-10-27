@@ -31,6 +31,7 @@ import { Session, SessionParticipant, UserProfile } from "@/types";
 import { getColorForIndex } from "@/constants/colors";
 import { getAvatarEmoji } from "@/constants/avatars";
 import { useI18nStore } from "@/store/i18nStore";
+import { ensureCreditsForNewSession, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
 
 interface SessionPreview {
   id: string;
@@ -97,7 +98,12 @@ export default function JoinSessionScreen() {
 
       let isRejoin = false;
       let isLeftRejoin = false;
-      if (participantError && participantError.code !== "23505") {
+      if (participantError && isNoCreditsError(participantError)) {
+        // R3: the server refuses a new participant row at 0 credits.
+        console.log("[join] 0 credits — server refused the pending row (R3)");
+        showNoCreditsDialog(t);
+        return;
+      } else if (participantError && participantError.code !== "23505") {
         // Without this row RLS hides the session, so nothing below can work.
         console.error("[join] Participant insert failed:", participantError.code, participantError.message);
         throw new Error(t("join_error_load"));
@@ -176,7 +182,8 @@ export default function JoinSessionScreen() {
       });
     } catch (err: any) {
       console.error("[join] fetchSessionPreview error:", err);
-      if (err instanceof WriteError) showWriteError(err, t);
+      if (isNoCreditsError(err)) showNoCreditsDialog(t);
+      else if (err instanceof WriteError) showWriteError(err, t);
       else showDialog(t("error"), err?.message ?? t("join_error_load"));
     } finally {
       setLoading(false);
@@ -211,16 +218,10 @@ export default function JoinSessionScreen() {
   const confirmJoin = async () => {
     if (!preview || !profile) return;
 
-    // Skip credit check when rejoining (user already paid for this session)
-    if (!preview.isRejoin && !profile.isPro && (profile.billCredits ?? 0) <= 0) {
-      showDialog(
-        t("scan_no_credits"),
-        t("join_no_credits_msg"),
-        [
-          { text: t("scan_buy"), onPress: () => router.push("/(app)/paywall") },
-          { text: t("cancel"), style: "cancel" },
-        ]
-      );
+    // R3: someone still in the session (joined / selecting / items_picked) goes
+    // back in at any balance; a first join or a return after leaving needs a
+    // credit, checked against the server's balance.
+    if ((!preview.isRejoin || preview.isLeftRejoin) && !(await ensureCreditsForNewSession(profile.id, t))) {
       return;
     }
 
@@ -304,7 +305,8 @@ export default function JoinSessionScreen() {
       router.replace(`/(app)/session-lobby/${sessionId}`);
     } catch (err: any) {
       console.error("[join] confirmJoin error:", err);
-      if (err instanceof WriteError) showWriteError(err, t);
+      if (isNoCreditsError(err)) showNoCreditsDialog(t);
+      else if (err instanceof WriteError) showWriteError(err, t);
       else showDialog(t("error"), t("join_error_join"));
     } finally {
       setLoading(false);

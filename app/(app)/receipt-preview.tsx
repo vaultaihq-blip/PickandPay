@@ -19,6 +19,7 @@ import { useAuthStore } from "@/store/authStore";
 import { analyzeReceipt, createBlankReceipt } from "@/utils/parser";
 import { validateReceiptOCR } from "@/lib/receipt-validator";
 import { useI18nStore } from "@/store/i18nStore";
+import { ensureCreditsForNewSession, showNoCreditsDialog } from "@/lib/credits";
 
 const { width, height } = Dimensions.get("window");
 
@@ -61,17 +62,8 @@ export default function ReceiptPreviewScreen() {
   const handleAnalyze = useCallback(async () => {
     if (!currentBase64) return;
 
-    if (!profile?.isPro && (profile?.billCredits ?? 0) <= 0) {
-      Alert.alert(t("scan_no_credits"), t("scan_no_credits_alt"), [
-        { text: t("scan_buy"), onPress: () => router.push("/(app)/paywall") },
-        {
-          text: t("scan_enter_manually"),
-          onPress: () => { setReceipt(createBlankReceipt()); router.push("/(app)/review"); },
-        },
-        { text: t("cancel"), style: "cancel" },
-      ]);
-      return;
-    }
+    // R3: no new split at 0 credits — fresh balance; parse-receipt refuses too.
+    if (profile && !(await ensureCreditsForNewSession(profile.id, t))) return;
 
     cancelledRef.current = false;
     setRawImageUri(currentUri);
@@ -117,6 +109,24 @@ export default function ReceiptPreviewScreen() {
       if (cancelledRef.current) return;
       setIsAnalyzing(false);
       const msg = err instanceof Error ? err.message : "";
+
+      const code = (err as { code?: string }).code;
+      if (code === "NO_CREDITS") {
+        showNoCreditsDialog(t);
+        return;
+      }
+      const codeMessage =
+        code === "RATE_LIMITED" ? t("scan_err_rate_limited")
+          : code === "IMAGE_TOO_LARGE" || code === "UNSUPPORTED_IMAGE" ? t("scan_err_image")
+          : code === "SCAN_UNAVAILABLE" ? t("scan_err_unavailable")
+          : null;
+      if (codeMessage) {
+        Alert.alert(t("scan_analysis_failed"), codeMessage, [
+          { text: t("scan_enter_manually"), onPress: () => { setReceipt(createBlankReceipt()); router.push("/(app)/review"); } },
+          { text: t("scan_try_again"), style: "cancel" },
+        ]);
+        return;
+      }
 
       if (msg === "TIMEOUT") {
         Alert.alert(t("preview_timeout_title"), t("preview_timeout_msg"), [

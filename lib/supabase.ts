@@ -420,5 +420,13 @@ export async function parseReceiptImage(image: string) {
     body: { imageBase64: base64 },
     headers: authHeaders,
   });
-  return { data, error };
+  // A non-2xx answer arrives as FunctionsHttpError; its body carries the
+  // function's error code (NO_CREDITS, RATE_LIMITED, IMAGE_TOO_LARGE, …).
+  let code: string | undefined;
+  const context = (error as { context?: { json?: () => Promise<unknown> } } | null)?.context;
+  if (context && typeof context.json === "function") {
+    const body = (await context.json().catch(() => null)) as { error?: unknown } | null;
+    if (typeof body?.error === "string") code = body.error;
+  }
+  return { data, error, code };
 }

@@ -91,9 +91,12 @@ export async function analyzeReceipt(
   // load time, which would make this file (and its pure normalizeReceipt
   // bridge below) unloadable from a plain Node test environment.
   const { parseReceiptImage } = await import("@/lib/supabase");
-  const { data, error } = await parseReceiptImage(imageUri);
+  const { data, error, code } = await parseReceiptImage(imageUri);
   if (error) {
-    throw new Error(`OCR edge function failed: ${(error as { message?: string }).message ?? "Unknown error"}`);
+    throw Object.assign(
+      new Error(`OCR edge function failed: ${(error as { message?: string }).message ?? "Unknown error"}`),
+      { code }
+    );
   }
   if (!data) {
     throw new Error("OCR edge function returned no data");

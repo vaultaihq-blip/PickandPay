@@ -28,6 +28,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { Session, SessionParticipant } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
+import { ensureCreditsForNewSession, fetchFreshCredits, hasActiveSessionRow, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
 import { DevPanel } from "@/components/dev/DevPanel";
 import { isDeveloperUser, DEV_PIN } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
@@ -231,7 +232,9 @@ export default function HomeScreen() {
 
       router.push(`/(app)/session-lobby/${rejoinSession.id}`);
     } catch (err: any) {
-      if (err instanceof WriteError) showWriteError(err, t);
+      // R3: coming back after leaving needs a credit (the server refuses left → joined at 0).
+      if (isNoCreditsError(err)) showNoCreditsDialog(t);
+      else if (err instanceof WriteError) showWriteError(err, t);
       else Alert.alert(t("error"), t("home_rejoin_error"));
     } finally {
       setIsRejoining(false);
@@ -243,7 +246,13 @@ export default function HomeScreen() {
       Alert.alert(t("error"), t("home_sign_in_msg"));
       return;
     }
+    if (isCreatingSession) return;
     setIsCreatingSession(true);
+    // R3: no new session at 0 credits (fresh balance; the server refuses too).
+    if (!(await ensureCreditsForNewSession(user.id, t))) {
+      setIsCreatingSession(false);
+      return;
+    }
     try {
       let sessionId: string;
       const creatorId = profile?.id ?? user?.id ?? `guest_${Date.now()}`;
@@ -292,6 +301,10 @@ export default function HomeScreen() {
           .single();
         if (error) {
           console.error("[home] sessions insert error:", JSON.stringify(error));
+          if (isNoCreditsError(error)) {
+            showNoCreditsDialog(t);
+            return;
+          }
           throw new Error(error.message ?? "sessions insert failed");
         }
         sessionId = data.id;
@@ -352,7 +365,17 @@ export default function HomeScreen() {
     }
   };
 
-  const handleJoinQR = () => {
+  const handleJoinQR = async () => {
+    // R3: at 0 credits the scanner only opens for someone already in a live
+    // session (they may be scanning back into it); the server refuses new ones.
+    if (user) {
+      const fresh = await fetchFreshCredits(user.id);
+      if (fresh && !fresh.isPro && fresh.credits < 1 && !(await hasActiveSessionRow(user.id))) {
+        console.log("[home] 0 credits and no active session — join blocked (R3)");
+        showNoCreditsDialog(t);
+        return;
+      }
+    }
     router.push("/(app)/session/join");
   };
 
