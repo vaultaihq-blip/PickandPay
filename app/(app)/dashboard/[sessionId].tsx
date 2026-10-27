@@ -28,7 +28,7 @@ import { formatCurrency } from "@/utils/formatter";
 import { Colors as C } from "@/constants/colors";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showWriteError } from "@/lib/checkedWrite";
-import { CentAdjustment, SessionParticipant, PaymentReminder } from "@/types";
+import { CentAdjustment, ItemSelection, SessionParticipant, PaymentReminder } from "@/types";
 import { sendPushNotification } from "@/lib/notifications";
 import { toCents, fromCents } from "@/utils/validator";
 import { useI18nStore } from "@/store/i18nStore";
@@ -62,7 +62,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
 
   const {
-    currentSession, markPaid, markViewingPaid, markCoveredBy, setStatus, setCentAdjustment, setSplitUserIds,
+    currentSession, markPaid, markViewingPaid, markCoveredBy, setStatus, setCentAdjustment, setSplitUserIds, updateSelections,
     splitResults: storeSplitResults, addReminder, clearSession, addCompletedSession,
     viewingSession, viewingSplitResults, setViewingSession,
   } = useSessionStore();
@@ -85,13 +85,42 @@ export default function DashboardScreen() {
   const receipt = session?.receipt;
   const isCreator = session?.creatorId === profile?.id;
 
-  const applySplitUserIds = (value: unknown) => {
-    if (!Array.isArray(value) || value.length === 0) return;
+  // true when the frozen set changed
+  const applySplitUserIds = (value: unknown): boolean => {
+    if (!Array.isArray(value) || value.length === 0) return false;
     const ids = value as string[];
     const current = useSessionStore.getState().currentSession?.splitUserIds;
-    if (current && current.length === ids.length && current.every((id, i) => id === ids[i])) return;
+    if (current && current.length === ids.length && current.every((id, i) => id === ids[i])) return false;
     console.log(`[dashboard] split frozen by the server: n=${ids.length}`);
     setSplitUserIds(ids);
+    return true;
+  };
+
+  // finalize_session takes people who are not in the split out of the
+  // sharedWith lists (their part goes to those still sharing the item), and
+  // the shares here come from the store: load the saved selections.
+  const syncSplitSelections = (sessionId: string, value: unknown) => {
+    if (!Array.isArray(value) || value.length === 0) return;
+    const key = (sels: ItemSelection[]) =>
+      JSON.stringify(sels.map((s) => [s.itemId, s.quantity ?? 1, s.sharedWith ?? []]));
+    supabase
+      .from("session_participants")
+      .select("user_id, selections")
+      .eq("session_id", sessionId)
+      .in("user_id", value as string[])
+      .then(({ data, error }) => {
+        if (error || !data) { console.error("[dashboard] Failed to load selections:", error); return; }
+        const current = useSessionStore.getState().currentSession?.participants ?? [];
+        let changed = 0;
+        for (const row of data) {
+          const sels = (Array.isArray(row.selections) ? row.selections : []) as ItemSelection[];
+          const p = current.find((x) => x.userId === row.user_id);
+          if (!p || key(p.selections) === key(sels)) continue;
+          updateSelections(row.user_id as string, sels);
+          changed++;
+        }
+        console.log(`[dashboard] selections checked against the server: ${changed} updated`);
+      });
   };
 
   useEffect(() => {
@@ -160,6 +189,7 @@ export default function DashboardScreen() {
       .then(({ data, error }) => {
         if (error) { console.error("[dashboard] Failed to load session split data:", error); return; }
         applySplitUserIds(data?.split_user_ids);
+        syncSplitSelections(session.id, data?.split_user_ids);
         const adjustment = centAdjustmentFromRow(data);
         if (adjustment) setCentAdjustment(adjustment);
       });
@@ -183,7 +213,7 @@ export default function DashboardScreen() {
             supabase
               .channel(`session-closed:${session.id}:${Date.now()}`)
               .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sessions", filter: `id=eq.${session.id}` }, (payload) => {
-                applySplitUserIds(payload.new?.split_user_ids);
+                if (applySplitUserIds(payload.new?.split_user_ids)) syncSplitSelections(session.id, payload.new?.split_user_ids);
                 const adjustment = centAdjustmentFromRow(payload.new);
                 if (adjustment) setCentAdjustment(adjustment);
                 if ((payload.new?.status as string | undefined) === "closed") {
