@@ -30,6 +30,9 @@ import { useI18nStore } from "@/store/i18nStore";
 import { TranslationKey } from "@/constants/translations";
 import { formatCurrency } from "@/utils/formatter";
 import { styles } from "@/components/receipt/reviewReceiptStyles";
+import { supabase } from "@/lib/supabase";
+import { expectRows, showWriteError } from "@/lib/checkedWrite";
+import { isOfflineSessionId } from "@/constants/dev";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -158,6 +161,8 @@ export default function ReviewReceiptScreen() {
   const { currentSession, setSession } = useSessionStore();
   const { t, language } = useI18nStore();
   void language;
+  // Continue is pressed once per save (the receipt write below is awaited).
+  const savingRef = useRef(false);
 
   // ── All hooks before any conditional return ────────────────────────────────
 
@@ -369,7 +374,8 @@ export default function ReviewReceiptScreen() {
   // ── Early return after all hooks ────────────────────────────────────────────
   if (!receipt) return null;
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
+    if (savingRef.current) return;
     // FIX 45 — the total the user confirmed wins over whatever was parsed.
     // Zero means they left it blank; in that case keep the original rather
     // than writing a total of 0.00 onto the receipt.
@@ -382,6 +388,25 @@ export default function ReviewReceiptScreen() {
       `[review-receipt] handleContinue: isLiveSession=${!!isLiveSession} sessionId=${liveId ?? "none"} -> ${isLiveSession ? `session-lobby/${liveId}` : "review"}`
     );
     if (isLiveSession) {
+      // The session exists already (Start split creates it before the scan),
+      // so this is where its receipt reaches the DB. Participants load
+      // receipt_data when they join and the lobby polls it; without this
+      // write they never get the items ("Session not found" in selection).
+      if (!isOfflineSessionId(liveId)) {
+        savingRef.current = true;
+        try {
+          await expectRows(
+            "review-receipt: save receipt to session",
+            supabase.from("sessions").update({ receipt_data: rebuilt }).eq("id", liveId).select("id")
+          );
+          console.log(`[review-receipt] receipt saved to session ${liveId}`);
+        } catch (err) {
+          showWriteError(err, t);
+          return;
+        } finally {
+          savingRef.current = false;
+        }
+      }
       setSession({ ...currentSession!, receipt: rebuilt });
       router.replace(`/(app)/session-lobby/${liveId}`);
     } else {

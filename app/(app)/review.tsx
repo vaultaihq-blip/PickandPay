@@ -34,6 +34,7 @@ import { generateItemId } from "@/utils/parser";
 import { useI18nStore } from "@/store/i18nStore";
 import { TranslationKey } from "@/constants/translations";
 import { isOfflineSessionId } from "@/constants/dev";
+import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
 
 const ORDERED_CATEGORIES: ItemCategory[] = [
   "starters",
@@ -427,14 +428,19 @@ export default function ReviewScreen() {
       try {
         const sessionId = currentSession.id;
         if (!isOfflineSessionId(sessionId)) {
-          await supabase
-            .from("sessions")
-            .update({ receipt_data: receipt })
-            .eq("id", sessionId);
+          // Checked: a silent miss leaves participants on the old receipt.
+          await expectRows(
+            "review: save edited receipt",
+            supabase.from("sessions").update({ receipt_data: receipt }).eq("id", sessionId).select("id")
+          );
         }
         setSession({ ...currentSession, receipt });
         router.back();
       } catch (err) {
+        if (err instanceof WriteError) {
+          showWriteError(err, t);
+          return;
+        }
         const msg = err instanceof Error ? err.message : String(err);
         Alert.alert(t("review_failed_create"), msg || t("error_connection"));
       } finally {
@@ -456,11 +462,11 @@ export default function ReviewScreen() {
       if (isPreExistingSession && existingSession) {
         sessionId = existingSession.id;
         if (user && !isOfflineSessionId(sessionId)) {
-          const { error } = await supabase
-            .from("sessions")
-            .update({ receipt_data: receipt, status: "draft" })
-            .eq("id", sessionId);
-          if (error) throw error;
+          // Checked: without this row participants join with no receipt.
+          await expectRows(
+            "review: save receipt to session",
+            supabase.from("sessions").update({ receipt_data: receipt, status: "draft" }).eq("id", sessionId).select("id")
+          );
         }
       } else if (user) {
         const { data, error } = await supabase
@@ -575,6 +581,10 @@ export default function ReviewScreen() {
       const pgErr = err as { message?: string; code?: string; details?: string; hint?: string } | null;
       if (pgErr?.code) {
         console.error("[review] Supabase error code:", pgErr.code, "| details:", pgErr.details, "| hint:", pgErr.hint);
+      }
+      if (err instanceof WriteError) {
+        showWriteError(err, t);
+        return;
       }
       const msg = err instanceof Error ? err.message : pgErr?.message ?? JSON.stringify(err);
       Alert.alert(t("review_failed_create"), msg || t("error_connection"));

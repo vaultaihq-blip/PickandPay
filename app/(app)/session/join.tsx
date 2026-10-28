@@ -1,5 +1,6 @@
-﻿import React, { useState } from "react";
+﻿import React, { useEffect, useRef, useState } from "react";
 import {
+  BackHandler,
   View,
   Text,
   TouchableOpacity,
@@ -17,7 +18,7 @@ const JOIN_THEME = {
   secondary: "#8B8FA3",
   muted: "#6B7280",
 };
-import { router } from "expo-router";
+import { router, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { QRScanner } from "@/components/session/QRScanner";
@@ -120,6 +121,7 @@ export default function JoinSessionScreen() {
           .eq("user_id", profile.id)
           .single();
         const existingStatus = existingRow?.status as string | undefined;
+        console.log(`[join] row already exists for this session: status=${existingStatus ?? "not visible"}`);
         isRejoin = existingStatus === "joined" || existingStatus === "left" ||
           existingStatus === "selecting" || existingStatus === "items_picked";
         isLeftRejoin = existingStatus === "left";
@@ -211,6 +213,7 @@ export default function JoinSessionScreen() {
             .eq("status", "pending")
             .select("id")
         );
+        console.log("[join] Cancelled (pending → cancelled)");
       } catch (err) {
         showWriteError(err, t);
         return;
@@ -218,6 +221,22 @@ export default function JoinSessionScreen() {
     }
     setPreview(null);
   };
+
+  // C3-fix1 — Android back on the confirmation screen used to leave it with
+  // no write at all: the row stayed pending (the host kept seeing "joining")
+  // and the next scan of the same QR found "Already pending", not cancelled.
+  // Back now does exactly what Cancel does.
+  const handleCancelRef = useRef(handleCancel);
+  handleCancelRef.current = handleCancel;
+  useEffect(() => {
+    if (!preview) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      console.log("[join] Back pressed on the confirmation screen — same as Cancel");
+      void handleCancelRef.current();
+      return true;
+    });
+    return () => sub.remove();
+  }, [preview]);
 
   const confirmJoin = async () => {
     if (!preview || !profile) return;
@@ -252,6 +271,7 @@ export default function JoinSessionScreen() {
         .single();
 
       if (error || !sessionData) throw error ?? new Error("Session not found");
+      console.log(`[join] Joined: session status=${sessionData.status} receipt=${!!sessionData.receipt_data}`);
 
       // Busca perfis reais de todos os participantes
       // Someone still pending (scanned, not confirmed) or cancelled is not a
@@ -346,6 +366,8 @@ export default function JoinSessionScreen() {
 
     return (
       <SafeAreaView style={styles.safe}>
+        {/* No iOS swipe-back here either: leaving must go through Cancel (see BackHandler above). */}
+        <Stack.Screen options={{ gestureEnabled: false }} />
         <StatusBar style="light" backgroundColor={JOIN_THEME.background} translucent={false} />
         <View style={styles.previewContainer}>
           <Ionicons name="qr-code-outline" size={40} color={Colors.primary} style={{ marginBottom: 8 }} />

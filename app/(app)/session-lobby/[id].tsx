@@ -25,6 +25,7 @@ import { useSessionMonitor } from "@/hooks/useSessionMonitor";
 import { formatCurrency } from "@/utils/formatter";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showLeaveWriteError, showWriteError, withTimeout } from "@/lib/checkedWrite";
+import { isOfflineSessionId } from "@/constants/dev";
 import { fetchFreshCredits, showFinalizeNoCreditsDialog } from "@/lib/credits";
 import { ReceiptItem, ItemSelection, SessionParticipant, ParsedReceipt } from "@/types";
 import { isDeveloperUser } from "@/constants/dev";
@@ -774,9 +775,30 @@ export default function SessionLobbyScreen() {
       lastReceiptLog = state;
       console.log(`[session-lobby] ${msg}`);
     };
+    // C3-fix1 — a host whose receipt never reached the DB (a write path that
+    // skipped it, or an older build) leaves participants with no items.
+    // The host's store is the source, so write it once from here.
+    let receiptHealTried = false;
     const handleReceiptData = (receiptData?: unknown) => {
-      if (!receiptData) return;
       const sess = useSessionStore.getState().currentSession;
+      if (!receiptData) {
+        if (!sess) return;
+        if (sess.creatorId !== myId) {
+          logReceiptState("db-empty", "no receipt_data in the DB yet — waiting for the host");
+          return;
+        }
+        if (!sess.receipt || receiptHealTried || isOfflineSessionId(sess.id)) return;
+        receiptHealTried = true;
+        console.log("[session-lobby] receipt_data missing in the DB — saving the host's receipt");
+        expectRows(
+          "lobby: save missing receipt",
+          supabase.from("sessions").update({ receipt_data: sess.receipt }).eq("id", sess.id).select("id")
+        ).then(
+          () => console.log("[session-lobby] receipt_data saved"),
+          (err) => showWriteError(err, useI18nStore.getState().t)
+        );
+        return;
+      }
       if (!sess) return;
       const dbFp = fingerprint(receiptData);
       const firstRead = lastDbFingerprint === null;
