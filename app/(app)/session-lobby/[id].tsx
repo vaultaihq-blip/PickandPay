@@ -26,6 +26,7 @@ import { formatCurrency } from "@/utils/formatter";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showLeaveWriteError, showWriteError, withTimeout } from "@/lib/checkedWrite";
 import { isOfflineSessionId } from "@/constants/dev";
+import { orderParticipants } from "@/lib/sessionColors";
 import { fetchFreshCredits, showFinalizeNoCreditsDialog } from "@/lib/credits";
 import { ReceiptItem, ItemSelection, SessionParticipant, ParsedReceipt } from "@/types";
 import { isDeveloperUser } from "@/constants/dev";
@@ -128,16 +129,11 @@ export default function SessionLobbyScreen() {
   const isCreator = session?.creatorId === myId;
   const isDev = isDeveloperUser(profile?.email);
   const participants = session?.participants ?? [];
-  const visibleParticipants = useMemo(() => {
-    if (!myId) return participants;
-    return [...participants].sort((a, b) => {
-      if (a.userId === myId) return -1;
-      if (b.userId === myId) return 1;
-      if (a.userId === session?.creatorId) return -1;
-      if (b.userId === session?.creatorId) return 1;
-      return 0;
-    });
-  }, [myId, participants, session?.creatorId]);
+  // R4: host first, then me, then by arrival — the same order on every device.
+  const visibleParticipants = useMemo(
+    () => orderParticipants(participants, session?.creatorId, myId),
+    [myId, participants, session?.creatorId]
+  );
 
   // Fresh profiles — pre-populated from store so avatars show immediately, then refreshed from DB
   const [freshProfiles, setFreshProfiles] = useState<Map<string, { avatarUrl?: string; avatarIcon?: string }>>(() => {
@@ -207,6 +203,13 @@ export default function SessionLobbyScreen() {
   const [viewSelectionUserId, setViewSelectionUserId] = useState<string | null>(null);
   // 5-second final countdown (null = not active)
   const [finalCountdown, setFinalCountdown] = useState<number | null>(null);
+  // R5 — a participant asked to cancel: the countdown is paused for everyone
+  // until the host decides (state on the session row; see applyCountdownRow).
+  const [cdPause, setCdPause] = useState<{ requesterId: string; remainingMs: number } | null>(null);
+  const cdPauseRef = useRef<typeof cdPause>(null);
+  const [decisionBusy, setDecisionBusy] = useState(false);
+  // cancel_last_at last seen (undefined = not read yet, so an old decision isn't announced).
+  const lastDecisionAtRef = useRef<string | null | undefined>(undefined);
   // true when host presence drops and grace timer expires
   const [hostDisconnected, setHostDisconnected] = useState(false);
   const hostGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -330,12 +333,14 @@ export default function SessionLobbyScreen() {
   }, [participants, selectionDone, takenOver, leftParticipantIds]);
 
   // ── Start 5-second final countdown ──────────────────────────────────────────
-  const startFinalCountdown = useCallback(() => {
+  const startFinalCountdown = useCallback((fromSecs: number = FINAL_COUNTDOWN) => {
     if (finalIntervalRef.current) return;
     void syncSelectionsFromDB();
     setCountdownActive(true);
-    setFinalCountdown(FINAL_COUNTDOWN);
-    let secs = FINAL_COUNTDOWN;
+    setFinalCountdown(fromSecs);
+    // Paused (R5): show the number, don't tick until the host decides.
+    if (cdPauseRef.current) return;
+    let secs = fromSecs;
     finalIntervalRef.current = setInterval(() => {
       secs -= 1;
       setFinalCountdown(secs);
@@ -368,6 +373,145 @@ export default function SessionLobbyScreen() {
       payload: {},
     });
   }, [id, isCreator, setCountdownActive, t]);
+
+  // ── R5: a participant asks to cancel; the host decides ─────────────────────
+  const setPause = (p: typeof cdPause) => {
+    cdPauseRef.current = p;
+    setCdPause(p);
+  };
+
+  const pauseCountdown = useCallback((requesterId: string, remainingMs: number) => {
+    if (cdPauseRef.current?.requesterId === requesterId) return;
+    if (finalIntervalRef.current) {
+      clearInterval(finalIntervalRef.current);
+      finalIntervalRef.current = null;
+    }
+    setPause({ requesterId, remainingMs });
+    countdownStarted.current = true;
+    setCountdownActive(true);
+    setFinalCountdown(Math.max(1, Math.ceil(remainingMs / 1000)));
+    console.log(`[session-lobby] countdown paused: ${requesterId} asked to cancel (${remainingMs} ms left)`);
+  }, [setCountdownActive]);
+
+  const resumeCountdown = useCallback((why: string) => {
+    const paused = cdPauseRef.current;
+    if (!paused) return;
+    setPause(null);
+    console.log(`[session-lobby] countdown resumed (${why}) with ${paused.remainingMs} ms left`);
+    startFinalCountdown(Math.max(1, Math.ceil(paused.remainingMs / 1000)));
+  }, [startFinalCountdown]);
+
+  // Accepted: the countdown is over for everyone and all go back to their
+  // selection, with what they had picked (finalize_session charges nobody again).
+  const backToSelectionAfterCancel = useCallback(() => {
+    if (finalIntervalRef.current) {
+      clearInterval(finalIntervalRef.current);
+      finalIntervalRef.current = null;
+    }
+    setPause(null);
+    setFinalCountdown(null);
+    setCountdownActive(false);
+    countdownStarted.current = false;
+    const me = useAuthStore.getState().profile?.id;
+    console.log("[session-lobby] cancel request accepted — back to selection");
+    if (me) router.push(`/(app)/selection/${id}?userId=${me}&returnTo=lobby`);
+  }, [id, setCountdownActive]);
+
+  const nameOf = (uid?: string | null) =>
+    useSessionStore.getState().currentSession?.participants.find((p) => p.userId === uid)?.profile.name ?? "User";
+
+  const requestCountdownCancel = useCallback(async () => {
+    if (!id || isOfflineSessionId(String(id))) return;
+    try {
+      const [res] = await expectRows<{ result: string; remaining_ms?: number | null; request_user_id?: string | null }>(
+        "lobby: ask to cancel the countdown",
+        supabase.rpc("request_countdown_cancel", { p_session_id: id })
+      );
+      console.log(`[session-lobby] cancel request: ${res?.result}`);
+      if (res?.result === "requested" || res?.result === "already_requested") {
+        const requesterId = res.request_user_id ?? myId;
+        const remainingMs = res.remaining_ms ?? FINAL_COUNTDOWN * 1000;
+        pauseCountdown(requesterId, remainingMs);
+        if (res.result === "requested") {
+          channelRef.current?.send({ type: "broadcast", event: "countdown_pause", payload: { requesterId, remainingMs } });
+        } else {
+          showDialog(t("countdown_paused"), t("countdown_already_requested").replace("{name}", nameOf(requesterId)));
+        }
+      } else if (res?.result === "countdown_over") {
+        showDialog(t("error"), t("countdown_over_msg"));
+      }
+    } catch (err) {
+      showWriteError(err, t);
+    }
+  }, [id, myId, pauseCountdown, t]);
+
+  const decideCountdownCancel = useCallback(async (accept: boolean) => {
+    if (!id) return;
+    setDecisionBusy(true);
+    try {
+      const [res] = await expectRows<{ result: string }>(
+        "lobby: host decides the cancel request",
+        supabase.rpc("decide_countdown_cancel", { p_session_id: id, p_accept: accept })
+      );
+      console.log(`[session-lobby] host decision on the cancel request: ${res?.result}`);
+      if (res?.result === "accepted") {
+        channelRef.current?.send({ type: "broadcast", event: "countdown_cancel", payload: { accepted: true } });
+        backToSelectionAfterCancel();
+      } else {
+        // declined, or the request had already expired: resume for everyone.
+        channelRef.current?.send({ type: "broadcast", event: "countdown_resume", payload: {} });
+        resumeCountdown(res?.result ?? "declined");
+      }
+    } catch (err) {
+      showWriteError(err, t);
+    } finally {
+      setDecisionBusy(false);
+    }
+  }, [id, backToSelectionAfterCancel, resumeCountdown, t]);
+
+  // The session row is the source of truth (poll + realtime): whoever opens
+  // or reloads the lobby mid-request sees the same pause as everyone else.
+  const applyCountdownRow = (row: {
+    status?: string; countdown_remaining_ms?: number | null; cancel_request_user_id?: string | null;
+    cancel_last_decision?: string | null; cancel_last_user_id?: string | null; cancel_last_at?: string | null;
+  }) => {
+    const requester = row.cancel_request_user_id ?? null;
+    if (row.status === "awaiting_payment" && requester) {
+      pauseCountdown(requester, row.countdown_remaining_ms ?? FINAL_COUNTDOWN * 1000);
+    } else if (cdPauseRef.current) {
+      if (row.status === "awaiting_payment") resumeCountdown(row.cancel_last_decision ?? "resumed");
+      else if (row.cancel_last_decision === "accepted") backToSelectionAfterCancel();
+    }
+    if (row.cancel_last_at !== undefined && row.cancel_last_at !== lastDecisionAtRef.current) {
+      const firstRead = lastDecisionAtRef.current === undefined;
+      lastDecisionAtRef.current = row.cancel_last_at;
+      if (!firstRead && row.cancel_last_user_id === myId) {
+        if (row.cancel_last_decision === "declined") showDialog(t("countdown_declined_title"), t("countdown_declined_msg"));
+        else if (row.cancel_last_decision === "expired") showDialog(t("countdown_declined_title"), t("countdown_expired_msg"));
+      }
+    }
+  };
+  const applyCountdownRowRef = useRef(applyCountdownRow);
+  applyCountdownRowRef.current = applyCountdownRow;
+
+  // Host offline: after 60 s with no decision anyone's device asks the server
+  // to resume (expire_countdown_cancel checks the time itself).
+  useEffect(() => {
+    if (!cdPause || !id) return;
+    const timer = setTimeout(() => {
+      supabase.rpc("expire_countdown_cancel", { p_session_id: id }).then(({ data, error }) => {
+        if (error) {
+          console.log(`[session-lobby] expire cancel request failed: ${error.message}`);
+          return;
+        }
+        if ((data as { result?: string } | null)?.result === "expired") {
+          channelRef.current?.send({ type: "broadcast", event: "countdown_resume", payload: {} });
+          resumeCountdown("expired");
+        }
+      });
+    }, 61_000);
+    return () => clearTimeout(timer);
+  }, [cdPause, id, resumeCountdown]);
 
   // Countdown is host-triggered (see handleFinalize below)
 
@@ -629,11 +773,20 @@ export default function SessionLobbyScreen() {
           startFinalCountdown();
         }
       })
+      .on("broadcast", { event: "countdown_pause" }, ({ payload }) => {
+        // R5 — someone asked to cancel (the session row says the same; this is just faster).
+        const requesterId = payload?.requesterId as string | undefined;
+        if (requesterId) pauseCountdown(requesterId, (payload?.remainingMs as number | undefined) ?? FINAL_COUNTDOWN * 1000);
+      })
+      .on("broadcast", { event: "countdown_resume" }, () => {
+        resumeCountdown("host declined / no answer");
+      })
       .on("broadcast", { event: "countdown_cancel" }, () => {
         if (finalIntervalRef.current) {
           clearInterval(finalIntervalRef.current);
           finalIntervalRef.current = null;
         }
+        setPause(null);
         setFinalCountdown(null);
         setCountdownActive(false);
         countdownStarted.current = false;
@@ -838,7 +991,7 @@ export default function SessionLobbyScreen() {
     const fetchSessionStatus = async () => {
       const { data, error } = await supabase
         .from("sessions")
-        .select("status, receipt_data")
+        .select("status, receipt_data, countdown_remaining_ms, cancel_request_user_id, cancel_last_decision, cancel_last_user_id, cancel_last_at")
         .eq("id", id)
         .single();
       if (error) {
@@ -850,6 +1003,8 @@ export default function SessionLobbyScreen() {
         return;
       }
       lastLoggedFailure = null;
+      // R5 first: a paused countdown must not be started by the status below.
+      if (data) applyCountdownRowRef.current(data);
       handleSessionStatus(data?.status as string | undefined);
       handleReceiptData(data?.receipt_data);
     };
@@ -865,6 +1020,7 @@ export default function SessionLobbyScreen() {
         table: "sessions",
         filter: `id=eq.${id}`,
       }, (payload) => {
+        if (payload.new) applyCountdownRowRef.current(payload.new);
         handleSessionStatus(payload.new?.status as string | undefined);
         handleReceiptData(payload.new?.receipt_data);
       })
@@ -2257,9 +2413,22 @@ export default function SessionLobbyScreen() {
       <CountdownModal
         visible={finalCountdown !== null}
         countdown={finalCountdown}
-        participants={participants}
+        participants={visibleParticipants}
         currency={receipt?.currency}
-        onCancel={cancelFinalCountdown}
+        // R5: the host cancels outright (as before); anyone else asks the host.
+        onCancel={isCreator ? cancelFinalCountdown : requestCountdownCancel}
+        cancelLabel={isCreator ? undefined : t("countdown_request_cancel")}
+        pausedText={
+          !cdPause ? null
+            : isCreator ? t("countdown_wants_cancel").replace("{name}", nameOf(cdPause.requesterId))
+            : cdPause.requesterId === myId ? t("countdown_request_sent")
+            : t("countdown_waiting_host").replace("{name}", nameOf(cdPause.requesterId))
+        }
+        decision={
+          isCreator && cdPause
+            ? { onAccept: () => void decideCountdownCancel(true), onDecline: () => void decideCountdownCancel(false), busy: decisionBusy }
+            : null
+        }
       />
     </SafeAreaView>
   );

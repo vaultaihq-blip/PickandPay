@@ -10,6 +10,39 @@ import {
 } from "@/types";
 import { calculateSplit } from "@/utils/splitter";
 import { applySessionParticipantColors } from "@/constants/colors";
+import { isOfflineSessionId } from "@/constants/dev";
+import { fetchParticipantMeta, NEUTRAL_PARTICIPANT_COLOR, type ParticipantMeta } from "@/lib/sessionColors";
+
+// R4 — colours (and join order) as the server gave them, per session id.
+// Participants get them here, whichever screen built the session object.
+const metaBySession: Record<string, Record<string, ParticipantMeta>> = {};
+const metaInFlight = new Set<string>();
+const metaLastFetch: Record<string, number> = {};
+
+function withServerColors(session: Session): Session {
+  // Offline/dev sessions never reach the server: keep the local palette.
+  if (isOfflineSessionId(session.id)) {
+    return { ...session, participants: applySessionParticipantColors(session.id, session.participants) };
+  }
+  const meta = metaBySession[session.id];
+  return {
+    ...session,
+    participants: session.participants.map((p) => {
+      const m = meta?.[p.userId];
+      return {
+        ...p,
+        joinedAt: m?.joinedAt ?? p.joinedAt,
+        profile: { ...p.profile, color: m?.color ?? NEUTRAL_PARTICIPANT_COLOR },
+      };
+    }),
+  };
+}
+
+function missingMeta(session: Session): boolean {
+  if (isOfflineSessionId(session.id)) return false;
+  const meta = metaBySession[session.id];
+  return !meta || session.participants.some((p) => !meta[p.userId]);
+}
 
 interface SessionState {
   currentSession: Session | null;
@@ -47,7 +80,29 @@ interface SessionState {
   addReminder: (reminder: PaymentReminder) => void;
 }
 
-export const useSessionStore = create<SessionState>((set, get) => ({
+export const useSessionStore = create<SessionState>((set, get) => {
+  // Loads the server's colours for a session the store holds and re-applies
+  // them. Throttled: a participant whose row isn't readable yet doesn't make
+  // every store update refetch.
+  const ensureServerColors = (session: Session) => {
+    const id = session.id;
+    if (!missingMeta(session) || metaInFlight.has(id)) return;
+    if (Date.now() - (metaLastFetch[id] ?? 0) < 2000) return;
+    metaInFlight.add(id);
+    metaLastFetch[id] = Date.now();
+    void fetchParticipantMeta(id).then((meta) => {
+      metaInFlight.delete(id);
+      if (!meta) return;
+      metaBySession[id] = meta;
+      console.log(`[colors] session ${id}: ${Object.keys(meta).length} colour(s) from the server`);
+      const cur = get().currentSession;
+      if (cur?.id === id) set({ currentSession: withServerColors(cur) });
+      const viewing = get().viewingSession;
+      if (viewing?.id === id) set({ viewingSession: withServerColors(viewing) });
+    });
+  };
+
+  return {
   currentSession: null,
   splitResults: new Map(),
   isLoading: false,
@@ -86,10 +141,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         ...p,
         totalOwed: results.get(p.userId)?.amount ?? 0,
       }));
-      set({ viewingSession: { ...session, participants }, viewingSplitResults: results });
+      set({ viewingSession: withServerColors({ ...session, participants }), viewingSplitResults: results });
     } catch {
-      set({ viewingSession: session, viewingSplitResults: new Map() });
+      set({ viewingSession: withServerColors(session), viewingSplitResults: new Map() });
     }
+    ensureServerColors(session);
   },
 
   setSession: (session) => {
@@ -104,21 +160,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           : p;
       });
       set({
-        currentSession: {
+        currentSession: withServerColors({
           ...session,
           splitUserIds: session.splitUserIds ?? existing.splitUserIds,
-          participants: applySessionParticipantColors(session.id, mergedParticipants),
-        },
+          participants: mergedParticipants,
+        }),
       });
     } else {
-      set({
-        currentSession: {
-          ...session,
-          participants: applySessionParticipantColors(session.id, session.participants),
-        },
-      });
+      set({ currentSession: withServerColors(session) });
     }
     get().recalculateSplit();
+    ensureServerColors(session);
   },
 
   updateParticipant: (userId, updates) => {
@@ -138,12 +190,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       (p) => p.userId === participant.userId
     );
     if (existing) return;
-    const participants = applySessionParticipantColors(session.id, [
-      ...session.participants,
-      participant,
-    ]);
-    set({ currentSession: { ...session, participants } });
+    const updated = withServerColors({ ...session, participants: [...session.participants, participant] });
+    set({ currentSession: updated });
     get().recalculateSplit();
+    ensureServerColors(updated);
   },
 
   removeParticipant: (userId) => {
@@ -279,4 +329,5 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       ),
     });
   },
-}));
+  };
+});

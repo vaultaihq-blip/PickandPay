@@ -132,18 +132,28 @@ export default function WelcomeScreen() {
         }
       } else {
         const result = await signUpWithEmail(email, password);
+        console.log(
+          `[auth] sign-up result: error=${result.error?.message ?? "none"} user=${!!result.data?.user} session=${!!result.data?.session}`
+        );
         if (result.error) {
-          Alert.alert("Sign up failed", result.error.message || "An error occurred.");
+          // Not the confirmation pop-up: the form stays as it is so the user can fix it.
+          showDialog("Sign up failed", result.error.message || "An error occurred.");
           return;
         }
         if (result.data?.user && !result.data?.session) {
-          // After the confirmation message: back to Log in, email kept for
-          // when the link has been tapped, password cleared.
+          // C3-fix2 — the form goes to Log in right away (email kept for when
+          // the link has been tapped, password cleared), not from the pop-up's
+          // OK: the switch no longer depends on that callback running.
           const registered = email.trim();
+          setPassword("");
+          setShowPassword(false);
+          setEmail(registered);
+          setMode("login");
+          console.log("[auth] sign-up done → switching to Log In");
           showDialog(
             "Check Your Email",
-            `We sent a confirmation link to ${email}. Please check your inbox and tap the link to activate your account.`,
-            [{ text: "OK", onPress: () => { setPassword(""); setShowPassword(false); setEmail(registered); setMode("login"); } }]
+            `We sent a confirmation link to ${registered}. Please check your inbox and tap the link to activate your account.`,
+            [{ text: "OK", onPress: () => console.log(`[auth] confirmation pop-up closed (mode=login, email kept)`) }]
           );
           return;
         }

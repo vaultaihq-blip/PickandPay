@@ -26,6 +26,12 @@ interface CountdownModalProps {
   participants: SessionParticipant[];
   currency?: string;
   onCancel?: () => void;
+  /** Label of the cancel button: the host cancels, a participant asks (R5). */
+  cancelLabel?: string;
+  /** R5 — the countdown is paused by a cancel request; this line says why. */
+  pausedText?: string | null;
+  /** R5 — shown to the host while a request waits for their decision. */
+  decision?: { onAccept: () => void; onDecline: () => void; busy?: boolean } | null;
 }
 
 function LoadingBar({ index, color }: { index: number; color: string }) {
@@ -59,10 +65,14 @@ export function CountdownModal({
   countdown,
   participants,
   onCancel,
+  cancelLabel,
+  pausedText,
+  decision,
 }: CountdownModalProps) {
   const { t, language } = useI18nStore();
   void language;
-  const showCreditDeduction = countdown !== null && countdown <= 1;
+  const paused = !!pausedText;
+  const showCreditDeduction = !paused && countdown !== null && countdown <= 1;
 
   if (!visible || countdown === null) return null;
 
@@ -75,8 +85,8 @@ export function CountdownModal({
 
           {/* Countdown number */}
           <View style={styles.timerWrap}>
-            <Text style={[styles.timerNum, { color: Colors.primary }]}>{countdown}</Text>
-            <Text style={styles.timerLabel}>{t("countdown_seconds")}</Text>
+            <Text style={[styles.timerNum, { color: paused ? MUTED : Colors.primary }]}>{countdown}</Text>
+            <Text style={styles.timerLabel}>{paused ? t("countdown_paused") : t("countdown_seconds")}</Text>
           </View>
 
           {/* Participants with colored loading bars */}
@@ -117,10 +127,33 @@ export function CountdownModal({
             <Text style={styles.footer}>{t("countdown_credit_deducted")}</Text>
           </View>
 
-          {onCancel && (
-            <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} activeOpacity={0.8}>
-              <Text style={styles.cancelBtnText}>{t("countdown_cancel")}</Text>
-            </TouchableOpacity>
+          {paused && <Text style={styles.pausedText}>{pausedText}</Text>}
+
+          {decision ? (
+            <View style={styles.decisionRow}>
+              <TouchableOpacity
+                style={[styles.cancelBtn, styles.decisionBtn, decision.busy && { opacity: 0.5 }]}
+                onPress={decision.onDecline}
+                disabled={decision.busy}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.cancelBtnText}>{t("countdown_decline")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.cancelBtn, styles.decisionBtn, styles.acceptBtn, decision.busy && { opacity: 0.5 }]}
+                onPress={decision.onAccept}
+                disabled={decision.busy}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.cancelBtnText, styles.acceptBtnText]}>{t("countdown_accept")}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            onCancel && !paused && (
+              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} activeOpacity={0.8}>
+                <Text style={styles.cancelBtnText}>{cancelLabel ?? t("countdown_cancel")}</Text>
+              </TouchableOpacity>
+            )
           )}
         </View>
       </View>
@@ -247,5 +280,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: MUTED,
+  },
+  pausedText: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    color: TEXT,
+  },
+  decisionRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  decisionBtn: {
+    flex: 1,
+  },
+  acceptBtn: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  acceptBtnText: {
+    color: "#fff",
   },
 });

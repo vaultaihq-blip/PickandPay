@@ -32,6 +32,7 @@ import { CentAdjustment, ItemSelection, SessionParticipant, PaymentReminder } fr
 import { sendPushNotification } from "@/lib/notifications";
 import { toCents, fromCents } from "@/utils/validator";
 import { useI18nStore } from "@/store/i18nStore";
+import { orderParticipants } from "@/lib/sessionColors";
 
 const BG = "#0B0D10";
 const CARD = "#15181D";
@@ -147,12 +148,9 @@ export default function DashboardScreen() {
     // R1: once finalized, the bill is divided between the frozen set only.
     const frozen = session.splitUserIds ? new Set(session.splitUserIds) : null;
     const inSplit = frozen ? session.participants.filter((p) => frozen.has(p.userId)) : session.participants;
-    return [...inSplit].sort((a, b) => {
-      if (a.userId === profile?.id) return -1;
-      if (b.userId === profile?.id) return 1;
-      return b.totalOwed - a.totalOwed;
-    });
-  }, [session?.participants, session?.splitUserIds, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    // R4: host first, then me, then by arrival — the same order on every device.
+    return orderParticipants(inSplit, session.creatorId, profile?.id);
+  }, [session?.participants, session?.splitUserIds, session?.creatorId, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const headerDate = useMemo(() => {
     if (receipt?.date) {

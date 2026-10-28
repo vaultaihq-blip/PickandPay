@@ -146,6 +146,8 @@ export interface SessionParticipant {
   confirmedByCreator: boolean;
   tipContribution?: number;
   coveredByUserId?: string;
+  /** session_participants.created_at — R4 list order (set by the session store). */
+  joinedAt?: string;
 }
 
 export interface CentAdjustment {
