@@ -1435,7 +1435,7 @@ export default function SessionLobbyScreen() {
         const [result] = await expectRows<{
           status?: string;
           user_ids?: string[];
-          items?: { item_id: string; name: string; amount: number; names?: string[] }[];
+          items?: { item_id: string; name: string; amount: number; names?: string[]; missing_names?: string[] }[];
           split_user_ids?: string[];
           newly_charged?: number;
           refunded?: number;
@@ -1452,7 +1452,9 @@ export default function SessionLobbyScreen() {
           const lines = items.map((it) => {
             const price = receipt ? formatCurrency(it.amount, receipt.currency) : it.amount.toFixed(2);
             const who = (it.names ?? []).filter(Boolean).join(", ");
-            return `• ${it.name} — ${price}${who ? ` (${who})` : ""}`;
+            // present people in the sharing who still have to pick it
+            const missing = (it.missing_names ?? []).filter(Boolean).join(", ");
+            return `• ${it.name} — ${price}${who ? ` (${who})` : ""}${missing ? ` — ${t("lobby_unowned_missing")}${missing}` : ""}`;
           });
           showDialog(t("lobby_unowned_title"), `${t("lobby_unowned_msg")}\n\n${lines.join("\n")}`, [
             { text: t("cancel"), style: "cancel" },
