@@ -314,6 +314,30 @@ export default function DashboardScreen() {
     }
   };
 
+  // C.3 — everyone in the frozen split at once (host-only RPC, one
+  // transaction). true when the server confirmed it (or nothing was left).
+  const handleMarkAllPaid = async (): Promise<boolean> => {
+    if (!session || !isCreator) return false;
+    const ids = sortedParticipants.filter((p) => !p.paid).map((p) => p.userId);
+    if (ids.length === 0) return true;
+    const apply = (paid: boolean) => ids.forEach((uid) => (isReadOnly ? markViewingPaid(uid, paid) : markPaid(uid, paid)));
+    apply(true);
+    const isOffline = session.id.startsWith("session_") || session.id.startsWith("dev_session_");
+    if (isOffline) return true;
+    try {
+      const [res] = await expectRows<{ changed?: number; split?: number }>(
+        "dashboard: mark all paid",
+        supabase.rpc("set_all_participants_paid", { p_session_id: session.id, p_paid: true })
+      );
+      console.log(`[dashboard] marked all paid: ${res?.changed ?? "?"} changed of ${res?.split ?? "?"} in the split`);
+      return true;
+    } catch (err) {
+      apply(false);
+      showWriteError(err, t);
+      return false;
+    }
+  };
+
   const handleMarkCoveredBy = async (targetUserId: string, coveredByUserId: string | null) => {
     const isOffline = session?.id.startsWith("session_") || session?.id.startsWith("dev_session_");
     const previous = session?.participants.find((p) => p.userId === targetUserId)?.coveredByUserId ?? null;
@@ -398,11 +422,16 @@ export default function DashboardScreen() {
 
   const handleCloseBill = () => {
     if (!session) return;
-    const unpaid = session.participants.filter((p) => !p.paid);
+    // The people in the split (R1), the same set "mark all paid" marks.
+    const unpaid = sortedParticipants.filter((p) => !p.paid);
     if (unpaid.length === 0) { doClose(); return; }
     showDialog("⚠️ Unpaid participants",
       `${unpaid.length} ${unpaid.length === 1 ? "person hasn't" : "people haven't"} paid yet:\n\n${unpaid.map((p) => p.profile.name).join(", ")}\n\nClose bill anyway?`,
-      [{ text: t("cancel"), style: "cancel" }, { text: t("dashboard_close_anyway"), style: "destructive", onPress: doClose }]);
+      [
+        { text: t("cancel"), style: "cancel" },
+        { text: t("dashboard_mark_all_paid_close"), onPress: async () => { if (await handleMarkAllPaid()) await doClose(); } },
+        { text: t("dashboard_close_anyway"), style: "destructive", onPress: doClose },
+      ]);
   };
 
   const handleCloseMyPart = () => {
@@ -631,6 +660,12 @@ export default function DashboardScreen() {
               );
             })}
           </View>
+          {isCreator && sortedParticipants.some((p) => !p.paid) && (
+            <TouchableOpacity style={[styles.closeBillBtn, styles.markAllPaidBtn]} onPress={() => void handleMarkAllPaid()}>
+              <Ionicons name="checkmark-done-outline" size={18} color="#fff" />
+              <Text style={styles.closeBillText}>{t("dashboard_mark_all_paid")}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Bill Split Breakdown — dropdown accordion */}
@@ -1054,6 +1089,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   closeBillText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  markAllPaidBtn: { flex: 0, marginTop: 12, backgroundColor: C.success },
 
   // Modals
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)" },

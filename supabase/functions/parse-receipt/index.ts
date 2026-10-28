@@ -400,7 +400,48 @@ function checkImage(image: string): "IMAGE_TOO_LARGE" | "UNSUPPORTED_IMAGE" | nu
   return isJpeg || isPng || isWebp ? null : "UNSUPPORTED_IMAGE";
 }
 
+// C.3 — the credit is taken by ocr_gate (charged). Once the request has an
+// answer it is settled: kept for a reading (200) or an unreadable receipt
+// (422 — Vision/GPT were paid for), refunded for any other failure. A kept
+// scan with the host's session id pays that session (finalize_session then
+// does not charge the host again). See 20261028120000_c3_scan_charge_paid_all.sql.
+type ScanContext = {
+  admin?: ReturnType<typeof createClient>;
+  requestId?: string;
+  sessionId?: string;
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function settleScan(scan: ScanContext, response: Response): Promise<Response> {
+  if (!scan.admin || !scan.requestId) return response; // refused before any charge
+  const keep = response.status === 200 || response.status === 422;
+  const args = { p_request_id: scan.requestId, p_keep: keep, p_session_id: keep ? scan.sessionId ?? null : null };
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const { data, error } = await scan.admin.rpc("ocr_scan_settle", args);
+    if (!error) {
+      console.log(`[parse-receipt] scan ${scan.requestId} settled: ${JSON.stringify(data)} (http ${response.status})`);
+      return response;
+    }
+    console.error(`[parse-receipt] ocr_scan_settle failed (attempt ${attempt}):`, error.message);
+  }
+  // Left 'charged': the next ocr_gate of this user refunds it after 15 minutes.
+  return response;
+}
+
 serve(async (req: Request) => {
+  const scan: ScanContext = {};
+  let response: Response;
+  try {
+    response = await handleRequest(req, scan);
+  } catch (error) {
+    console.error("[parse-receipt] unhandled:", error instanceof Error ? error.message : "unknown error");
+    response = errorResponse("INTERNAL_ERROR", 500);
+  }
+  return await settleScan(scan, response);
+});
+
+async function handleRequest(req: Request, scan: ScanContext): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
   }
@@ -425,7 +466,7 @@ serve(async (req: Request) => {
     return errorResponse("IMAGE_TOO_LARGE", 413);
   }
 
-  let body: { image?: unknown; imageBase64?: unknown } | null;
+  let body: { image?: unknown; imageBase64?: unknown; sessionId?: unknown } | null;
   try {
     body = await req.json();
   } catch {
@@ -440,9 +481,9 @@ serve(async (req: Request) => {
     return errorResponse(imageProblem, imageProblem === "IMAGE_TOO_LARGE" ? 413 : 415);
   }
 
-  // One atomic call: credits (≥ 1 or pro, nothing deducted), the per-user
-  // count under an advisory lock, and the request record. See the migration
-  // 20261027160000_c1_ocr_gate_r3.sql.
+  // One atomic call: credits (≥ 1 or pro), the per-user count under an
+  // advisory lock, the request record and (C.3) the credit itself. See the
+  // migrations 20261027160000_c1_ocr_gate_r3.sql and 20261028120000_c3_*.
   const { data: gate, error: gateError } = await admin.rpc("ocr_gate", {
     p_user_id: user.id,
     p_max: RATE_LIMIT_MAX,
@@ -452,13 +493,17 @@ serve(async (req: Request) => {
     console.error("[parse-receipt] ocr_gate failed, refusing:", gateError?.message ?? "no result");
     return errorResponse("SCAN_UNAVAILABLE", 503);
   }
-  const gateResult = gate as { allowed?: boolean; reason?: string };
+  const gateResult = gate as { allowed?: boolean; reason?: string; request_id?: string };
   if (gateResult.allowed !== true) {
     if (gateResult.reason === "no_credits") return errorResponse("NO_CREDITS", 402);
     if (gateResult.reason === "rate_limited") return errorResponse("RATE_LIMITED", 429);
     console.error("[parse-receipt] ocr_gate refused with unknown reason:", gateResult.reason);
     return errorResponse("SCAN_UNAVAILABLE", 503);
   }
+  // Charged from here on: every answer below is settled by settleScan().
+  scan.admin = admin;
+  scan.requestId = gateResult.request_id;
+  if (typeof body?.sessionId === "string" && UUID_RE.test(body.sessionId)) scan.sessionId = body.sessionId;
 
   const startedAt = Date.now();
 
@@ -1143,4 +1188,4 @@ serve(async (req: Request) => {
     );
     return errorResponse("INTERNAL_ERROR", 500);
   }
-});
+}

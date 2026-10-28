@@ -405,7 +405,7 @@ export async function initializeUserCredits(): Promise<{
   return data as { freeCredits: number; alreadyGranted: boolean; isEstablished: boolean; balance: number };
 }
 
-export async function parseReceiptImage(image: string) {
+export async function parseReceiptImage(image: string, sessionId?: string) {
   const base64 = await uriToBase64(image);
 
   // Explicitly pass the current session token so the edge function can verify the JWT.
@@ -418,7 +418,8 @@ export async function parseReceiptImage(image: string) {
 
   const call = async () => {
     const { data, error } = await supabase.functions.invoke("parse-receipt", {
-      body: { imageBase64: base64 },
+      // C.3 — sessionId: the scan's credit pays this session when the scanner hosts it.
+      body: { imageBase64: base64, ...(sessionId && /^[0-9a-f-]{36}$/i.test(sessionId) ? { sessionId } : {}) },
       headers: authHeaders,
     });
     // A non-2xx answer arrives as FunctionsHttpError; its body carries the

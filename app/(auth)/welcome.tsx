@@ -24,6 +24,8 @@ import {
   signInWithEmail,
   signUpWithEmail,
 } from "@/lib/supabase";
+import { showDialog } from "@/lib/dialog";
+import { useI18nStore } from "@/store/i18nStore";
 
 const BG = "#000000";
 const PRIMARY = "#6366F1";
@@ -94,6 +96,7 @@ export default function WelcomeScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState<SocialAuthProvider | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const { t } = useI18nStore();
 
   const handleSocialLogin = async (provider: SocialAuthProvider) => {
     setLoading(true);
@@ -134,9 +137,13 @@ export default function WelcomeScreen() {
           return;
         }
         if (result.data?.user && !result.data?.session) {
-          Alert.alert(
+          // After the confirmation message: back to Log in, email kept for
+          // when the link has been tapped, password cleared.
+          const registered = email.trim();
+          showDialog(
             "Check Your Email",
-            `We sent a confirmation link to ${email}. Please check your inbox and tap the link to activate your account.`
+            `We sent a confirmation link to ${email}. Please check your inbox and tap the link to activate your account.`,
+            [{ text: "OK", onPress: () => { setPassword(""); setShowPassword(false); setEmail(registered); setMode("login"); } }]
           );
           return;
         }
@@ -295,7 +302,7 @@ export default function WelcomeScreen() {
           activeOpacity={0.85}
         >
           <Ionicons name="mail-outline" size={18} color="#fff" />
-          <Text style={styles.emailBtnText}>Continue with Email</Text>
+          <Text style={styles.emailBtnText}>{t("auth_continue_email")}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

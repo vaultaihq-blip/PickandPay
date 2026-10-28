@@ -31,7 +31,7 @@ import { Session, SessionParticipant, UserProfile } from "@/types";
 import { getColorForIndex } from "@/constants/colors";
 import { getAvatarEmoji } from "@/constants/avatars";
 import { useI18nStore } from "@/store/i18nStore";
-import { ensureCreditsForNewSession, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
+import { ensureCreditsForSession, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
 
 interface SessionPreview {
   id: string;
@@ -86,6 +86,10 @@ export default function JoinSessionScreen() {
       ]);
       return;
     }
+
+    // R3: at 0 credits only the QR of a session this user may return to is
+    // accepted (same dialog as Start split for any other one).
+    if (!(await ensureCreditsForSession(profile.id, sessionId, t))) return;
 
     setLoading(true);
     try {
@@ -220,8 +224,8 @@ export default function JoinSessionScreen() {
 
     // R3: someone still in the session (joined / selecting / items_picked) goes
     // back in at any balance; a first join or a return after leaving needs a
-    // credit, checked against the server's balance.
-    if ((!preview.isRejoin || preview.isLeftRejoin) && !(await ensureCreditsForNewSession(profile.id, t))) {
+    // credit (server balance) unless they already paid for this session.
+    if ((!preview.isRejoin || preview.isLeftRejoin) && !(await ensureCreditsForSession(profile.id, preview.id, t))) {
       return;
     }
 

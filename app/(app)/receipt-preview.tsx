@@ -16,10 +16,11 @@ import * as ImageManipulator from "expo-image-manipulator";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
 import { useAuthStore } from "@/store/authStore";
+import { useSessionStore } from "@/store/sessionStore";
 import { analyzeReceipt, createBlankReceipt } from "@/utils/parser";
 import { validateReceiptOCR } from "@/lib/receipt-validator";
 import { useI18nStore } from "@/store/i18nStore";
-import { ensureCreditsForNewSession, showNoCreditsDialog } from "@/lib/credits";
+import { ensureCreditsForNewSession, fetchFreshCredits, showNoCreditsDialog } from "@/lib/credits";
 
 const { width, height } = Dimensions.get("window");
 
@@ -75,7 +76,8 @@ export default function ReceiptPreviewScreen() {
 
     try {
       const { receipt: parsed } = await Promise.race([
-        analyzeReceipt(currentBase64),
+        // The session Start split created: the scan's credit pays it (C.3).
+        analyzeReceipt(currentBase64, useSessionStore.getState().currentSession?.id),
         timeoutPromise,
       ]);
 
@@ -139,6 +141,10 @@ export default function ReceiptPreviewScreen() {
         { text: t("scan_enter_manually"), onPress: () => { setReceipt(createBlankReceipt()); router.push("/(app)/review"); } },
         { text: t("scan_try_again"), style: "cancel" },
       ]);
+    } finally {
+      // C.3 — a scan spends the credit on the server (refunded if it failed
+      // on our side): show the real balance.
+      if (profile) void fetchFreshCredits(profile.id);
     }
   }, [currentBase64, currentUri, profile, t, setReceipt, setRawImageUri, setTip, setTipMode]);
 

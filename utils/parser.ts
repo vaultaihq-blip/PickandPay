@@ -78,7 +78,9 @@ interface ParseReceiptResponse {
 }
 
 export async function analyzeReceipt(
-  imageUri: string
+  imageUri: string,
+  // C.3 — the session this scan is for: the scan's credit pays it (host).
+  sessionId?: string
 ): Promise<{ receipt: ParsedReceipt; rawText: string }> {
   // A new scan means a new receipt identity — any canonical receipt/issues
   // left over from a previous scan must not survive into this one, even if
@@ -91,7 +93,7 @@ export async function analyzeReceipt(
   // load time, which would make this file (and its pure normalizeReceipt
   // bridge below) unloadable from a plain Node test environment.
   const { parseReceiptImage } = await import("@/lib/supabase");
-  const { data, error, code } = await parseReceiptImage(imageUri);
+  const { data, error, code } = await parseReceiptImage(imageUri, sessionId);
   if (error) {
     throw Object.assign(
       new Error(`OCR edge function failed: ${(error as { message?: string }).message ?? "Unknown error"}`),

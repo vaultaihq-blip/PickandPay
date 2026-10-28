@@ -28,7 +28,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { Session, SessionParticipant } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
-import { ensureCreditsForNewSession, fetchFreshCredits, hasActiveSessionRow, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
+import { ensureCreditsForNewSession, fetchFreshCredits, isNoCreditsError, returnableSessionIds, showNoCreditsDialog } from "@/lib/credits";
 import { DevPanel } from "@/components/dev/DevPanel";
 import { isDeveloperUser, DEV_PIN } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
@@ -367,11 +367,12 @@ export default function HomeScreen() {
   };
 
   const handleJoinQR = async () => {
-    // R3: at 0 credits the scanner only opens for someone already in a live
-    // session (they may be scanning back into it); the server refuses new ones.
+    // R3: at 0 credits the scanner only opens for someone with a session they
+    // may scan back into (join.tsx then accepts only that session's QR); the
+    // server refuses new ones.
     if (user) {
       const fresh = await fetchFreshCredits(user.id);
-      if (fresh && !fresh.isPro && fresh.credits < 1 && !(await hasActiveSessionRow(user.id))) {
+      if (fresh && !fresh.isPro && fresh.credits < 1 && (await returnableSessionIds()).length === 0) {
         console.log("[home] 0 credits and no active session — join blocked (R3)");
         showNoCreditsDialog(t);
         return;
