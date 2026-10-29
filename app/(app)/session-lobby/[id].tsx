@@ -495,18 +495,30 @@ export default function SessionLobbyScreen() {
   const applyCountdownRowRef = useRef(applyCountdownRow);
   applyCountdownRowRef.current = applyCountdownRow;
 
-  // R6 — host offline after finalize: the server moves the role to the first
-  // person still here (useHostTransfer). While the countdown is on screen the
-  // news goes into it — the new host decides a pending request right there.
+  // R6b — the host is away while someone needs them: the server moves the role
+  // to the first person still here (useHostTransfer). While the countdown is on
+  // screen the news goes into it — the new host decides a pending request right
+  // there. If everyone had pressed Done, the pop-up leads to finalize.
   const [hostNotice, setHostNotice] = useState<string | null>(null);
+  const handleFinalizeRef = useRef<() => void>(() => {});
   const handleHostChanged = (change: HostChange) => {
     setHostDisconnected(false);
     const tr = useI18nStore.getState().t;
     const msg = change.mine
       ? tr("host_now_you").replace("{name}", nameOf(change.fromId))
       : tr("host_now_other").replace("{name}", nameOf(change.toId));
-    if (useSessionStore.getState().countdownActive) setHostNotice(msg);
-    else showDialog(tr("host_changed_title"), msg);
+    if (useSessionStore.getState().countdownActive) {
+      setHostNotice(msg);
+    } else if (change.mine && change.waiting === "all_picked") {
+      showDialog(tr("host_changed_title"), `${msg}
+
+${tr("host_now_you_all_picked")}`, [
+        { text: tr("host_later_btn"), style: "cancel" },
+        { text: tr("host_finalize_btn"), onPress: () => handleFinalizeRef.current() },
+      ]);
+    } else {
+      showDialog(tr("host_changed_title"), msg);
+    }
   };
   const { checkHostNow } = useHostTransfer(isOfflineSessionId(String(id ?? "")) ? undefined : id, handleHostChanged);
   const checkHostNowRef = useRef(checkHostNow);
@@ -1401,7 +1413,43 @@ export default function SessionLobbyScreen() {
     }
   }, [clearSession, isCreator, myId, session, t]);
 
+  // R6b rule 3 — the host leaving on purpose hands the role over now (the
+  // server picks who). Nobody else in the session: it ends, as before.
+  const handOverAndLeave = useCallback(async () => {
+    if (!session || isOfflineSessionId(session.id)) return closeConfirmedSession();
+    const leave = () => {
+      clearSession();
+      router.replace("/(app)");
+    };
+    try {
+      const [res] = await expectRows<{ result?: string; host_id?: string; to_user_id?: string }>(
+        "lobby: host leaves (leave_as_host)",
+        supabase.rpc("leave_as_host", { p_session_id: session.id })
+      );
+      if (res?.result === "alone") {
+        console.log("[host] leave_as_host: nobody else here — ending the session");
+        return closeConfirmedSession();
+      }
+      if (res?.result !== "transferred" || res.host_id !== res.to_user_id) {
+        throw new Error(`leave_as_host: ${res?.result} (host ${res?.host_id})`);
+      }
+      console.log(`[host] transferred from ${myId} to ${res.to_user_id} (host_left)`);
+      leave();
+    } catch (err) {
+      showLeaveWriteError(err, t, leave);
+    }
+  }, [clearSession, closeConfirmedSession, myId, session, t]);
+
   const confirmExitSession = useCallback(() => {
+    const othersHere = !!session?.participants.some((p) => p.userId !== myId);
+    if (isCreator && othersHere) {
+      showDialog(t("lobby_host_exit_title"), t("lobby_host_exit_msg"), [
+        { text: t("lobby_stay"), style: "cancel" },
+        { text: t("lobby_host_handover_btn"), onPress: () => void handOverAndLeave() },
+        { text: t("lobby_end_session"), style: "destructive", onPress: closeConfirmedSession },
+      ]);
+      return;
+    }
     showDialog(
       isCreator ? t("lobby_confirm_end_title") : t("lobby_confirm_leave_title"),
       isCreator
@@ -1416,7 +1464,7 @@ export default function SessionLobbyScreen() {
         },
       ]
     );
-  }, [closeConfirmedSession, isCreator, t]);
+  }, [closeConfirmedSession, handOverAndLeave, isCreator, myId, session?.participants, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1669,6 +1717,7 @@ export default function SessionLobbyScreen() {
     channelRef.current?.send({ type: "broadcast", event: "countdown_start", payload: {} });
     startFinalCountdown();
   }, [id, myId, participants, receipt, startFinalCountdown, syncSelectionsFromDB, t]);
+  handleFinalizeRef.current = () => void handleFinalize();
 
   const handleTakeOverAsHost = useCallback(async () => {
     if (!HOST_TAKEOVER_ENABLED) return; // FIX 49 — see the flag's comment

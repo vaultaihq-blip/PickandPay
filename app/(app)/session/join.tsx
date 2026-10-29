@@ -1,6 +1,7 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   BackHandler,
+  Platform,
   View,
   Text,
   TouchableOpacity,
@@ -18,7 +19,7 @@ const JOIN_THEME = {
   secondary: "#8B8FA3",
   muted: "#6B7280",
 };
-import { router, Stack } from "expo-router";
+import { router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { QRScanner } from "@/components/session/QRScanner";
@@ -32,14 +33,42 @@ import { Session, SessionParticipant, UserProfile } from "@/types";
 import { getColorForIndex } from "@/constants/colors";
 import { getAvatarEmoji } from "@/constants/avatars";
 import { useI18nStore } from "@/store/i18nStore";
-import { ensureCreditsForSession, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
+import { fetchFreshCredits, isNoCreditsError } from "@/lib/credits";
 
-interface SessionPreview {
+// R7 — what join_preview answers. Before joining only the host's name and the
+// number of people are shown: nothing of the bill.
+type EntryKind = "rejoin" | "join" | "no_credits" | "closed" | "full" | "not_found" | "invalid";
+interface JoinEntry {
+  kind: EntryKind;
   id: string;
   hostName: string;
-  createdAt: string;
-  isRejoin: boolean;
-  isLeftRejoin: boolean;
+  people: number;
+  maxPeople: number;
+  myStatus: string | null;
+}
+interface PreviewRow {
+  result?: string;
+  host_name?: string | null;
+  people?: number;
+  max_people?: number;
+  my_status?: string | null;
+}
+
+const isSessionFullError = (err: any) => err?.code === "PP409" || /SESSION_FULL/.test(String(err?.message ?? ""));
+
+const toEntry = (sessionId: string, row: PreviewRow, kind?: EntryKind): JoinEntry => ({
+  kind: kind ?? ((row.result ?? "not_found") as EntryKind),
+  id: sessionId,
+  hostName: row.host_name ?? "Host",
+  people: row.people ?? 0,
+  maxPeople: row.max_people ?? 26,
+  myStatus: row.my_status ?? null,
+});
+
+async function readPreview(sessionId: string): Promise<PreviewRow> {
+  const { data, error } = await withTimeout("join: join_preview", supabase.rpc("join_preview", { p_session_id: sessionId }));
+  if (error) throw error;
+  return (data ?? {}) as PreviewRow;
 }
 
 // Busca perfis reais de uma lista de user IDs
@@ -71,8 +100,11 @@ export default function JoinSessionScreen() {
   const { setSession } = useSessionStore();
   const { t, language } = useI18nStore();
   void language;
+  const { sessionId: linkSessionId } = useLocalSearchParams<{ sessionId?: string }>();
   const [loading, setLoading] = useState(false);
-  const [preview, setPreview] = useState<SessionPreview | null>(null);
+  const [preview, setPreview] = useState<JoinEntry | null>(null);
+  // Set when Buy credits opens the store: back on this screen, ask again.
+  const recheckAfterPurchase = useRef<string | null>(null);
 
   const textColor = JOIN_THEME.text;
   const mutedColor = JOIN_THEME.secondary;
@@ -88,112 +120,78 @@ export default function JoinSessionScreen() {
       return;
     }
 
-    // R3: at 0 credits only the QR of a session this user may return to is
-    // accepted (same dialog as Start split for any other one).
-    if (!(await ensureCreditsForSession(profile.id, sessionId, t))) return;
-
     setLoading(true);
     try {
-      // Inserir participante PRIMEIRO. (session_id, user_id) é único na BD:
-      // 23505 = a linha já existe e é reaproveitada (ver abaixo).
-      console.log("[join] Inserting pending participant record...");
-      const { error: participantError } = await withTimeout("join: insert pending row", supabase
-        .from("session_participants")
-        .insert({ session_id: sessionId, user_id: profile.id, role: "participant", status: "pending" }));
+      // R7: the server says which entry screen this is (the QR opens at any balance).
+      const row = await readPreview(sessionId);
+      const kind = (row.result ?? "not_found") as EntryKind;
+      console.log(`[join] join_preview: ${kind} (my status ${row.my_status ?? "none"}, ${row.people ?? 0} people)`);
 
-      let isRejoin = false;
-      let isLeftRejoin = false;
-      if (participantError && isNoCreditsError(participantError)) {
-        // R3: the server refuses a new participant row at 0 credits.
-        console.log("[join] 0 credits — server refused the pending row (R3)");
-        showNoCreditsDialog(t);
-        return;
-      } else if (participantError && participantError.code !== "23505") {
-        // Without this row RLS hides the session, so nothing below can work.
-        console.error("[join] Participant insert failed:", participantError.code, participantError.message);
-        throw new Error(t("join_error_load"));
-      } else if (participantError?.code === "23505") {
-        // Already a participant — check if this is a rejoin (previously joined/left)
-        const { data: existingRow } = await supabase
-          .from("session_participants")
-          .select("status")
-          .eq("session_id", sessionId)
-          .eq("user_id", profile.id)
-          .single();
-        const existingStatus = existingRow?.status as string | undefined;
-        console.log(`[join] row already exists for this session: status=${existingStatus ?? "not visible"}`);
-        isRejoin = existingStatus === "joined" || existingStatus === "left" ||
-          existingStatus === "selecting" || existingStatus === "items_picked";
-        isLeftRejoin = existingStatus === "left";
-        if (existingStatus === "cancelled") {
-          // Cancelled an earlier scan: same row goes back to pending, and this is
-          // a first join again (the host's lobby shows "joining" from this UPDATE).
+      if (kind === "join") {
+        // The host's lobby shows "joining" from this row. (session_id, user_id)
+        // is unique: someone who cancelled or left before paying reuses theirs.
+        if (row.my_status === "cancelled" || row.my_status === "left") {
           await expectRows(
-            "join: cancelled → pending",
+            `join: ${row.my_status} → pending`,
             supabase
               .from("session_participants")
               .update({ status: "pending" })
               .eq("session_id", sessionId)
               .eq("user_id", profile.id)
-              .eq("status", "cancelled")
+              .eq("status", row.my_status)
               .select("id")
           );
-          console.log("[join] Joining again after cancel (row reused, pending)");
+          console.log(`[join] Joining again after ${row.my_status} (row reused, pending)`);
         } else {
-          console.log("[join]", isRejoin ? (isLeftRejoin ? "Rejoining after left" : "Rejoining session") : "Already pending");
-        }
-      } else {
-        console.log("[join] Participant inserted (pending)");
-      }
-
-      // Agora carrega a sessão — RLS permite porque o user é participante
-      console.log("[join] Loading session...");
-      const { data: sessionData, error } = await supabase
-        .from("sessions")
-        .select("id, host_id, created_at")
-        .eq("id", sessionId)
-        .single();
-
-      if (error) {
-        // Best-effort cleanup of our pending row; the load error is what the user sees.
-        await expectRows(
-          "join: cancel pending row after failed load",
-          supabase
+          const { error: insertError } = await withTimeout("join: insert pending row", supabase
             .from("session_participants")
-            .update({ status: "cancelled" })
-            .eq("session_id", sessionId)
-            .eq("user_id", profile.id)
-            .eq("status", "pending")
-            .select("id")
-        ).catch(() => {});
-        if (error.code === "PGRST116") {
-          throw new Error("Session not found. Check that the RLS policy was updated in Supabase.");
+            .insert({ session_id: sessionId, user_id: profile.id, role: "participant", status: "pending" }));
+          if (insertError) throw insertError;
+          console.log("[join] Participant inserted (pending)");
         }
-        throw error;
       }
-
-      // Busca o nome do host
-      const { data: hostProfile } = await supabase
-        .from("profiles")
-        .select("name")
-        .eq("id", sessionData.host_id)
-        .single();
-
-      setPreview({
-        id: sessionId,
-        hostName: hostProfile?.name ?? "Host",
-        createdAt: sessionData.created_at,
-        isRejoin,
-        isLeftRejoin,
-      });
+      setPreview(toEntry(sessionId, row, kind));
     } catch (err: any) {
+      // The server still decides: balance or room changed after the preview.
+      if (isNoCreditsError(err) || isSessionFullError(err)) {
+        console.log(`[join] server refused the pending row: ${err?.code} ${err?.message}`);
+        const kind: EntryKind = isNoCreditsError(err) ? "no_credits" : "full";
+        const row = await readPreview(sessionId).catch(() => ({} as PreviewRow));
+        setPreview(toEntry(sessionId, row, kind));
+        return;
+      }
       console.error("[join] fetchSessionPreview error:", err);
-      if (isNoCreditsError(err)) showNoCreditsDialog(t);
-      else if (err instanceof WriteError) showWriteError(err, t);
-      else showDialog(t("error"), err?.message ?? t("join_error_load"));
+      if (err instanceof WriteError) showWriteError(err, t);
+      else showDialog(t("error"), `${t("join_error_load")}\n\n${err?.message ?? ""}`.trim());
     } finally {
       setLoading(false);
     }
+  };
+
+  // A link (pickandpay://session/<id>) lands here with the id: no scan needed.
+  const openedLink = useRef(false);
+  useEffect(() => {
+    if (!linkSessionId || openedLink.current || !profile) return;
+    openedLink.current = true;
+    void fetchSessionPreview(String(linkSessionId));
+  }, [linkSessionId, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Back from the store: the same entry screen again, without scanning the QR.
+  useFocusEffect(
+    useCallback(() => {
+      const sid = recheckAfterPurchase.current;
+      if (!sid || !profile) return;
+      recheckAfterPurchase.current = null;
+      console.log("[join] back from buying credits — asking the server again");
+      void fetchFreshCredits(profile.id);
+      void fetchSessionPreview(sid);
+    }, [profile?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const handleBuyCredits = () => {
+    if (!preview) return;
+    recheckAfterPurchase.current = preview.id;
+    router.push("/(app)/pricing");
   };
 
   const handleCancel = async () => {
@@ -201,7 +199,7 @@ export default function JoinSessionScreen() {
     // The row is marked cancelled, not deleted: Realtime does not deliver a
     // DELETE to a filtered subscription, so the host's lobby never heard of it
     // and kept showing "joining". The UPDATE reaches it like any other change.
-    if (preview && profile && !preview.isRejoin) {
+    if (preview && profile && (preview.kind === "join" || (preview.kind === "rejoin" && preview.myStatus === "pending"))) {
       try {
         await expectRows(
           "join: cancel (pending → cancelled)",
@@ -229,7 +227,7 @@ export default function JoinSessionScreen() {
   const handleCancelRef = useRef(handleCancel);
   handleCancelRef.current = handleCancel;
   useEffect(() => {
-    if (!preview) return;
+    if (!preview || (preview.kind !== "join" && preview.kind !== "rejoin")) return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
       console.log("[join] Back pressed on the confirmation screen — same as Cancel");
       void handleCancelRef.current();
@@ -241,12 +239,8 @@ export default function JoinSessionScreen() {
   const confirmJoin = async () => {
     if (!preview || !profile) return;
 
-    // R3: someone still in the session (joined / selecting / items_picked) goes
-    // back in at any balance; a first join or a return after leaving needs a
-    // credit (server balance) unless they already paid for this session.
-    if ((!preview.isRejoin || preview.isLeftRejoin) && !(await ensureCreditsForSession(profile.id, preview.id, t))) {
-      return;
-    }
+    if (preview.kind !== "join" && preview.kind !== "rejoin") return;
+    // R7: join_preview already decided; the server checks again on the write.
 
     setLoading(true);
     try {
@@ -330,7 +324,7 @@ export default function JoinSessionScreen() {
       router.replace(`/(app)/session-lobby/${sessionId}`);
     } catch (err: any) {
       console.error("[join] confirmJoin error:", err);
-      if (isNoCreditsError(err)) showNoCreditsDialog(t);
+      if (isNoCreditsError(err)) void fetchSessionPreview(preview.id);   // shows the no-credits screen
       else if (err instanceof WriteError) showWriteError(err, t);
       else showDialog(t("error"), t("join_error_join"));
     } finally {
@@ -343,7 +337,8 @@ export default function JoinSessionScreen() {
     if (sessionId) {
       fetchSessionPreview(sessionId);
     } else {
-      showDialog(t("join_invalid_qr_title"), t("join_invalid_qr_msg"));
+      console.log("[join] QR is not a Pick&Pay session");
+      setPreview(toEntry("", {}, "invalid"));
     }
   };
 
@@ -356,13 +351,64 @@ export default function JoinSessionScreen() {
     );
   }
 
+  if (preview && preview.kind !== "join" && preview.kind !== "rejoin") {
+    // These stay on screen until the person chooses what to do.
+    const msg: Record<Exclude<EntryKind, "join" | "rejoin">, { icon: keyof typeof Ionicons.glyphMap; title: string; body: string }> = {
+      no_credits: {
+        icon: "wallet-outline",
+        title: t("join_no_credits_title"),
+        body: t("join_no_credits_host_msg").replace("{host}", preview.hostName) + (Platform.OS === "web" ? `\n\n${t("credits_install_app_msg")}` : ""),
+      },
+      closed: { icon: "checkmark-done-outline", title: t("join_closed_title"), body: t("join_closed_msg") },
+      full: { icon: "people-outline", title: t("join_full_title"), body: t("join_full_msg").replace("{max}", String(preview.maxPeople)) },
+      not_found: { icon: "help-circle-outline", title: t("join_not_found_title"), body: t("join_not_found_msg") },
+      invalid: { icon: "qr-code-outline", title: t("join_invalid_qr_title"), body: t("join_invalid_qr_msg") },
+    };
+    const m = msg[preview.kind];
+    const showHost = preview.kind === "no_credits" || preview.kind === "full" || preview.kind === "closed";
+    const canBuy = preview.kind === "no_credits" && Platform.OS !== "web";
+    const canRescan = preview.kind === "not_found" || preview.kind === "invalid" || preview.kind === "full";
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="light" backgroundColor={JOIN_THEME.background} translucent={false} />
+        <View style={styles.previewContainer}>
+          <Ionicons name={m.icon} size={40} color={Colors.primary} style={{ marginBottom: 8 }} />
+          <Text style={[styles.previewTitle, { color: textColor }]}>{m.title}</Text>
+          {showHost && (
+            <View style={[styles.previewCard, { backgroundColor: cardColor, borderColor }]}>
+              <View style={styles.previewRow}>
+                <Text style={[styles.previewLabel, { color: mutedColor }]}>{t("join_session_host")}</Text>
+                <Text style={[styles.previewValue, { color: textColor }]}>{preview.hostName}</Text>
+              </View>
+              <View style={[styles.previewDivider, { backgroundColor: borderColor }]} />
+              <View style={styles.previewRow}>
+                <Text style={[styles.previewLabel, { color: mutedColor }]}>{t("join_people")}</Text>
+                <Text style={[styles.previewValue, { color: textColor }]}>{preview.people}</Text>
+              </View>
+            </View>
+          )}
+          <Text style={[styles.messageBody, { color: mutedColor }]}>{m.body}</Text>
+          {canBuy && (
+            <TouchableOpacity style={styles.joinBtn} onPress={handleBuyCredits} activeOpacity={0.85}>
+              <Text style={styles.joinBtnText}>{t("credits_buy_btn")}</Text>
+            </TouchableOpacity>
+          )}
+          {canRescan && (
+            <TouchableOpacity style={styles.joinBtn} onPress={() => setPreview(null)} activeOpacity={0.85}>
+              <Text style={styles.joinBtnText}>{t("join_scan_another_btn")}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={[styles.cancelBtn, { borderColor }]} onPress={() => router.back()}>
+            <Text style={[styles.cancelBtnText, { color: mutedColor }]}>{preview.kind === "no_credits" ? t("cancel") : t("back")}</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (preview) {
-    const needsCredit = !profile?.isPro && !preview.isRejoin;
-    const dateStr = new Date(preview.createdAt).toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
+    const isRejoin = preview.kind === "rejoin";
+    const needsCredit = !profile?.isPro && !isRejoin;
 
     return (
       <SafeAreaView style={styles.safe}>
@@ -372,7 +418,7 @@ export default function JoinSessionScreen() {
         <View style={styles.previewContainer}>
           <Ionicons name="qr-code-outline" size={40} color={Colors.primary} style={{ marginBottom: 8 }} />
           <Text style={[styles.previewTitle, { color: textColor }]}>
-            {preview.isRejoin ? t("join_rejoin_title") : t("join_title")}
+            {isRejoin ? t("join_rejoin_title") : t("join_title")}
           </Text>
 
           <View style={[styles.previewCard, { backgroundColor: cardColor, borderColor }]}>
@@ -382,16 +428,16 @@ export default function JoinSessionScreen() {
             </View>
             <View style={[styles.previewDivider, { backgroundColor: borderColor }]} />
             <View style={styles.previewRow}>
-              <Text style={[styles.previewLabel, { color: mutedColor }]}>{t("join_date")}</Text>
-              <Text style={[styles.previewValue, { color: textColor }]}>{dateStr}</Text>
+              <Text style={[styles.previewLabel, { color: mutedColor }]}>{t("join_people")}</Text>
+              <Text style={[styles.previewValue, { color: textColor }]}>{preview.people}</Text>
             </View>
           </View>
 
-          {preview.isRejoin ? (
+          {isRejoin ? (
             <View style={[styles.creditNotice, { borderColor: Colors.primary + "44", backgroundColor: Colors.primary + "12" }]}>
               <Ionicons name="return-down-forward-outline" size={18} color={Colors.primary} />
               <Text style={[styles.creditNoticeTitle, { color: Colors.primary, flex: 1 }]}>
-                {preview.isLeftRejoin ? t("join_left_rejoin_notice") : t("join_rejoin_notice")}
+                {preview.myStatus === "left" ? t("join_left_rejoin_notice") : t("join_rejoin_notice")}
               </Text>
             </View>
           ) : needsCredit && (
@@ -406,7 +452,7 @@ export default function JoinSessionScreen() {
                   <Text style={{ fontWeight: "700" }}>{profile?.billCredits ?? 0}</Text>{" "}
                   {(profile?.billCredits ?? 0) !== 1 ? t("paywall_credits") : t("paywall_credit")} {t("home_credits_remaining")}.
                 </Text>
-                <TouchableOpacity onPress={() => router.push("/(app)/paywall")} activeOpacity={0.7}>
+                <TouchableOpacity onPress={handleBuyCredits} activeOpacity={0.7}>
                   <Text style={[styles.buyCreditsLink, { color: Colors.primary }]}>
                     {t("join_buy_credits_link")}
                   </Text>
@@ -416,7 +462,7 @@ export default function JoinSessionScreen() {
           )}
 
           <TouchableOpacity style={styles.joinBtn} onPress={confirmJoin} activeOpacity={0.85}>
-            <Text style={styles.joinBtnText}>{preview.isRejoin ? t("join_rejoin_btn") : t("join_btn")}</Text>
+            <Text style={styles.joinBtnText}>{isRejoin ? t("join_rejoin_btn") : t("join_btn")}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={[styles.cancelBtn, { borderColor }]} onPress={handleCancel}>
@@ -439,7 +485,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 16,
   },
-  previewTitle: { fontSize: 22, fontWeight: "700", marginBottom: 4 },
+  previewTitle: { fontSize: 22, fontWeight: "700", marginBottom: 4, textAlign: "center" },
+  messageBody: { fontSize: 15, lineHeight: 22, textAlign: "center" },
   previewCard: {
     width: "100%",
     borderRadius: 14,

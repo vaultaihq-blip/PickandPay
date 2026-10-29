@@ -28,7 +28,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { Session, SessionParticipant } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
-import { ensureCreditsForNewSession, fetchFreshCredits, isNoCreditsError, returnableSessionIds, showNoCreditsDialog } from "@/lib/credits";
+import { ensureCreditsForNewSession, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
 import { DevPanel } from "@/components/dev/DevPanel";
 import { isDeveloperUser, DEV_PIN } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
@@ -111,7 +111,9 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  // Query for rejoinable sessions when no active session is in store
+  // Query for rejoinable sessions when no active session is in store. R7: the
+  // same rule as the QR's "already part of it" (my_rejoinable_session on the
+  // server): current or original host, still in it, or left after paying.
   useEffect(() => {
     if (!profile?.id || currentSession) {
       setRejoinSession(null);
@@ -120,30 +122,16 @@ export default function HomeScreen() {
     let cancelled = false;
     const checkRejoin = async () => {
       try {
-        const { data } = await supabase
-          .from("session_participants")
-          .select("session_id, status, sessions!inner(id, status, receipt_data, created_at, host_id)")
-          .eq("user_id", profile.id)
-          .in("status", ["joined", "left"])
-          .neq("sessions.status", "closed")
-          .order("sessions.created_at", { foreignTable: "sessions", ascending: false })
-          .limit(1);
-
-        if (cancelled || !data || data.length === 0) { setRejoinSession(null); return; }
-        const row = data[0] as any;
-        const sessionRow = row.sessions;
-        const { data: hostProfile } = await supabase
-          .from("profiles")
-          .select("name")
-          .eq("id", sessionRow.host_id)
-          .single();
-        if (!cancelled) {
-          setRejoinSession({
-            id: row.session_id as string,
-            restaurant: sessionRow.receipt_data?.restaurant ?? null,
-            hostName: hostProfile?.name ?? "Host",
-          });
-        }
+        const { data, error } = await supabase.rpc("my_rejoinable_session");
+        if (error) console.log(`[home] rejoinable-session lookup failed: ${error.message}`);
+        const row = (data ?? null) as { session_id?: string; host_name?: string | null; restaurant?: string | null } | null;
+        if (cancelled) return;
+        if (!row?.session_id) { setRejoinSession(null); return; }
+        setRejoinSession({
+          id: row.session_id,
+          restaurant: row.restaurant ?? null,
+          hostName: row.host_name ?? "Host",
+        });
       } catch {
         // Non-critical — just don't show the banner
       }
@@ -366,18 +354,9 @@ export default function HomeScreen() {
     }
   };
 
-  const handleJoinQR = async () => {
-    // R3: at 0 credits the scanner only opens for someone with a session they
-    // may scan back into (join.tsx then accepts only that session's QR); the
-    // server refuses new ones.
-    if (user) {
-      const fresh = await fetchFreshCredits(user.id);
-      if (fresh && !fresh.isPro && fresh.credits < 1 && (await returnableSessionIds()).length === 0) {
-        console.log("[home] 0 credits and no active session — join blocked (R3)");
-        showNoCreditsDialog(t);
-        return;
-      }
-    }
+  const handleJoinQR = () => {
+    // R7: the scanner opens at any balance; after the scan the entry screen
+    // shows what the server says (rejoin, join, no credits, ended, full).
     router.push("/(app)/session/join");
   };
 

@@ -83,30 +83,3 @@ export async function ensureCreditsForNewSession(userId: string, t: T): Promise<
   showNoCreditsDialog(t);
   return false;
 }
-
-// R3 exception: the sessions this user may scan back into at 0 credits —
-// defined on the server (my_returnable_sessions): created in the last 24 h,
-// not closed, and still in progress with them in it, or already paid for by
-// them before they left. Old sessions left open do not count.
-export async function returnableSessionIds(): Promise<string[]> {
-  const { data, error } = await supabase.rpc("my_returnable_sessions");
-  if (error) {
-    console.log(`[credits] returnable-sessions lookup failed: ${error.message}`);
-    return [];
-  }
-  return Array.isArray(data) ? (data as string[]) : [];
-}
-
-// true = this user may enter this session now: pro, ≥ 1 credit, or the
-// session is one they may return to at 0. Otherwise shows the dialog.
-export async function ensureCreditsForSession(userId: string, sessionId: string, t: T): Promise<boolean> {
-  const fresh = await fetchFreshCredits(userId);
-  if (fresh === null || fresh.isPro || fresh.credits >= 1) return true;
-  if ((await returnableSessionIds()).includes(sessionId)) {
-    console.log("[credits] 0 credits — returning to a session I am still in (R3 exception)");
-    return true;
-  }
-  console.log("[credits] 0 credits — this session's QR is not one I can return to (R3)");
-  showNoCreditsDialog(t);
-  return false;
-}

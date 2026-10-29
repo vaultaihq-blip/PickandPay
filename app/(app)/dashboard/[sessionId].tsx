@@ -87,8 +87,8 @@ export default function DashboardScreen() {
   const receipt = session?.receipt;
   const isCreator = session?.creatorId === profile?.id;
 
-  // R6 — the payment phase goes on if the host drops off: the server hands the
-  // role to the first person still here; this device follows and says so.
+  // R6b — the payment phase goes on if the host is gone for 5 min: the server
+  // hands the role to the first person still here; this device follows and says so.
   useHostTransfer(
     isReadOnly || !session || session.id.startsWith("session_") || session.id.startsWith("dev_session_") ? undefined : session.id,
     (change) => {
@@ -96,7 +96,11 @@ export default function DashboardScreen() {
       const nameOf = (uid: string) => people.find((p) => p.userId === uid)?.profile.name ?? "User";
       showDialog(
         t("host_changed_title"),
-        change.mine ? t("host_now_you").replace("{name}", nameOf(change.fromId)) : t("host_now_other").replace("{name}", nameOf(change.toId))
+        change.mine
+          ? `${t("host_now_you").replace("{name}", nameOf(change.fromId))}
+
+${t("host_now_you_payments")}`
+          : t("host_now_other").replace("{name}", nameOf(change.toId))
       );
     }
   );
@@ -180,6 +184,19 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (!isReadOnly || !session) return;
     if (session.id.startsWith("session_") || session.id.startsWith("dev_session_")) return;
+    // The history keeps the host this device had at close; the host buttons
+    // follow the server's host_id (the role may have moved since — R6b).
+    supabase.from("sessions").select("host_id, original_host_id").eq("id", session.id).single().then(({ data, error }) => {
+      if (error || !data) {
+        console.log(`[dashboard] history: host lookup failed: ${error?.message ?? "no row"}`);
+        return;
+      }
+      const viewing = useSessionStore.getState().viewingSession;
+      if (viewing && viewing.id === session.id && (viewing.creatorId !== data.host_id || viewing.originalHostId !== (data.original_host_id ?? undefined))) {
+        console.log(`[dashboard] history: host is ${data.host_id} on the server (this device had ${viewing.creatorId})`);
+        setViewingSession({ ...viewing, creatorId: data.host_id, originalHostId: data.original_host_id ?? undefined });
+      }
+    });
     supabase.from("session_participants").select("user_id, paid").eq("session_id", session.id).then(({ data }) => {
       if (!data) return;
       for (const row of data) {
@@ -569,6 +586,14 @@ export default function DashboardScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        {/* R6b — the money changes hands outside the app; this screen only records it, and never expires. */}
+        {!isReadOnly && (
+          <View style={styles.payNote}>
+            <Ionicons name="information-circle-outline" size={16} color={MUTED} />
+            <Text style={styles.payNoteText}>{isCreator ? t("dashboard_pay_note_host") : t("dashboard_pay_note")}</Text>
+          </View>
+        )}
+
         {/* Total Bill Card */}
         <View style={styles.totalCard}>
           <Text style={styles.totalCardLabel}>Total bill</Text>
@@ -1152,6 +1177,17 @@ const styles = StyleSheet.create({
   centAlert: { flexDirection: "row", alignItems: "center", gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, marginTop: 4 },
   centAlertText: { fontSize: 13, fontWeight: "500" },
   centHelperText: { fontSize: 12, fontStyle: "italic", color: MUTED },
+  payNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: BORDER,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  payNoteText: { flex: 1, fontSize: 12, lineHeight: 17, color: MUTED },
   centActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   centBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: BORDER },
   centBtnText: { fontSize: 12, fontWeight: "600", color: TEXT },

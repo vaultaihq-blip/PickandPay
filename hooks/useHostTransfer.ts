@@ -5,24 +5,32 @@ import { isOfflineSessionId } from "@/constants/dev";
 import { useSessionStore } from "@/store/sessionStore";
 import { useAuthStore } from "@/store/authStore";
 
-// R6 — after the host finalizes, a host who drops off hands the role to the
-// first person of the split still here, by order of arrival. The server
-// decides (transfer_host, one transfer however many devices ask): every device
-// on the lobby or the dashboard sends a heartbeat, so the database knows who
-// is present. Realtime presence only lives in the app, where the server can't
-// check it — the lobby uses a presence leave just to ask sooner.
+// R6b — a host who drops off hands the role to the first person still here,
+// by order of arrival, but only when someone needs the host: 15 s of silence
+// while something waits for them (a cancel request, or everyone has pressed
+// Done), 5 min otherwise. The server decides both when (transfer_due, from the
+// session's own state) and who (transfer_host, one transfer however many
+// devices ask). Every device on the lobby or the dashboard sends a heartbeat —
+// also in the background, for as long as the OS lets the app run — so the
+// database knows who is present; any present device's heartbeat is what gets
+// the check run. Realtime presence only lives in the app, where the server
+// can't check it — the lobby uses a presence leave just to ask sooner.
 //
 // Every device also takes who is host from the heartbeat answer, so a host who
 // comes back reads that someone else has the role (never two hosts).
 
 export const HOST_HEARTBEAT_MS = 3000;
 // Mirrors host_away_tolerance_ms() on the server, which is what decides.
-export const HOST_AWAY_TOLERANCE_MS = 10_000;
+export const HOST_AWAY_TOLERANCE_MS = 15_000;
+
+/** What was waiting for the host when the role moved (from the server). */
+export type HostWaiting = "cancel_request" | "all_picked" | null;
 
 export interface HostChange {
   fromId: string;
   toId: string;
   mine: boolean;
+  waiting: HostWaiting;
 }
 
 interface HostRow {
@@ -32,6 +40,10 @@ interface HostRow {
   original_host_id?: string | null;
   host_away_ms?: number | null;
   tolerance_ms?: number;
+  transfer_due?: boolean;
+  transfer_reason?: string;
+  waiting?: HostWaiting;
+  reason?: string;
   from_user_id?: string;
   to_user_id?: string;
 }
@@ -60,7 +72,7 @@ export function useHostTransfer(sessionId: string | undefined, onHostChanged: (c
     if (fromId && fromId !== row.host_id) {
       const me = useAuthStore.getState().profile?.id;
       console.log(`[host] host is now ${row.host_id} (this device had ${fromId})`);
-      onChangeRef.current({ fromId, toId: row.host_id, mine: row.host_id === me });
+      onChangeRef.current({ fromId, toId: row.host_id, mine: row.host_id === me, waiting: row.waiting ?? null });
     }
   }, [sessionId]);
 
@@ -75,7 +87,7 @@ export function useHostTransfer(sessionId: string | undefined, onHostChanged: (c
       if (res?.result === "transferred") {
         // Verified: the row the server wrote names the person it chose.
         if (res.host_id !== res.to_user_id) throw new Error(`host_id ${res.host_id} ≠ chosen ${res.to_user_id}`);
-        console.log(`[host] transferred from ${res.from_user_id} to ${res.to_user_id}`);
+        console.log(`[host] transferred from ${res.from_user_id} to ${res.to_user_id} (${res.reason})`);
       } else {
         logOnce(`transfer:${res?.result}`, `[host] transfer_host: ${res?.result} (host ${res?.host_id})`);
       }
@@ -102,12 +114,10 @@ export function useHostTransfer(sessionId: string | undefined, onHostChanged: (c
       logOnce("hb-ok", `[host] heartbeat ok (host ${row.host_id}, status ${row.status})`);
       applyHost(row);
       const me = useAuthStore.getState().profile?.id;
-      const tolerance = row.tolerance_ms ?? HOST_AWAY_TOLERANCE_MS;
-      if (
-        row.status === "awaiting_payment" && row.host_id && row.host_id !== me &&
-        row.host_away_ms != null && row.host_away_ms >= tolerance
-      ) {
-        console.log(`[host] host ${row.host_id} silent for ${row.host_away_ms} ms — asking the server for a new host`);
+      if (row.transfer_due && row.host_id && row.host_id !== me) {
+        console.log(
+          `[host] host ${row.host_id} silent for ${row.host_away_ms} ms (${row.transfer_reason}, waiting: ${row.waiting ?? "nothing"}) — asking the server for a new host`
+        );
         await requestTransfer(row.host_id);
       }
     } finally {
