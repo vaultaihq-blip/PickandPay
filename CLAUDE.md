@@ -2,9 +2,12 @@
 
 ## Windows shell
 Nunca passar código em linha a um shell (node -e, python -c, shell: true).
-Escrever sempre o script para ficheiro e correr o ficheiro.
-O cmd.exe reinterpreta os argumentos e cria ficheiros-lixo com nomes de
-fragmentos de código.
+Escrever sempre o script para ficheiro e correr o ficheiro: fica registado,
+pode ser revisto e corrido outra vez.
+(Os ficheiros-lixo na raiz, com nomes de fragmentos de código, não vinham do
+node -e: vinham dos hooks do Ruflo, que corriam `cmd /c` pelo Git Bash e
+executavam como comandos o JSON de cada ferramenta. Foram retirados a
+2026-10-29, no C3-fix5.)
 
 ## Tarefas em segundo plano
 Nunca usar ScheduleWakeup para esperar por uma tarefa em segundo plano.
