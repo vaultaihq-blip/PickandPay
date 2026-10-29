@@ -10,6 +10,7 @@ import {
   InteractionManager,
 } from "react-native";
 import { showDialog } from "@/lib/dialog";
+import { useHostTransfer } from "@/hooks/useHostTransfer";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -85,6 +86,20 @@ export default function DashboardScreen() {
   const splitResults = isReadOnly ? viewingSplitResults : storeSplitResults;
   const receipt = session?.receipt;
   const isCreator = session?.creatorId === profile?.id;
+
+  // R6 — the payment phase goes on if the host drops off: the server hands the
+  // role to the first person still here; this device follows and says so.
+  useHostTransfer(
+    isReadOnly || !session || session.id.startsWith("session_") || session.id.startsWith("dev_session_") ? undefined : session.id,
+    (change) => {
+      const people = useSessionStore.getState().currentSession?.participants ?? [];
+      const nameOf = (uid: string) => people.find((p) => p.userId === uid)?.profile.name ?? "User";
+      showDialog(
+        t("host_changed_title"),
+        change.mine ? t("host_now_you").replace("{name}", nameOf(change.fromId)) : t("host_now_other").replace("{name}", nameOf(change.toId))
+      );
+    }
+  );
 
   // true when the frozen set changed
   const applySplitUserIds = (value: unknown): boolean => {
@@ -634,8 +649,13 @@ export default function DashboardScreen() {
                   {p.userId === session.creatorId && (
                     <View style={styles.hostBadge}><Text style={styles.hostBadgeText}>Host</Text></View>
                   )}
+                  {p.userId === session.originalHostId && p.userId !== session.creatorId && (
+                    <View style={[styles.hostBadge, styles.originalHostBadge]}>
+                      <Text style={[styles.hostBadgeText, styles.originalHostBadgeText]}>{t("session_original_host_badge")}</Text>
+                    </View>
+                  )}
                   <View style={styles.personCardContent}>
-                    <Avatar name={enriched.profile.name} avatarIcon={enriched.profile.avatarIcon} avatarUrl={enriched.profile.avatarUrl} color={enriched.profile.color} size={48} />
+                    <Avatar name={enriched.profile.name} avatarIcon={enriched.profile.avatarIcon} avatarUrl={enriched.profile.avatarUrl} color={enriched.profile.color} color2={enriched.profile.color2} size={48} />
                     <Text style={styles.personCardName} numberOfLines={1}>{enriched.profile.name}</Text>
                     <Text style={[styles.personCardAmount, { color: personColor }]}>
                       {formatCurrency(p.totalOwed, receipt.currency)}
@@ -712,7 +732,7 @@ export default function DashboardScreen() {
                               <>
                                 {users.slice(0, 4).map((u, i) => (
                                   <View key={u.userId} style={[styles.breakdownAvatarWrap, { marginLeft: i > 0 ? -8 : 0, zIndex: 10 - i }]}>
-                                    <Avatar name={u.profile.name} avatarIcon={u.profile.avatarIcon} avatarUrl={u.profile.avatarUrl} color={u.profile.color} size={26} />
+                                    <Avatar name={u.profile.name} avatarIcon={u.profile.avatarIcon} avatarUrl={u.profile.avatarUrl} color={u.profile.color} color2={u.profile.color2} size={26} />
                                   </View>
                                 ))}
                                 {users.length > 4 && (
@@ -769,7 +789,7 @@ export default function DashboardScreen() {
                   name={actionSheetP.profile.name}
                   avatarIcon={actionSheetP.profile.avatarIcon}
                   avatarUrl={actionSheetP.profile.avatarUrl}
-                  color={actionSheetP.profile.color}
+                  color={actionSheetP.profile.color} color2={actionSheetP.profile.color2}
                   size={36}
                 />
                 <View style={{ flex: 1 }}>
@@ -867,7 +887,7 @@ export default function DashboardScreen() {
           {viewItemsParticipant && (
             <>
               <View style={styles.itemsSheetHeader}>
-                <Avatar name={viewItemsParticipant.profile.name} avatarIcon={viewItemsParticipant.profile.avatarIcon} avatarUrl={viewItemsParticipant.profile.avatarUrl} color={viewItemsParticipant.profile.color} size={40} />
+                <Avatar name={viewItemsParticipant.profile.name} avatarIcon={viewItemsParticipant.profile.avatarIcon} avatarUrl={viewItemsParticipant.profile.avatarUrl} color={viewItemsParticipant.profile.color} color2={viewItemsParticipant.profile.color2} size={40} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.itemsSheetName}>{viewItemsParticipant.profile.name}</Text>
                   <Text style={[styles.itemsSheetAmount, { color: viewItemsParticipant.profile.color ?? C.primary }]}>
@@ -1043,6 +1063,8 @@ const styles = StyleSheet.create({
   overlayActionText: { fontSize: 12, fontWeight: "600", color: TEXT },
   hostBadge: { position: "absolute", top: 8, right: 8, backgroundColor: C.primary + "33", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   hostBadgeText: { color: C.primary, fontSize: 10, fontWeight: "700" },
+  originalHostBadge: { backgroundColor: "transparent", borderWidth: 1, borderColor: BORDER },
+  originalHostBadgeText: { color: MUTED },
   personCardName: { fontSize: 14, fontWeight: "600", color: TEXT, textAlign: "center" },
   personCardAmount: { fontSize: 20, fontWeight: "800" },
   paidBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },

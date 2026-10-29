@@ -120,6 +120,8 @@ export interface UserProfile {
   avatarUrl?: string;
   avatarIcon?: string;
   color: string;
+  // R4b — in a session, the right half of a two-colour circle (color is the left).
+  color2?: string;
   provider?: "google" | "apple" | "email" | "microsoft" | "facebook";
   billCredits: number;
   referredBy?: string;
@@ -166,7 +168,10 @@ export interface PaymentReminder {
 
 export interface Session {
   id: string;
+  // Who is host now (sessions.host_id) — R6 can move it after finalize.
   creatorId: string;
+  // Who created the session (sessions.original_host_id): keeps green (R4).
+  originalHostId?: string;
   receiptId: string;
   receipt?: ParsedReceipt;
   participants: SessionParticipant[];

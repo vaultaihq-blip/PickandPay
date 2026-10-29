@@ -5,21 +5,23 @@ import type { SessionParticipant } from "@/types";
 // (session_participants.color, given once when their row is created: the host
 // green, the others the first free colour of the palette). No device works a
 // colour out on its own, so everyone sees the same one, from the lobby to the
-// history.
+// history. R4b: from the 9th person on, color + color2 are the two halves of
+// their circle.
 
-// Shown while the colours load, and for anyone past the end of the palette
-// (the server leaves their colour NULL).
+// Shown while the colours load, and past the 26th person (the server leaves
+// their colour NULL).
 export const NEUTRAL_PARTICIPANT_COLOR = "#6B7280";
 
 export interface ParticipantMeta {
   color: string | null;
+  color2: string | null;
   joinedAt: string;
 }
 
 export async function fetchParticipantMeta(sessionId: string): Promise<Record<string, ParticipantMeta> | null> {
   const { data, error } = await supabase
     .from("session_participants")
-    .select("user_id, color, created_at")
+    .select("user_id, color, color2, created_at")
     .eq("session_id", sessionId);
   if (error) {
     console.log(`[colors] session colours read failed (${sessionId}): ${error.message}`);
@@ -27,7 +29,11 @@ export async function fetchParticipantMeta(sessionId: string): Promise<Record<st
   }
   const byUser: Record<string, ParticipantMeta> = {};
   for (const row of data ?? []) {
-    byUser[row.user_id as string] = { color: (row.color as string | null) ?? null, joinedAt: row.created_at as string };
+    byUser[row.user_id as string] = {
+      color: (row.color as string | null) ?? null,
+      color2: (row.color2 as string | null) ?? null,
+      joinedAt: row.created_at as string,
+    };
   }
   return byUser;
 }

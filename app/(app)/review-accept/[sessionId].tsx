@@ -380,7 +380,7 @@ export default function ReviewAcceptScreen() {
                     name={p.profile.name}
                     avatarIcon={p.profile.avatarIcon}
                     avatarUrl={p.profile.avatarUrl}
-                    color={p.profile.color}
+                    color={p.profile.color} color2={p.profile.color2}
                     size={36}
                   />
                   <View style={styles.acceptNameCol}>
@@ -491,7 +491,7 @@ export default function ReviewAcceptScreen() {
                         name={p.profile.name}
                         avatarIcon={p.profile.avatarIcon}
                         avatarUrl={p.profile.avatarUrl}
-                        color={p.profile.color}
+                        color={p.profile.color} color2={p.profile.color2}
                         size={28}
                       />
                       <Text

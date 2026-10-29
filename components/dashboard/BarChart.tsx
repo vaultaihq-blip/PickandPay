@@ -42,7 +42,7 @@ const Bar = memo(function Bar({ participant, currency, ratio, itemsAmount, tipAm
           name={participant.profile.name}
           avatarIcon={participant.profile.avatarIcon}
           avatarUrl={participant.profile.avatarUrl}
-          color={participant.profile.color}
+          color={participant.profile.color} color2={participant.profile.color2}
           size={24}
         />
         <Text style={[styles.personName, { color: textColor }]} numberOfLines={1}>
@@ -54,7 +54,9 @@ const Bar = memo(function Bar({ participant, currency, ratio, itemsAmount, tipAm
       </View>
       <View style={styles.barTrack}>
         <View style={[styles.barFill, { width: `${Math.max(4, Math.round(ratio * 100))}%` }]}>
-          <View style={[styles.barSegment, { flex: itemsFlex, backgroundColor: barColor }]} />
+          <View style={[styles.barSegment, styles.barSegmentSplit, { flex: itemsFlex, backgroundColor: barColor }]}>
+            {participant.profile.color2 && <View style={[styles.barHalf, { backgroundColor: participant.profile.color2 }]} />}
+          </View>
           {tipFlex > 0 && (
             <View style={[styles.barSegment, styles.barSegmentTip, { flex: tipFlex }]} />
           )}
@@ -168,6 +170,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: "hidden",
   },
+  barSegmentSplit: { justifyContent: "flex-end" },
+  barHalf: { height: "50%" },
   barFill: {
     height: "100%",
     flexDirection: "row",

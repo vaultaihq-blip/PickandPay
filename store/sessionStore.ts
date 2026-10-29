@@ -32,7 +32,7 @@ function withServerColors(session: Session): Session {
       return {
         ...p,
         joinedAt: m?.joinedAt ?? p.joinedAt,
-        profile: { ...p.profile, color: m?.color ?? NEUTRAL_PARTICIPANT_COLOR },
+        profile: { ...p.profile, color: m?.color ?? NEUTRAL_PARTICIPANT_COLOR, color2: m?.color2 ?? undefined },
       };
     }),
   };

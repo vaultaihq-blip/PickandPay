@@ -337,6 +337,7 @@ export default function SelectionScreen() {
             avatarIcon: p.profile.avatarIcon,
             avatarUrl: p.profile.avatarUrl,
             color,
+            color2: p.profile.color2,
             isMe,
           });
         }

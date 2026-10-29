@@ -32,9 +32,11 @@ interface CountdownModalProps {
   pausedText?: string | null;
   /** R5 — shown to the host while a request waits for their decision. */
   decision?: { onAccept: () => void; onDecline: () => void; busy?: boolean } | null;
+  /** R6 — the host changed while the countdown is on screen. */
+  notice?: string | null;
 }
 
-function LoadingBar({ index, color }: { index: number; color: string }) {
+function LoadingBar({ index, color, color2 }: { index: number; color: string; color2?: string }) {
   const progress = useSharedValue(0.12);
 
   useEffect(() => {
@@ -55,7 +57,10 @@ function LoadingBar({ index, color }: { index: number; color: string }) {
 
   return (
     <View style={styles.barTrack}>
-      <Animated.View style={[styles.barFill, animStyle, { backgroundColor: color }]} />
+      <Animated.View style={[styles.barFill, animStyle, { backgroundColor: color }]}>
+        {/* R4b: a two-colour person's bar is split top / bottom */}
+        {color2 && <View style={[styles.barHalf, { backgroundColor: color2 }]} />}
+      </Animated.View>
     </View>
   );
 }
@@ -68,6 +73,7 @@ export function CountdownModal({
   cancelLabel,
   pausedText,
   decision,
+  notice,
 }: CountdownModalProps) {
   const { t, language } = useI18nStore();
   void language;
@@ -100,6 +106,7 @@ export function CountdownModal({
                     avatarIcon={p.profile.avatarIcon}
                     avatarUrl={p.profile.avatarUrl}
                     color={p.profile.color}
+                    color2={p.profile.color2}
                     size={36}
                   />
                   <View style={styles.participantInfo}>
@@ -114,7 +121,7 @@ export function CountdownModal({
                         </View>
                       )}
                     </View>
-                    <LoadingBar index={index} color={barColor} />
+                    <LoadingBar index={index} color={barColor} color2={p.profile.color2} />
                   </View>
                 </View>
               );
@@ -127,6 +134,7 @@ export function CountdownModal({
             <Text style={styles.footer}>{t("countdown_credit_deducted")}</Text>
           </View>
 
+          {!!notice && <Text style={[styles.pausedText, styles.noticeText]}>{notice}</Text>}
           {paused && <Text style={styles.pausedText}>{pausedText}</Text>}
 
           {decision ? (
@@ -252,6 +260,11 @@ const styles = StyleSheet.create({
   barFill: {
     height: "100%",
     borderRadius: 8,
+    overflow: "hidden",
+    justifyContent: "flex-end",
+  },
+  barHalf: {
+    height: "50%",
   },
   footerRow: {
     flexDirection: "row",
@@ -286,6 +299,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
     color: TEXT,
+  },
+  noticeText: {
+    fontWeight: "700",
+    color: Colors.primary,
   },
   decisionRow: {
     flexDirection: "row",

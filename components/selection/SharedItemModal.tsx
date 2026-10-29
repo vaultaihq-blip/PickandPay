@@ -114,7 +114,7 @@ export function SharedItemModal({
                   name={participant.profile.name}
                   avatarIcon={participant.profile.avatarIcon}
                   avatarUrl={participant.profile.avatarUrl}
-                  color={participant.profile.color}
+                  color={participant.profile.color} color2={participant.profile.color2}
                   size={36}
                 />
                 <Text style={[styles.participantName, { color: textColor }]}>

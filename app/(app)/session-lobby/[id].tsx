@@ -22,6 +22,7 @@ import { useAuthStore } from "@/store/authStore";
 import { Avatar } from "@/components/ui/Avatar";
 import { CountdownModal } from "@/components/CountdownModal";
 import { useSessionMonitor } from "@/hooks/useSessionMonitor";
+import { HOST_AWAY_TOLERANCE_MS, useHostTransfer, type HostChange } from "@/hooks/useHostTransfer";
 import { formatCurrency } from "@/utils/formatter";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showLeaveWriteError, showWriteError, withTimeout } from "@/lib/checkedWrite";
@@ -494,24 +495,25 @@ export default function SessionLobbyScreen() {
   const applyCountdownRowRef = useRef(applyCountdownRow);
   applyCountdownRowRef.current = applyCountdownRow;
 
-  // Host offline: after 60 s with no decision anyone's device asks the server
-  // to resume (expire_countdown_cancel checks the time itself).
+  // R6 — host offline after finalize: the server moves the role to the first
+  // person still here (useHostTransfer). While the countdown is on screen the
+  // news goes into it — the new host decides a pending request right there.
+  const [hostNotice, setHostNotice] = useState<string | null>(null);
+  const handleHostChanged = (change: HostChange) => {
+    setHostDisconnected(false);
+    const tr = useI18nStore.getState().t;
+    const msg = change.mine
+      ? tr("host_now_you").replace("{name}", nameOf(change.fromId))
+      : tr("host_now_other").replace("{name}", nameOf(change.toId));
+    if (useSessionStore.getState().countdownActive) setHostNotice(msg);
+    else showDialog(tr("host_changed_title"), msg);
+  };
+  const { checkHostNow } = useHostTransfer(isOfflineSessionId(String(id ?? "")) ? undefined : id, handleHostChanged);
+  const checkHostNowRef = useRef(checkHostNow);
+  checkHostNowRef.current = checkHostNow;
   useEffect(() => {
-    if (!cdPause || !id) return;
-    const timer = setTimeout(() => {
-      supabase.rpc("expire_countdown_cancel", { p_session_id: id }).then(({ data, error }) => {
-        if (error) {
-          console.log(`[session-lobby] expire cancel request failed: ${error.message}`);
-          return;
-        }
-        if ((data as { result?: string } | null)?.result === "expired") {
-          channelRef.current?.send({ type: "broadcast", event: "countdown_resume", payload: {} });
-          resumeCountdown("expired");
-        }
-      });
-    }, 61_000);
-    return () => clearTimeout(timer);
-  }, [cdPause, id, resumeCountdown]);
+    if (finalCountdown === null) setHostNotice(null);
+  }, [finalCountdown]);
 
   // Countdown is host-triggered (see handleFinalize below)
 
@@ -613,6 +615,9 @@ export default function SessionLobbyScreen() {
           const hostId = useSessionStore.getState().currentSession?.creatorId;
 
           if (uid === hostId && !isCreatorRef.current) {
+            // R6: once the tolerance has passed, ask the server straight away
+            // (the heartbeat would also notice, up to 3 s later).
+            setTimeout(() => void checkHostNowRef.current(), HOST_AWAY_TOLERANCE_MS + 500);
             // Host disconnected — 30s grace before showing takeover prompt
             if (hostGraceTimerRef.current) clearTimeout(hostGraceTimerRef.current);
             hostGraceTimerRef.current = setTimeout(() => {
@@ -2022,6 +2027,7 @@ export default function SessionLobbyScreen() {
 
         {visibleParticipants.map((p) => {
           const participantColor = p.profile.color;
+          const participantColor2 = p.profile.color2;
           const isDone = selectionDone.has(p.userId);
           const isDisconnected = disconnectedAt.has(p.userId);
           const isLeft = leftParticipantIds.has(p.userId);
@@ -2050,7 +2056,7 @@ export default function SessionLobbyScreen() {
                 ((isDisconnected && !isTakenOver) || isLeft) && styles.participantFaded,
               ]}
             >
-              {/* Left accent bar */}
+              {/* Left accent bar (R4b: top half / bottom half for a two-colour circle) */}
               <View
                 style={[
                   styles.participantAccent,
@@ -2060,12 +2066,16 @@ export default function SessionLobbyScreen() {
                       : participantColor,
                   },
                 ]}
-              />
+              >
+                {participantColor2 && !((isDisconnected && !isTakenOver) || isLeft) && (
+                  <View style={[styles.participantAccentHalf, { backgroundColor: participantColor2 }]} />
+                )}
+              </View>
 
               {/* Avatar with colored ring */}
-              <View style={[styles.avatarColorRing, { borderColor: isLeft ? HOME_THEME.secondary : participantColor }]}>
+              <View style={[styles.avatarColorRing, { borderColor: isLeft ? HOME_THEME.secondary : participantColor2 ? "transparent" : participantColor }]}>
                 <Avatar
-                  key={`${p.userId}-${participantColor}`}
+                  key={`${p.userId}-${participantColor}-${participantColor2 ?? ""}`}
                   name={p.profile.name}
                   avatarIcon={
                     isMe
@@ -2079,6 +2089,7 @@ export default function SessionLobbyScreen() {
                       : (freshProfiles.get(p.userId)?.avatarUrl ?? http(p.profile.avatarUrl));
                   })()}
                   color={isLeft ? HOME_THEME.secondary : participantColor}
+                  color2={isLeft ? undefined : participantColor2}
                   size={36}
                 />
               </View>
@@ -2092,6 +2103,11 @@ export default function SessionLobbyScreen() {
                   {p.userId === session.creatorId && (
                     <View style={styles.hostBadge}>
                       <Text style={styles.hostBadgeText}>{t("session_host_badge")}</Text>
+                    </View>
+                  )}
+                  {p.userId === session.originalHostId && p.userId !== session.creatorId && (
+                    <View style={styles.originalHostBadge}>
+                      <Text style={styles.originalHostBadgeText}>{t("session_original_host_badge")}</Text>
                     </View>
                   )}
                 </View>
@@ -2365,7 +2381,7 @@ export default function SessionLobbyScreen() {
             <View style={[styles.viewSelSheet, { paddingBottom: insets.bottom + 16 }]}>
               <View style={styles.sheetHandle} />
               <View style={styles.viewSelHeader}>
-                <Avatar name={viewP.profile.name} avatarIcon={viewP.profile.avatarIcon} avatarUrl={viewP.profile.avatarUrl} color={viewP.profile.color} size={36} />
+                <Avatar name={viewP.profile.name} avatarIcon={viewP.profile.avatarIcon} avatarUrl={viewP.profile.avatarUrl} color={viewP.profile.color} color2={viewP.profile.color2} size={36} />
                 <Text style={styles.viewSelName}>{viewP.profile.name}</Text>
                 <TouchableOpacity onPress={() => setViewSelectionUserId(null)}>
                   <Ionicons name="close" size={22} color={HOME_THEME.secondary} />
@@ -2424,6 +2440,7 @@ export default function SessionLobbyScreen() {
             : cdPause.requesterId === myId ? t("countdown_request_sent")
             : t("countdown_waiting_host").replace("{name}", nameOf(cdPause.requesterId))
         }
+        notice={hostNotice}
         decision={
           isCreator && cdPause
             ? { onAccept: () => void decideCountdownCancel(true), onDecline: () => void decideCountdownCancel(false), busy: decisionBusy }
@@ -2530,7 +2547,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   participantFaded: { opacity: 0.6 },
-  participantAccent: { width: 3, alignSelf: "stretch" },
+  participantAccent: { width: 3, alignSelf: "stretch", justifyContent: "flex-end" },
+  participantAccentHalf: { height: "50%" },
   avatarColorRing: {
     width: 44,
     height: 44,
@@ -2550,6 +2568,14 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   hostBadgeText: { color: HOME_THEME.primary, fontSize: 10, fontWeight: "600" },
+  originalHostBadge: {
+    borderWidth: 1,
+    borderColor: HOME_THEME.border,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  originalHostBadgeText: { color: HOME_THEME.secondary, fontSize: 10, fontWeight: "600" },
   statusText: { fontSize: 12, fontWeight: "500", color: HOME_THEME.secondary },
   doneRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   actionCol: { gap: 6, alignItems: "flex-end" },

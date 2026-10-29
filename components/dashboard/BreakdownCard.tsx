@@ -91,7 +91,7 @@ export function BreakdownCard({
             name={profile.name}
             avatarIcon={profile.avatarIcon}
             avatarUrl={profile.avatarUrl}
-            color={profile.color}
+            color={profile.color} color2={profile.color2}
             size={42}
           />
 

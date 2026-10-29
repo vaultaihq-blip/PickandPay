@@ -20,6 +20,7 @@ export interface SelectorInfo {
   avatarIcon?: string;
   avatarUrl?: string;
   color: string;
+  color2?: string;
   isMe: boolean;
 }
 
@@ -192,6 +193,7 @@ export function SelectableItem({
                       avatarIcon={s.avatarIcon}
                       avatarUrl={s.avatarUrl}
                       color={s.color}
+                      color2={s.color2}
                       size={22}
                     />
                   </View>
