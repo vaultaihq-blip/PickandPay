@@ -14,6 +14,7 @@ import { handleDeepLink } from "@/lib/deeplink";
 import { initRevenueCat } from "@/lib/revenuecat";
 import { supabase, isAuthCallbackUrl } from "@/lib/supabase";
 import { DialogHost } from "@/components/ui/DialogHost";
+import { useLiveCredits } from "@/hooks/useLiveCredits";
 import "../global.css";
 
 export const ONBOARDING_KEY = "@pickandpay:onboardingComplete";
@@ -53,6 +54,7 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const pendingRef = useRef<string | null>(null);
   const initialRoute = useRef<string | null>(null);
+  useLiveCredits();
 
   useEffect(() => {
     initApp();

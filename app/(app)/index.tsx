@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useAuthStore } from "@/store/authStore";
@@ -27,7 +27,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { Session, SessionParticipant } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
-import { ensureCreditsForNewSession, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
+import { ensureCreditsForNewSession, fetchFreshCredits, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
 import { DevPanel } from "@/components/dev/DevPanel";
 import { isDeveloperUser, DEV_PIN } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
@@ -80,6 +80,12 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const { profile, user } = useAuthStore();
+  // The balance shown is the server's: read again each time home opens.
+  useFocusEffect(
+    useCallback(() => {
+      if (profile?.id) void fetchFreshCredits(profile.id);
+    }, [profile?.id])
+  );
   const { t, language } = useI18nStore();
   void language;
   const { clearReceipt } = useReceiptStore();

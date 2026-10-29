@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   InteractionManager,
@@ -11,13 +11,14 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { FREE_CREDITS_ON_SIGNUP } from "@/constants/packs";
 import { getOfferings, purchasePackage, restorePurchases } from "@/lib/revenuecat";
 import type { PurchasesPackage } from "react-native-purchases";
 import { useAuthStore } from "@/store/authStore";
+import { fetchFreshCredits } from "@/lib/credits";
 import { BottomNavBar } from "@/components/ui/BottomNavBar";
 import { showDialog } from "@/lib/dialog";
 
@@ -83,6 +84,12 @@ function packageToDisplay(pkg: PurchasesPackage): PackageDisplay {
 export default function PricingScreen() {
   const insets = useSafeAreaInsets();
   const { user, profile, loadProfile } = useAuthStore();
+  // The balance shown is the server's: read again each time this screen opens.
+  useFocusEffect(
+    useCallback(() => {
+      if (profile?.id) void fetchFreshCredits(profile.id);
+    }, [profile?.id])
+  );
   const [packages, setPackages] = useState<PurchasesPackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
