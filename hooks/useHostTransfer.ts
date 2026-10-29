@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { AppState } from "react-native";
 import { supabase } from "@/lib/supabase";
 import { expectRows } from "@/lib/checkedWrite";
 import { isOfflineSessionId } from "@/constants/dev";
@@ -13,7 +14,9 @@ import { useAuthStore } from "@/store/authStore";
 // devices ask). Every device on the lobby or the dashboard sends a heartbeat —
 // also in the background, for as long as the OS lets the app run — so the
 // database knows who is present; any present device's heartbeat is what gets
-// the check run. Realtime presence only lives in the app, where the server
+// the check run. Each heartbeat says whether the app is on screen (C3-fix5):
+// the 15 s rule counts time off screen — Android keeps sending with the phone
+// locked — and the 5 min rule counts time with no heartbeat at all. Realtime presence only lives in the app, where the server
 // can't check it — the lobby uses a presence leave just to ask sooner.
 //
 // Every device also takes who is host from the heartbeat answer, so a host who
@@ -39,6 +42,7 @@ interface HostRow {
   host_id?: string;
   original_host_id?: string | null;
   host_away_ms?: number | null;
+  host_off_screen_ms?: number | null;
   tolerance_ms?: number;
   transfer_due?: boolean;
   transfer_reason?: string;
@@ -104,19 +108,20 @@ export function useHostTransfer(sessionId: string | undefined, onHostChanged: (c
     if (!sessionId || beatInFlight.current) return;
     beatInFlight.current = true;
     try {
-      const { data, error } = await supabase.rpc("session_heartbeat", { p_session_id: sessionId });
+      const foreground = AppState.currentState === "active";
+      const { data, error } = await supabase.rpc("session_heartbeat", { p_session_id: sessionId, p_foreground: foreground });
       if (error) {
         logOnce(`hb-error:${error.code}`, `[host] heartbeat failed: ${error.code ?? "?"}: ${error.message}`);
         return;
       }
       const row = data as HostRow | null;
       if (!row) return;
-      logOnce("hb-ok", `[host] heartbeat ok (host ${row.host_id}, status ${row.status})`);
+      logOnce(`hb-ok:${foreground}`, `[host] heartbeat ok (host ${row.host_id}, status ${row.status}, ${foreground ? "on screen" : "background"})`);
       applyHost(row);
       const me = useAuthStore.getState().profile?.id;
       if (row.transfer_due && row.host_id && row.host_id !== me) {
         console.log(
-          `[host] host ${row.host_id} silent for ${row.host_away_ms} ms (${row.transfer_reason}, waiting: ${row.waiting ?? "nothing"}) — asking the server for a new host`
+          `[host] host ${row.host_id} silent for ${row.host_away_ms} ms, off screen for ${row.host_off_screen_ms} ms (${row.transfer_reason}, waiting: ${row.waiting ?? "nothing"}) — asking the server for a new host`
         );
         await requestTransfer(row.host_id);
       }
@@ -129,7 +134,14 @@ export function useHostTransfer(sessionId: string | undefined, onHostChanged: (c
     if (!sessionId || isOfflineSessionId(sessionId)) return;
     void beat();
     const timer = setInterval(() => void beat(), HOST_HEARTBEAT_MS);
-    return () => clearInterval(timer);
+    // Back on screen: say so now, not up to 3 s later.
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void beat();
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
   }, [sessionId, beat]);
 
   return { checkHostNow: beat };
