@@ -14,6 +14,7 @@ import {
   Platform,
 } from "react-native";
 import { showDialog } from "@/lib/dialog";
+import { endSession, showEndSessionError } from "@/lib/endSession";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
@@ -1428,13 +1429,7 @@ ${tr("host_now_you_all_picked")}`, [
     };
     try {
       if (isCreator && !isOfflineSession) {
-        console.log(`[session-lobby] host ends session ${session.id}`);
-        const [row] = await expectRows<{ id: string; status: string }>(
-          "lobby: host ends session (closed)",
-          supabase.from("sessions").update({ status: "closed" }).eq("id", session.id).select("id, status")
-        );
-        if (row?.status !== "closed") throw new Error(`session ${session.id} is ${row?.status ?? "unknown"}, not closed`);
-        console.log(`[session-lobby] session ${session.id} closed (verified)`);
+        await endSession("lobby: host ends session", session.id);
       } else if (!isCreator && !isOfflineSession && myId) {
         await expectRows(
           "lobby: participant leaves (left)",
@@ -1450,8 +1445,7 @@ ${tr("host_now_you_all_picked")}`, [
     } catch (err) {
       if (isCreator) {
         // The host stays in the lobby: the session is still open on the server.
-        console.log(`[session-lobby] ending session failed: ${err instanceof Error ? err.message : String(err)}`);
-        showDialog(t("error"), `${t("lobby_end_failed")}\n\n${err instanceof Error ? err.message : String(err)}`);
+        showEndSessionError(err, t);
       } else {
         showLeaveWriteError(err, t, leave);
       }

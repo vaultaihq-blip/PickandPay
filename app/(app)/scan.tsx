@@ -18,10 +18,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
 import { useSessionStore } from "@/store/sessionStore";
-import { supabase } from "@/lib/supabase";
 import { createBlankReceipt } from "@/utils/parser";
 import { useI18nStore } from "@/store/i18nStore";
 import { showDialog } from "@/lib/dialog";
+import { endSession, showEndSessionError } from "@/lib/endSession";
 
 type ScanMode = "camera" | "upload" | "manual";
 
@@ -58,16 +58,17 @@ export default function ScanScreen() {
       return;
     }
     const isOfflineSession = session.id.startsWith("session_") || session.id.startsWith("dev_session_");
+    // D.5 — local state goes only once the server confirms the session is closed.
     try {
-      if (!isOfflineSession) {
-        await supabase.from("sessions").update({ status: "closed" }).eq("id", session.id);
-      }
-    } finally {
-      clearReceipt();
-      clearSession();
-      router.replace("/(app)");
+      if (!isOfflineSession) await endSession("scan: host ends session", session.id);
+    } catch (err) {
+      showEndSessionError(err, t);
+      return;
     }
-  }, [clearReceipt, clearSession]);
+    clearReceipt();
+    clearSession();
+    router.replace("/(app)");
+  }, [clearReceipt, clearSession, t]);
 
   const handleBack = useCallback(() => {
     if (!currentSession) {

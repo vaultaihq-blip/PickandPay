@@ -10,6 +10,7 @@ import {
   InteractionManager,
 } from "react-native";
 import { showDialog } from "@/lib/dialog";
+import { endSession, showEndSessionError } from "@/lib/endSession";
 import { useHostTransfer } from "@/hooks/useHostTransfer";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -432,21 +433,15 @@ ${t("host_now_you_payments")}`
     if (!session) return;
     setClosing(true);
     try {
-      if (!session.id.startsWith("session_")) {
-        // No closed_at: the column doesn't exist in production, and sending it
-        // made PostgREST reject the whole update — no bill was ever closed
-        // from here (the 27 sessions left in awaiting_payment).
-        await expectRows(
-          "dashboard: close bill (closed)",
-          supabase.from("sessions").update({ status: "closed" }).eq("id", session.id).select("id")
-        );
+      if (!session.id.startsWith("session_") && !session.id.startsWith("dev_session_")) {
+        await endSession("dashboard: close bill", session.id);
       }
       setStatus("closed");
       maybeShowReviewPrompt();
       clearSession();
       router.replace("/(app)");
     } catch (err) {
-      showWriteError(err, t);
+      showEndSessionError(err, t);
     } finally { setClosing(false); }
   };
 

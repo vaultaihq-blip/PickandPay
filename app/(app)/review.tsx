@@ -35,6 +35,7 @@ import { TranslationKey } from "@/constants/translations";
 import { isOfflineSessionId } from "@/constants/dev";
 import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
 import { showDialog } from "@/lib/dialog";
+import { endSession, showEndSessionError } from "@/lib/endSession";
 
 const ORDERED_CATEGORIES: ItemCategory[] = [
   "starters",
@@ -139,12 +140,13 @@ export default function ReviewScreen() {
               !currentSession.id.startsWith("session_") &&
               !currentSession.id.startsWith("dev_session_")
             ) {
+              // D.5 — checked; on failure the session is still open, so stay here.
               try {
-                await supabase
-                  .from("sessions")
-                  .update({ status: "closed" })
-                  .eq("id", currentSession.id);
-              } catch {}
+                await endSession("review: cancel scan", currentSession.id);
+              } catch (err) {
+                showEndSessionError(err, t);
+                return;
+              }
             }
             clearReceipt();
             clearSession();
@@ -153,7 +155,7 @@ export default function ReviewScreen() {
         },
       ]
     );
-  }, [clearReceipt, clearSession, currentSession, isFromLobby]);
+  }, [clearReceipt, clearSession, currentSession, isFromLobby, t]);
 
   useFocusEffect(
     useCallback(() => {

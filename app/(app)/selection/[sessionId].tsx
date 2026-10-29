@@ -11,6 +11,7 @@ import {
   BackHandler,
 } from "react-native";
 import { showDialog } from "@/lib/dialog";
+import { endSession, showEndSessionError } from "@/lib/endSession";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams, Stack } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -229,10 +230,7 @@ export default function SelectionScreen() {
     };
     try {
       if (isCreator && !isOfflineSession) {
-        await expectRows(
-          "selection: host ends session (closed)",
-          supabase.from("sessions").update({ status: "closed" }).eq("id", session.id).select("id")
-        );
+        await endSession("selection: host ends session", session.id);
       } else if (!isCreator && !isOfflineSession && profile?.id) {
         await expectRows(
           "selection: participant leaves (left)",
@@ -246,7 +244,9 @@ export default function SelectionScreen() {
       }
       leave();
     } catch (err) {
-      showLeaveWriteError(err, t, leave);
+      // The host stays: the session is still open on the server (D.5).
+      if (isCreator) showEndSessionError(err, t);
+      else showLeaveWriteError(err, t, leave);
     }
   }, [clearSession, isCreator, profile?.id, session, t]);
 
