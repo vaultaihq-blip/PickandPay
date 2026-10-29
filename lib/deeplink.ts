@@ -15,13 +15,6 @@ export function buildSessionLink(sessionId: string): string {
   return DEEP_LINK_PATHS.session(sessionId);
 }
 
-export function buildSessionShareText(
-  sessionId: string,
-  restaurant: string
-): string {
-  return `Join my Pick&Pay session for ${restaurant}!\n${buildSessionLink(sessionId)}`;
-}
-
 export function parseDeepLink(url: string): {
   type: "session" | "profile" | "referral" | "unknown";
   id?: string;
