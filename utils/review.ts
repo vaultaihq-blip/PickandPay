@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Alert, Linking, Platform } from "react-native";
+import { Linking, Platform } from "react-native";
+import { showDialog } from "@/lib/dialog";
 
 const BILLS_CLOSED_KEY = "@pickandpay:billsClosedCount";
 const LAST_PROMPT_KEY = "@pickandpay:lastReviewPromptDate";
@@ -55,7 +56,7 @@ export async function maybeShowReviewPrompt() {
 
     await AsyncStorage.setItem(LAST_PROMPT_KEY, String(Date.now()));
 
-    Alert.alert(
+    showDialog(
       "🎉 Bill Closed!",
       "Loved using Pick&Pay?\n\nA quick review helps us improve and helps others find the app.",
       [

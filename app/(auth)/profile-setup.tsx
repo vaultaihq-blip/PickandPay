@@ -8,7 +8,6 @@ import {
   ScrollView,
   StyleSheet,
   useColorScheme,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -21,6 +20,7 @@ import { useAuthStore } from "@/store/authStore";
 import { upsertProfile, initializeUserCredits } from "@/lib/supabase";
 import { uploadAvatarToStorage } from "@/lib/avatarStorage";
 import { UserProfile } from "@/types";
+import { showDialog } from "@/lib/dialog";
 
 export default function ProfileSetupScreen() {
   const isDark = useColorScheme() === "dark";
@@ -70,7 +70,7 @@ export default function ProfileSetupScreen() {
   const takePhoto = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert("Permission needed", "Camera access required.");
+      showDialog("Permission needed", "Camera access required.");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -86,7 +86,7 @@ export default function ProfileSetupScreen() {
 
   const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert("Name required", "Please enter your display name.");
+      showDialog("Name required", "Please enter your display name.");
       return;
     }
 
@@ -129,20 +129,20 @@ export default function ProfileSetupScreen() {
 
       const granted = creditResult?.freeCredits ?? 0;
       if (granted > 0) {
-        Alert.alert(
+        showDialog(
           "Welcome!",
           `You received ${granted} free scan${granted === 1 ? "" : "s"} to try Pick&Pay.`
         );
       } else if (!creditResult) {
         console.error("[profile-setup] initialize-user-credits failed; balance shown is what the server has");
-        Alert.alert("Welcome!", "We couldn't add your free scans right now. Please contact support if your balance stays at 0.");
+        showDialog("Welcome!", "We couldn't add your free scans right now. Please contact support if your balance stays at 0.");
       }
 
       router.replace("/(app)");
     } catch (err) {
       console.error("[profile-setup] Failed to save profile:", err);
       const message = err instanceof Error ? err.message : "Please try again.";
-      Alert.alert("Error", `Failed to save profile. ${message}`);
+      showDialog("Error", `Failed to save profile. ${message}`);
     } finally {
       setSaving(false);
     }

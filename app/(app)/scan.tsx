@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   useColorScheme,
-  Alert,
   ActivityIndicator,
   BackHandler,
 } from "react-native";
@@ -22,6 +21,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { supabase } from "@/lib/supabase";
 import { createBlankReceipt } from "@/utils/parser";
 import { useI18nStore } from "@/store/i18nStore";
+import { showDialog } from "@/lib/dialog";
 
 type ScanMode = "camera" | "upload" | "manual";
 
@@ -74,7 +74,7 @@ export default function ScanScreen() {
       router.back();
       return;
     }
-    Alert.alert(
+    showDialog(
       "End Session?",
       "Going back from receipt scanning will close this session for everyone.",
       [
@@ -124,7 +124,7 @@ export default function ScanScreen() {
   const handleCapture = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert(t("avatar_camera_title"), t("avatar_camera_msg"));
+      showDialog(t("avatar_camera_title"), t("avatar_camera_msg"));
       return;
     }
     const result = await ImagePicker.launchCameraAsync({

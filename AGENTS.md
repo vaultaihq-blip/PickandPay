@@ -2,6 +2,11 @@
 
 **As regras de produto em `docs/regras-de-produto.md` (R1 a R9) são obrigatórias. Qualquer alteração a elas tem de ser pedida pelo dono do projeto, Ricardo Costa.**
 
+## Diálogos
+Nunca usar `Alert.alert`: no react-native-web não faz nada (o logout da web
+falhava por isso). Usar sempre `showDialog` de `lib/dialog.ts`, com a mesma
+assinatura. `npm run check:alerts` falha se aparecer algum fora de `lib/dialog.ts`.
+
 ## Rules
 
 - Do what has been asked; nothing more, nothing less

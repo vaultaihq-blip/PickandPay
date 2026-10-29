@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   useColorScheme,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -17,6 +16,7 @@ import { AVATAR_OPTIONS } from "@/constants/avatars";
 import { useAuthStore } from "@/store/authStore";
 import { useI18nStore } from "@/store/i18nStore";
 import { uploadAvatarToStorage } from "@/lib/avatarStorage";
+import { showDialog } from "@/lib/dialog";
 
 export default function AvatarPickerScreen() {
   const isDark = useColorScheme() === "dark";
@@ -37,14 +37,14 @@ export default function AvatarPickerScreen() {
     } catch (err) {
       console.error("[avatar-picker] Avatar icon update failed:", err);
       const message = err instanceof Error ? err.message : "Please try again.";
-      Alert.alert(t("error"), `Could not update the profile picture. ${message}`);
+      showDialog(t("error"), `Could not update the profile picture. ${message}`);
     }
   };
 
   const handleTakePhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert(t("avatar_camera_title"), t("avatar_camera_msg"));
+      showDialog(t("avatar_camera_title"), t("avatar_camera_msg"));
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -78,7 +78,7 @@ export default function AvatarPickerScreen() {
     } catch (err) {
       console.error("[avatar-picker] Avatar upload failed:", err);
       const message = err instanceof Error ? err.message : "Please try again.";
-      Alert.alert(
+      showDialog(
         t("error"),
         `Could not upload the profile photo. ${message}`
       );

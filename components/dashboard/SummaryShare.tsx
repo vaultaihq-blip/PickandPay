@@ -1,9 +1,10 @@
 import React from "react";
-import { TouchableOpacity, Text, StyleSheet, Share, Alert } from "react-native";
+import { TouchableOpacity, Text, StyleSheet, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Session, SplitResult } from "@/types";
 import { Colors } from "@/constants/colors";
 import { generateShareSummary } from "@/utils/formatter";
+import { showDialog } from "@/lib/dialog";
 
 interface SummaryShareProps {
   session: Session;
@@ -23,7 +24,7 @@ export function SummaryShare({ session, splitResults }: SummaryShareProps) {
   const handleShare = async () => {
     const text = getSummaryText();
     if (!text) {
-      Alert.alert("Error", "Could not generate summary. Please try again.");
+      showDialog("Error", "Could not generate summary. Please try again.");
       return;
     }
     try {

@@ -8,13 +8,13 @@ import {
   useColorScheme,
   Modal,
   TextInput,
-  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { useSessionStore } from "@/store/sessionStore";
 import { SessionParticipant, UserProfile } from "@/types";
+import { showDialog } from "@/lib/dialog";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -77,7 +77,7 @@ export function TestModeBar({ onActiveUserChange, sessionId, hasReceipt }: Props
 
   const handleAdd = () => {
     if (!currentSession) {
-      Alert.alert("No session", "Start a session first from the home screen.");
+      showDialog("No session", "Start a session first from the home screen.");
       return;
     }
     const chosen = Array.from({ length: count }, (_, i) => buildProfile(names[i] ?? "", i));

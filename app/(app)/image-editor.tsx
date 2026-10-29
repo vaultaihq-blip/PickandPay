@@ -12,7 +12,6 @@ import {
   StyleSheet,
   PanResponder,
   Dimensions,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -21,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImageManipulator from "expo-image-manipulator";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
+import { showDialog } from "@/lib/dialog";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 const CORNER = 28; // corner handle touch target
@@ -213,7 +213,7 @@ export default function ImageEditorScreen() {
         setPendingImage(result.uri, `data:image/jpeg;base64,${result.base64}`);
         router.push("/(app)/receipt-preview");
       } catch {
-        Alert.alert(
+        showDialog(
           "Couldn't Process Image",
           "Something went wrong preparing this photo. Please try again.",
           [{ text: "OK" }]

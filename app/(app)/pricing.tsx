@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   InteractionManager,
   Linking,
   Platform,
@@ -20,6 +19,7 @@ import { getOfferings, purchasePackage, restorePurchases } from "@/lib/revenueca
 import type { PurchasesPackage } from "react-native-purchases";
 import { useAuthStore } from "@/store/authStore";
 import { BottomNavBar } from "@/components/ui/BottomNavBar";
+import { showDialog } from "@/lib/dialog";
 
 
 type PackageDisplay = {
@@ -113,7 +113,7 @@ export default function PricingScreen() {
       setPackages(offering?.availablePackages ?? []);
     } catch (error) {
       console.error("[Pricing] Load failed:", error);
-      Alert.alert("Error", "Could not load pricing.");
+      showDialog("Error", "Could not load pricing.");
     } finally {
       setLoading(false);
     }
@@ -121,7 +121,7 @@ export default function PricingScreen() {
 
   async function handlePurchase(display: PackageDisplay) {
     if (!display.pkg) {
-      Alert.alert(
+      showDialog(
         "Not available",
         "Purchases are only available when the app is installed from the Play Store or App Store."
       );
@@ -133,7 +133,7 @@ export default function PricingScreen() {
 
       if (result.success) {
         await refreshProfile();
-        Alert.alert(
+        showDialog(
           "Success",
           result.creditsAdded
             ? `${result.creditsAdded} bill credits have been added to your account.`
@@ -141,11 +141,11 @@ export default function PricingScreen() {
           [{ text: "OK", onPress: () => router.back() }]
         );
       } else if (!result.cancelled) {
-        Alert.alert("Purchase failed", result.error || "Could not complete purchase. Please try again.");
+        showDialog("Purchase failed", result.error || "Could not complete purchase. Please try again.");
       }
     } catch (error) {
       console.error("[Pricing] Purchase error:", error);
-      Alert.alert("Error", "Something went wrong. Please try again.");
+      showDialog("Error", "Something went wrong. Please try again.");
     } finally {
       setPurchasing(null);
     }
@@ -156,16 +156,16 @@ export default function PricingScreen() {
       setRestoring(true);
       const result = await restorePurchases();
       if (result.success) {
-        Alert.alert(
+        showDialog(
           "Restore complete",
           "Your purchase history has been verified. Credit balance is not affected — used credits remain consumed."
         );
       } else {
-        Alert.alert("Nothing to restore", "No previous purchases were found for this account.");
+        showDialog("Nothing to restore", "No previous purchases were found for this account.");
       }
     } catch (error) {
       console.error("[Pricing] Restore error:", error);
-      Alert.alert("Error", "Could not restore purchases.");
+      showDialog("Error", "Could not restore purchases.");
     } finally {
       setRestoring(false);
     }

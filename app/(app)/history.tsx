@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/authStore";
 import { formatCurrency, formatDate } from "@/utils/formatter";
 import { Session } from "@/types";
 import { useI18nStore } from "@/store/i18nStore";
+import { showDialog } from "@/lib/dialog";
 
 const THEME = {
   background: "#0A0A0F",
@@ -119,7 +120,7 @@ export default function HistoryScreen() {
   };
 
   const deleteSplit = (session: Session) => {
-    Alert.alert(t("home_delete_title"), t("home_delete_confirm"), [
+    showDialog(t("home_delete_title"), t("home_delete_confirm"), [
       { text: t("cancel"), style: "cancel" },
       {
         text: t("delete"),

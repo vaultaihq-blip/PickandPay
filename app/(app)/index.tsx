@@ -7,7 +7,6 @@ import {
   TextInput,
   StyleSheet,
   useColorScheme,
-  Alert,
   Modal,
   Share,
   Platform,
@@ -34,6 +33,7 @@ import { isDeveloperUser, DEV_PIN } from "@/constants/dev";
 import { useI18nStore } from "@/store/i18nStore";
 import { getColorForIndex } from "@/constants/colors";
 import { BottomNavBar } from "@/components/ui/BottomNavBar";
+import { showDialog } from "@/lib/dialog";
 
 const HOME_THEME = {
   background: "#0A0A0F",
@@ -224,7 +224,7 @@ export default function HomeScreen() {
       // R3: coming back after leaving needs a credit (the server refuses left → joined at 0).
       if (isNoCreditsError(err)) showNoCreditsDialog(t);
       else if (err instanceof WriteError) showWriteError(err, t);
-      else Alert.alert(t("error"), t("home_rejoin_error"));
+      else showDialog(t("error"), t("home_rejoin_error"));
     } finally {
       setIsRejoining(false);
     }
@@ -232,7 +232,7 @@ export default function HomeScreen() {
 
   const handleStartNewSession = async () => {
     if (!user) {
-      Alert.alert(t("error"), t("home_sign_in_msg"));
+      showDialog(t("error"), t("home_sign_in_msg"));
       return;
     }
     if (isCreatingSession) return;
@@ -348,7 +348,7 @@ export default function HomeScreen() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[home] Session creation failed:", msg);
-      Alert.alert(t("error_start_session"), msg || t("error_connection"));
+      showDialog(t("error_start_session"), msg || t("error_connection"));
     } finally {
       setIsCreatingSession(false);
     }
@@ -378,7 +378,7 @@ export default function HomeScreen() {
   };
 
   const handleClearCache = () => {
-    Alert.alert(t("home_clear_cache"), t("home_clear_cache_msg"), [
+    showDialog(t("home_clear_cache"), t("home_clear_cache_msg"), [
       { text: t("cancel"), style: "cancel" },
       {
         text: t("home_clear_btn"),
@@ -386,7 +386,7 @@ export default function HomeScreen() {
         onPress: () => {
           clearReceipt();
           clearSession();
-          Alert.alert(t("done"), t("home_cache_cleared"));
+          showDialog(t("done"), t("home_cache_cleared"));
         },
       },
     ]);
@@ -812,7 +812,7 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={[styles.sheetOption, { backgroundColor: "#EF4444" }]}
                 onPress={() => {
-                  Alert.alert(t("home_delete_title"), t("home_delete_confirm"), [
+                  showDialog(t("home_delete_title"), t("home_delete_confirm"), [
                     { text: t("cancel"), style: "cancel" },
                     {
                       text: t("delete"),

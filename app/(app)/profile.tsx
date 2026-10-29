@@ -5,7 +5,6 @@ import {
   Image,
   Pressable,
   StyleSheet,
-  Alert,
   Modal,
   ScrollView,
   TextInput,
@@ -23,6 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/store/authStore';
 import { useI18nStore } from '@/store/i18nStore';
 import { supabase, deleteAccount } from '@/lib/supabase';
+import { showDialog } from '@/lib/dialog';
 import { LANGUAGE_META, Language } from '@/constants/translations';
 
 const THEME = {
@@ -70,9 +70,9 @@ export default function ProfileScreen() {
       if (error) throw error;
       await loadProfile(user.id);
       setIsEditing(false);
-      Alert.alert(t('profile_saved'), t('profile_saved_msg'));
+      showDialog(t('profile_saved'), t('profile_saved_msg'));
     } catch {
-      Alert.alert(t('error'), t('profile_error'));
+      showDialog(t('error'), t('profile_error'));
     }
   }
 
@@ -87,7 +87,7 @@ export default function ProfileScreen() {
   }
 
   function handleLogout() {
-    Alert.alert(t('profile_logout'), t('profile_logout_confirm'), [
+    showDialog(t('profile_logout'), t('profile_logout_confirm'), [
       { text: t('cancel'), style: 'cancel' },
       {
         text: t('profile_logout'),
@@ -98,7 +98,7 @@ export default function ProfileScreen() {
             await supabase.auth.signOut();
             router.replace('/(auth)/welcome');
           } catch {
-            Alert.alert(t('error'), t('profile_logout_error'));
+            showDialog(t('error'), t('profile_logout_error'));
           }
         },
       },
@@ -106,7 +106,7 @@ export default function ProfileScreen() {
   }
 
   function handleDeleteAccount() {
-    Alert.alert(
+    showDialog(
       'Eliminar Conta',
       'Tens a certeza? Esta ação é permanente e irá apagar todos os teus dados, sessões e créditos.',
       [
@@ -114,7 +114,7 @@ export default function ProfileScreen() {
         {
           text: 'Continuar',
           onPress: () => {
-            Alert.alert(
+            showDialog(
               'Confirmação Final',
               'Todos os teus dados serão apagados definitivamente. Não é possível recuperar a conta.',
               [
@@ -130,7 +130,7 @@ export default function ProfileScreen() {
                       await supabase.auth.signOut();
                       router.replace('/(auth)/welcome');
                     } catch {
-                      Alert.alert(
+                      showDialog(
                         'Erro',
                         'Erro ao eliminar conta. Tenta novamente ou contacta vault.ai.hq@gmail.com'
                       );
@@ -295,7 +295,7 @@ export default function ProfileScreen() {
             icon="help-circle-outline"
             label={t('profile_help_center')}
             onPress={() =>
-              Alert.alert(t('profile_help_center'), 'support@pickandpay.app')
+              showDialog(t('profile_help_center'), 'support@pickandpay.app')
             }
           />
           <Separator />
@@ -310,7 +310,7 @@ export default function ProfileScreen() {
             icon="information-circle-outline"
             label={t('profile_about')}
             onPress={() =>
-              Alert.alert(
+              showDialog(
                 t('profile_about'),
                 'Version 1.0.0\nSplit bills fair. Pay only what you consumed.'
               )

@@ -45,3 +45,8 @@ pickandpay-ocr-0cd12f7b4f97-google-cloud.json
 dist2/
 
 batch_results/
+
+# web builds (Netlify Drop) and the patch they came from
+pickandpay-site/
+web-dist*/
+.expo/pickandpay-web.patch

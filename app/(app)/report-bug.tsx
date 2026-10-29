@@ -9,7 +9,6 @@ import {
   Modal,
   Image,
   useColorScheme,
-  Alert,
   Platform,
   KeyboardAvoidingView,
   Linking,
@@ -21,6 +20,7 @@ import * as ImagePicker from "expo-image-picker";
 import * as MailComposer from "expo-mail-composer";
 import { Colors } from "@/constants/colors";
 import { useAuthStore } from "@/store/authStore";
+import { showDialog } from "@/lib/dialog";
 
 type ErrorType = "OCR Error" | "Math Error" | "App Crash" | "UI Issue" | "Other / Suggestion";
 
@@ -48,7 +48,7 @@ export default function ReportBugScreen() {
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow access to your photo library.");
+      showDialog("Permission needed", "Please allow access to your photo library.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -63,7 +63,7 @@ export default function ReportBugScreen() {
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission needed", "Please allow camera access.");
+      showDialog("Permission needed", "Please allow camera access.");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -77,7 +77,7 @@ export default function ReportBugScreen() {
 
   const handleSubmit = async () => {
     if (!description.trim()) {
-      Alert.alert("Missing description", "Please describe the issue before submitting.");
+      showDialog("Missing description", "Please describe the issue before submitting.");
       return;
     }
     setSubmitting(true);
@@ -102,7 +102,7 @@ export default function ReportBugScreen() {
         setSuccessVisible(true);
       }
     } catch {
-      Alert.alert("Error", "Failed to open mail composer. Please try again.");
+      showDialog("Error", "Failed to open mail composer. Please try again.");
     } finally {
       setSubmitting(false);
     }

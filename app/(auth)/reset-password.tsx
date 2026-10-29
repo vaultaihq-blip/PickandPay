@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   useColorScheme,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +15,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { supabase } from "@/lib/supabase";
+import { showDialog } from "@/lib/dialog";
 
 export default function ResetPasswordScreen() {
   const isDark = useColorScheme() === "dark";
@@ -33,11 +33,11 @@ export default function ResetPasswordScreen() {
 
   const handleReset = async () => {
     if (password.length < 6) {
-      Alert.alert("Password inválida", "A password deve ter pelo menos 6 caracteres.");
+      showDialog("Password inválida", "A password deve ter pelo menos 6 caracteres.");
       return;
     }
     if (password !== confirm) {
-      Alert.alert("As passwords não coincidem", "Confirma que escreveste a mesma password nos dois campos.");
+      showDialog("As passwords não coincidem", "Confirma que escreveste a mesma password nos dois campos.");
       return;
     }
     setLoading(true);
@@ -46,7 +46,7 @@ export default function ResetPasswordScreen() {
       if (error) throw error;
       setDone(true);
     } catch (err) {
-      Alert.alert("Erro", err instanceof Error ? err.message : "Falha ao atualizar password. Tenta de novo.");
+      showDialog("Erro", err instanceof Error ? err.message : "Falha ao atualizar password. Tenta de novo.");
     } finally {
       setLoading(false);
     }

@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   TextInput,
   ScrollView,
   KeyboardAvoidingView,
@@ -105,7 +104,7 @@ export default function WelcomeScreen() {
       const result = await signInWithSocialProvider(provider);
       if (result?.error) throw result.error;
     } catch (err) {
-      Alert.alert("Login failed", getAuthErrorMessage(err));
+      showDialog("Login failed", getAuthErrorMessage(err));
     } finally {
       setLoading(false);
       setLoadingProvider(null);
@@ -114,7 +113,7 @@ export default function WelcomeScreen() {
 
   const handleEmailAuth = async () => {
     if (!email || !password) {
-      Alert.alert("Missing fields", "Please enter email and password.");
+      showDialog("Missing fields", "Please enter email and password.");
       return;
     }
     setLoading(true);
@@ -124,9 +123,9 @@ export default function WelcomeScreen() {
         if (result.error) {
           const msg = result.error.message ?? "";
           if (msg.toLowerCase().includes("invalid login credentials") || msg.toLowerCase().includes("invalid credentials")) {
-            Alert.alert("Incorrect credentials", "Email or password is incorrect. Please try again.");
+            showDialog("Incorrect credentials", "Email or password is incorrect. Please try again.");
           } else {
-            Alert.alert("Login failed", msg || "An error occurred.");
+            showDialog("Login failed", msg || "An error occurred.");
           }
           return;
         }
@@ -159,7 +158,7 @@ export default function WelcomeScreen() {
         }
       }
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "Auth failed");
+      showDialog("Error", err instanceof Error ? err.message : "Auth failed");
     } finally {
       setLoading(false);
     }

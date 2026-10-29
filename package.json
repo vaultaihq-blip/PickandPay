@@ -16,6 +16,7 @@
     "submit:ios": "eas submit --platform ios",
     "lint": "eslint . --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
+    "check:alerts": "node scripts/check-no-alert.js",
     "type-check:parse-receipt": "tsc -p supabase/functions/parse-receipt/tsconfig.json",
     "test:receipt": "tsx lib/receipt/__tests__/index.ts"
   },

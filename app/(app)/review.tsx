@@ -8,7 +8,6 @@ import {
   Image,
   StyleSheet,
   useColorScheme,
-  Alert,
   Modal,
   KeyboardAvoidingView,
   Platform,
@@ -35,6 +34,7 @@ import { useI18nStore } from "@/store/i18nStore";
 import { TranslationKey } from "@/constants/translations";
 import { isOfflineSessionId } from "@/constants/dev";
 import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
+import { showDialog } from "@/lib/dialog";
 
 const ORDERED_CATEGORIES: ItemCategory[] = [
   "starters",
@@ -125,7 +125,7 @@ export default function ReviewScreen() {
       router.back();
       return;
     }
-    Alert.alert(
+    showDialog(
       "Cancelar scan?",
       "Voltar atrás irá cancelar o scan atual. Terás de digitalizar novamente.",
       [
@@ -243,7 +243,7 @@ export default function ReviewScreen() {
     if (sumMismatchAlertShownRef.current) return;
     if (receipt?.ocr_passes === 2 && sumMismatch) {
       sumMismatchAlertShownRef.current = true;
-      Alert.alert(t("review_sum_mismatch_title"), t("review_sum_mismatch_msg"), [{ text: t("ok") }]);
+      showDialog(t("review_sum_mismatch_title"), t("review_sum_mismatch_msg"), [{ text: t("ok") }]);
     }
   }, [sumMismatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -386,11 +386,11 @@ export default function ReviewScreen() {
     const qty = Math.max(1, parseInt(newItemQty) || 1);
     const price = parseFloat(newItemPrice.replace(",", ".")) || 0;
     if (!newItemName.trim()) {
-      Alert.alert(t("review_missing_name"), t("review_missing_name_msg"));
+      showDialog(t("review_missing_name"), t("review_missing_name_msg"));
       return;
     }
     if (price <= 0) {
-      Alert.alert(t("review_missing_price"), t("review_missing_price_msg"));
+      showDialog(t("review_missing_price"), t("review_missing_price_msg"));
       return;
     }
     const item: ReceiptItem = {
@@ -413,11 +413,11 @@ export default function ReviewScreen() {
   const handleConfirm = async () => {
     if (!receipt) return;
     if (allItems.length === 0) {
-      Alert.alert(t("review_no_items_alert"), t("review_no_items_alert_msg"), [{ text: t("ok") }]);
+      showDialog(t("review_no_items_alert"), t("review_no_items_alert_msg"), [{ text: t("ok") }]);
       return;
     }
     if (!profile) {
-      Alert.alert(t("review_profile_required"), t("review_profile_required_msg"));
+      showDialog(t("review_profile_required"), t("review_profile_required_msg"));
       router.push("/(auth)/profile-setup");
       return;
     }
@@ -442,7 +442,7 @@ export default function ReviewScreen() {
           return;
         }
         const msg = err instanceof Error ? err.message : String(err);
-        Alert.alert(t("review_failed_create"), msg || t("error_connection"));
+        showDialog(t("review_failed_create"), msg || t("error_connection"));
       } finally {
         setCreating(false);
       }
@@ -590,7 +590,7 @@ export default function ReviewScreen() {
         return;
       }
       const msg = err instanceof Error ? err.message : pgErr?.message ?? JSON.stringify(err);
-      Alert.alert(t("review_failed_create"), msg || t("error_connection"));
+      showDialog(t("review_failed_create"), msg || t("error_connection"));
     } finally {
       setCreating(false);
     }

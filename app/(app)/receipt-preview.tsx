@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Image,
   ActivityIndicator,
-  Alert,
   Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -21,6 +20,7 @@ import { analyzeReceipt, createBlankReceipt } from "@/utils/parser";
 import { validateReceiptOCR } from "@/lib/receipt-validator";
 import { useI18nStore } from "@/store/i18nStore";
 import { ensureCreditsForNewSession, fetchFreshCredits, showNoCreditsDialog } from "@/lib/credits";
+import { showDialog } from "@/lib/dialog";
 
 const { width, height } = Dimensions.get("window");
 
@@ -54,7 +54,7 @@ export default function ReceiptPreviewScreen() {
       setCurrentUri(result.uri);
       setCurrentBase64(`data:image/jpeg;base64,${result.base64}`);
     } catch {
-      Alert.alert(t("error"), t("preview_rotate_error"));
+      showDialog(t("error"), t("preview_rotate_error"));
     } finally {
       setIsRotating(false);
     }
@@ -86,7 +86,7 @@ export default function ReceiptPreviewScreen() {
       const itemCount = Object.values(parsed.categories).flat().length;
       if (itemCount === 0) {
         setIsAnalyzing(false);
-        Alert.alert(t("scan_no_items_title"), t("scan_no_items_msg"), [
+        showDialog(t("scan_no_items_title"), t("scan_no_items_msg"), [
           { text: t("scan_try_again"), style: "cancel", onPress: () => router.back() },
           {
             text: t("scan_enter_manually"),
@@ -123,7 +123,7 @@ export default function ReceiptPreviewScreen() {
           : code === "SCAN_UNAVAILABLE" ? t("scan_err_unavailable")
           : null;
       if (codeMessage) {
-        Alert.alert(t("scan_analysis_failed"), codeMessage, [
+        showDialog(t("scan_analysis_failed"), codeMessage, [
           { text: t("scan_enter_manually"), onPress: () => { setReceipt(createBlankReceipt()); router.push("/(app)/review"); } },
           { text: t("scan_try_again"), style: "cancel" },
         ]);
@@ -131,13 +131,13 @@ export default function ReceiptPreviewScreen() {
       }
 
       if (msg === "TIMEOUT") {
-        Alert.alert(t("preview_timeout_title"), t("preview_timeout_msg"), [
+        showDialog(t("preview_timeout_title"), t("preview_timeout_msg"), [
           { text: t("scan_enter_manually"), onPress: () => { setReceipt(createBlankReceipt()); router.push("/(app)/review"); } },
           { text: t("scan_try_again"), style: "cancel" },
         ]);
         return;
       }
-      Alert.alert(t("scan_analysis_failed"), `${t("scan_analysis_failed_msg")}\n\n${msg || String(err)}`, [
+      showDialog(t("scan_analysis_failed"), `${t("scan_analysis_failed_msg")}\n\n${msg || String(err)}`, [
         { text: t("scan_enter_manually"), onPress: () => { setReceipt(createBlankReceipt()); router.push("/(app)/review"); } },
         { text: t("scan_try_again"), style: "cancel" },
       ]);

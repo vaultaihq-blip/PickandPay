@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   useColorScheme,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +15,7 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { getAuthRedirectUrl, supabase } from "@/lib/supabase";
+import { showDialog } from "@/lib/dialog";
 
 export default function ForgotPasswordScreen() {
   const isDark = useColorScheme() === "dark";
@@ -31,7 +31,7 @@ export default function ForgotPasswordScreen() {
 
   const handleSend = async () => {
     if (!email.trim()) {
-      Alert.alert("Email obrigatório", "Introduz o teu endereço de email.");
+      showDialog("Email obrigatório", "Introduz o teu endereço de email.");
       return;
     }
     setLoading(true);
@@ -42,7 +42,7 @@ export default function ForgotPasswordScreen() {
       if (error) throw error;
       setSent(true);
     } catch (err) {
-      Alert.alert("Erro", err instanceof Error ? err.message : "Falha ao enviar email. Tenta de novo.");
+      showDialog("Erro", err instanceof Error ? err.message : "Falha ao enviar email. Tenta de novo.");
     } finally {
       setLoading(false);
     }

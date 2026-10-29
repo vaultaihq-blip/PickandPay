@@ -8,7 +8,6 @@ import {
   Image,
   Modal,
   useColorScheme,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
@@ -33,6 +32,7 @@ import { styles } from "@/components/receipt/reviewReceiptStyles";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showWriteError } from "@/lib/checkedWrite";
 import { isOfflineSessionId } from "@/constants/dev";
+import { showDialog } from "@/lib/dialog";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -365,7 +365,7 @@ export default function ReviewReceiptScreen() {
   }, []);
 
   const removeItem = useCallback((id: string) => {
-    Alert.alert(t("review_receipt_remove_title"), t("review_receipt_remove_msg"), [
+    showDialog(t("review_receipt_remove_title"), t("review_receipt_remove_msg"), [
       { text: t("cancel"), style: "cancel" },
       { text: t("review_receipt_remove_btn"), style: "destructive", onPress: () => setItems((p) => p.filter((i) => i.id !== id)) },
     ]);

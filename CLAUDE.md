@@ -11,6 +11,11 @@ node -e: vinham dos hooks do Ruflo, que corriam `cmd /c` pelo Git Bash e
 executavam como comandos o JSON de cada ferramenta. Foram retirados a
 2026-10-29, no C3-fix5.)
 
+## Diálogos
+Nunca usar `Alert.alert`: no react-native-web não faz nada (o logout da web
+falhava por isso). Usar sempre `showDialog` de `lib/dialog.ts`, com a mesma
+assinatura. `npm run check:alerts` falha se aparecer algum fora de `lib/dialog.ts`.
+
 ## Tarefas em segundo plano
 Nunca usar ScheduleWakeup para esperar por uma tarefa em segundo plano.
 A tarefa já notifica quando termina. Usar ScheduleWakeup fora de /loop
