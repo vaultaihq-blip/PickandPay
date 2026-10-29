@@ -4,7 +4,7 @@ Estas regras são **obrigatórias**. Nenhuma pode ser alterada sem pedido explí
 - O servidor (Supabase) é sempre quem decide e quem garante cada regra. A app só mostra o resultado.
 - Uma app modificada não consegue contornar nenhuma delas.
 
-Estado a 29-10-2026, depois do C3-fix5. Os relatórios com os pormenores estão em `docs/relatorios/`.
+Estado a 29-10-2026, depois do C3-fix5 e da R8. Os relatórios com os pormenores estão em `docs/relatorios/`.
 
 ---
 
@@ -93,6 +93,20 @@ Estado a 29-10-2026, depois do C3-fix5. Os relatórios com os pormenores estão 
 | **A troca não cobra nem devolve créditos.** **As cores não mudam:** o anfitrião original fica verde e com a etiqueta "Anfitrião original". **Se o anfitrião original voltar**, entra como participante. | A troca só muda quem conduz a divisão, nada mais. |
 | **Ecrã de pagamentos:** nunca expira. O pagamento faz-se **fora da app** (no restaurante, MB Way, Revolut ou como o grupo combinar). O anfitrião, ou quem o substituir, só **regista** quem pagou e, no fim, marca todos como pagos e fecha. O ecrã diz isto claramente. | A app não movimenta dinheiro, só ajuda a registar os pagamentos. |
 | **O histórico** segue o anfitrião atual lido do servidor. | Os botões de anfitrião ficam com quem é anfitrião de facto. |
+
+## R8 — Código de sessão
+
+| Regra | Porquê |
+|---|---|
+| **Cada sessão tem um código curto**, alternativo ao QR. É gerado pelo servidor quando a sessão é criada, e a app não o pode escrever nem mudar. | Há browsers e aparelhos onde não se pode usar a câmara, e sem o código essas pessoas não conseguiam entrar. |
+| **Formato:** 6 caracteres, sem caracteres que se confundem (sem `0/O` nem `1/I/L`), mostrados como `ABC-234`. Na entrada aceitam-se minúsculas, espaços e o hífen, ou a falta dele. São 31 símbolos, o que dá 887 503 681 códigos. | Tem de ser fácil de ditar e de escrever sem erros. |
+| **Único e nunca reutilizado**, nem depois de a sessão fechar ou ser apagada. | Um código antigo nunca pode levar a outra sessão. |
+| **Uma sessão fechada mantém o código.** Ao introduzi-lo aparece "Esta sessão já terminou." | É a mesma resposta do QR (R7). |
+| **Entrar pelo código é exatamente o mesmo que entrar pelo QR:** o servidor devolve a sessão, e o ecrã de entrada da R7 decide (rejoin, créditos, sessão terminada, sessão cheia). Um código que não existe dá "Código inválido. Confirma com o anfitrião." | Há um só caminho de entrada, com as mesmas regras de créditos (R1, R3, R7). |
+| **Contra tentativas às cegas:** só com sessão iniciada; no máximo 10 códigos errados por pessoa em 10 minutos. Depois disso aparece uma mensagem com o tempo de espera. Antes de entrar só se vê o nome do anfitrião e o número de pessoas. | Com códigos curtos é preciso travar quem tenta adivinhar, e a privacidade da R7 mantém-se. |
+| **O código aparece no lobby, ao lado do QR**, em letra grande e com um botão Copiar, para o anfitrião e para os participantes. Também vai no texto de partilha. | Qualquer pessoa já presente o pode passar a quem chega depois. |
+| **O botão de entrada chama-se "Entrar com código QR / código da sessão"** e abre um ecrã com as duas opções. Sem câmara (permissão recusada, aparelho sem câmara ou browser que não a suporta), o ecrã mostra logo o campo do código e uma linha a dizer porquê. | Ninguém fica sem forma de entrar. |
+| **Nenhum link usa o parâmetro `code`.** | O `code=` é reservado ao retorno do login. |
 
 ---
 

@@ -11,6 +11,7 @@ import {
   Share,
   Modal,
   AppState,
+  Platform,
 } from "react-native";
 import { showDialog } from "@/lib/dialog";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -35,6 +36,8 @@ import { useI18nStore } from "@/store/i18nStore";
 import { TranslationKey } from "@/constants/translations";
 import { QRGenerator } from "@/components/session/QRGenerator";
 import { buildSessionLink } from "@/lib/deeplink";
+import * as Clipboard from "expo-clipboard";
+import { formatJoinCode } from "@/lib/joinCode";
 
 const HOME_THEME = {
   background: "#0B0D10",
@@ -172,6 +175,28 @@ export default function SessionLobbyScreen() {
 
   const [accordionExpanded, setAccordionExpanded] = useState(false);
   const [qrExpanded, setQrExpanded] = useState(false);
+  // R8 — the session code, made by the server; everyone in the lobby sees it.
+  const [joinCode, setJoinCode] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
+  useEffect(() => {
+    if (!id || isOfflineSessionId(String(id))) return;
+    let cancelled = false;
+    supabase.from("sessions").select("join_code").eq("id", id).single().then(({ data, error }) => {
+      if (cancelled) return;
+      if (error || !data?.join_code) {
+        console.log(`[session-lobby] session code not available: ${error?.message ?? "none"}`);
+        return;
+      }
+      setJoinCode(data.join_code as string);
+    });
+    return () => { cancelled = true; };
+  }, [id]);
+  const copyJoinCode = useCallback(async () => {
+    if (!joinCode) return;
+    await Clipboard.setStringAsync(formatJoinCode(joinCode));
+    console.log("[session-lobby] session code copied");
+    setCodeCopied(true);
+  }, [joinCode]);
   // userId → basic info for participants who scanned QR but haven't confirmed yet
   const [pendingParticipants, setPendingParticipants] = useState<Map<string, { name: string; color: string; avatarIcon?: string; avatarUrl?: string }>>(new Map());
   // userId → done selecting — initialized from store so it survives lobby remounts
@@ -1481,11 +1506,11 @@ ${tr("host_now_you_all_picked")}`, [
     if (!id) return;
     try {
       await Share.share({
-        message: `${t("lobby_share_msg")}\n${buildSessionLink(String(id))}`,
+        message: `${t("lobby_share_msg")}\n${buildSessionLink(String(id))}${joinCode ? `\n${t("lobby_share_code").replace("{code}", formatJoinCode(joinCode))}` : ""}`,
         title: t("lobby_share_title"),
       });
     } catch { /* user dismissed */ }
-  }, [id]);
+  }, [id, joinCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
@@ -2062,6 +2087,20 @@ ${tr("host_now_you_all_picked")}`, [
           <View style={styles.inviteCopy}>
             <Text style={styles.inviteTitle}>{t("lobby_invite_title")}</Text>
             <Text style={styles.inviteSub}>{t("lobby_invite_sub")}</Text>
+            {joinCode && (
+              <View style={styles.joinCodeRow}>
+                <View style={{ flexShrink: 1 }}>
+                  <Text style={styles.joinCodeLabel}>{t("join_code_label")}</Text>
+                  <Text style={styles.joinCodeText} selectable accessibilityLabel={`${t("join_code_label")} ${joinCode.split("").join(" ")}`}>
+                    {formatJoinCode(joinCode)}
+                  </Text>
+                </View>
+                <TouchableOpacity style={styles.joinCodeCopy} onPress={() => void copyJoinCode()} activeOpacity={0.7}>
+                  <Ionicons name={codeCopied ? "checkmark" : "copy-outline"} size={14} color={HOME_THEME.primary} />
+                  <Text style={styles.shareLinkText}>{codeCopied ? t("lobby_code_copied") : t("lobby_code_copy")}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             <TouchableOpacity style={styles.shareLink} onPress={handleShare} activeOpacity={0.7}>
               <Ionicons name="share-outline" size={14} color={HOME_THEME.primary} />
               <Text style={styles.shareLinkText}>{t("lobby_share_link")}</Text>
@@ -2470,6 +2509,7 @@ ${tr("host_now_you_all_picked")}`, [
         <TouchableOpacity style={styles.qrModalOverlay} onPress={() => setQrExpanded(false)} activeOpacity={1}>
           <View style={styles.qrModalCard}>
             <QRGenerator value={buildSessionLink(String(id))} size={260} />
+            {joinCode && <Text style={styles.qrModalCode}>{formatJoinCode(joinCode)}</Text>}
             <Text style={styles.qrModalHint}>{t("lobby_tap_to_close")}</Text>
           </View>
         </TouchableOpacity>
@@ -2533,6 +2573,25 @@ const styles = StyleSheet.create({
   inviteCopy: { flex: 1, gap: 4 },
   inviteTitle: { fontSize: 15, fontWeight: "700", color: HOME_THEME.text },
   inviteSub: { fontSize: 12, color: HOME_THEME.secondary },
+  joinCodeRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 8, marginTop: 4 },
+  joinCodeLabel: { fontSize: 11, color: HOME_THEME.secondary },
+  joinCodeText: {
+    fontSize: 24,
+    fontWeight: "800",
+    letterSpacing: 2,
+    color: HOME_THEME.text,
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+  },
+  joinCodeCopy: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 6, paddingHorizontal: 8 },
+  qrModalCode: {
+    fontSize: 32,
+    fontWeight: "800",
+    letterSpacing: 3,
+    color: "#111",
+    marginTop: 12,
+    textAlign: "center",
+    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+  },
   shareLink: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
   shareLinkText: { fontSize: 12, fontWeight: "600", color: HOME_THEME.primary },
   qrWrapper: { borderRadius: 10, overflow: "hidden" },

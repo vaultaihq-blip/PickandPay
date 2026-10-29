@@ -25,6 +25,7 @@ import { Colors } from "@/constants/colors";
 import { QRScanner } from "@/components/session/QRScanner";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { extractSessionIdFromQR } from "@/lib/deeplink";
+import { looksLikeJoinCode } from "@/lib/joinCode";
 import { useAuthStore } from "@/store/authStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { supabase } from "@/lib/supabase";
@@ -332,6 +333,47 @@ export default function JoinSessionScreen() {
     }
   };
 
+  // R8 — a session code goes the same way as the QR: the server turns it into
+  // the session (resolve_join_code, with a limit on wrong codes), then
+  // join_preview decides the entry screen.
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const handleCode = async (code: string) => {
+    if (!profile) {
+      showDialog(t("join_sign_in_required"), t("join_sign_in_body"), [
+        { text: t("cancel"), style: "cancel" },
+        { text: t("join_setup_profile"), onPress: () => router.push("/(auth)/profile-setup") },
+      ]);
+      return;
+    }
+    setCodeError(null);
+    if (!looksLikeJoinCode(code)) {
+      console.log("[join] session code has the wrong shape — not sent");
+      setCodeError(t("join_code_invalid"));
+      return;
+    }
+    setCodeBusy(true);
+    try {
+      const { data, error } = await withTimeout("join: resolve_join_code", supabase.rpc("resolve_join_code", { p_code: code }));
+      if (error) throw error;
+      const row = (data ?? {}) as { result?: string; session_id?: string; retry_after_s?: number; attempts_left?: number };
+      console.log(`[join] resolve_join_code: ${row.result}${row.attempts_left != null ? ` (${row.attempts_left} attempts left)` : ""}`);
+      if (row.result === "found" && row.session_id) {
+        await fetchSessionPreview(row.session_id);
+      } else if (row.result === "rate_limited") {
+        const min = Math.max(1, Math.ceil((row.retry_after_s ?? 600) / 60));
+        setCodeError(t("join_code_rate_limited").replace("{min}", String(min)));
+      } else {
+        setCodeError(t("join_code_invalid"));
+      }
+    } catch (err: any) {
+      console.error("[join] resolve_join_code error:", err);
+      setCodeError(`${t("join_error_load")}${err?.message ? `\n${err.message}` : ""}`);
+    } finally {
+      setCodeBusy(false);
+    }
+  };
+
   const handleScan = (data: string) => {
     const sessionId = extractSessionIdFromQR(data);
     if (sessionId) {
@@ -473,7 +515,15 @@ export default function JoinSessionScreen() {
     );
   }
 
-  return <QRScanner onScan={handleScan} onClose={() => router.back()} />;
+  return (
+    <QRScanner
+      onScan={handleScan}
+      onClose={() => router.back()}
+      onCode={(c) => void handleCode(c)}
+      codeBusy={codeBusy}
+      codeError={codeError}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
