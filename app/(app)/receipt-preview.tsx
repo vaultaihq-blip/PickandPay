@@ -41,6 +41,8 @@ export default function ReceiptPreviewScreen() {
   const [isRotating, setIsRotating] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const cancelledRef = useRef(false);
+  // A second tap on "Scan receipt" while one is on its way does nothing.
+  const analyzingRef = useRef(false);
 
   const handleRotate = useCallback(async (degrees: number) => {
     if (isRotating || !currentUri) return;
@@ -62,9 +64,17 @@ export default function ReceiptPreviewScreen() {
 
   const handleAnalyze = useCallback(async () => {
     if (!currentBase64) return;
+    if (analyzingRef.current) {
+      console.log("[scan] scan tap ignored — one is already on its way");
+      return;
+    }
+    analyzingRef.current = true;
 
     // R3: no new split at 0 credits — fresh balance; parse-receipt refuses too.
-    if (profile && !(await ensureCreditsForNewSession(profile.id, t))) return;
+    if (profile && !(await ensureCreditsForNewSession(profile.id, t))) {
+      analyzingRef.current = false;
+      return;
+    }
 
     cancelledRef.current = false;
     setRawImageUri(currentUri);
@@ -118,7 +128,8 @@ export default function ReceiptPreviewScreen() {
         return;
       }
       const codeMessage =
-        code === "RATE_LIMITED" ? t("scan_err_rate_limited")
+        code === "SCAN_IN_PROGRESS" ? t("scan_err_in_progress")
+          : code === "RATE_LIMITED" ? t("scan_err_rate_limited")
           : code === "IMAGE_TOO_LARGE" || code === "UNSUPPORTED_IMAGE" ? t("scan_err_image")
           : code === "SCAN_UNAVAILABLE" ? t("scan_err_unavailable")
           : null;
@@ -142,6 +153,7 @@ export default function ReceiptPreviewScreen() {
         { text: t("scan_try_again"), style: "cancel" },
       ]);
     } finally {
+      analyzingRef.current = false;
       // C.3 — a scan spends the credit on the server (refunded if it failed
       // on our side): show the real balance.
       if (profile) void fetchFreshCredits(profile.id);

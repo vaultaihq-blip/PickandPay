@@ -497,6 +497,8 @@ async function handleRequest(req: Request, scan: ScanContext): Promise<Response>
   if (gateResult.allowed !== true) {
     if (gateResult.reason === "no_credits") return errorResponse("NO_CREDITS", 402);
     if (gateResult.reason === "rate_limited") return errorResponse("RATE_LIMITED", 429);
+    // Another scan of this user is still in flight: refused before any charge.
+    if (gateResult.reason === "scan_in_progress") return errorResponse("SCAN_IN_PROGRESS", 409);
     console.error("[parse-receipt] ocr_gate refused with unknown reason:", gateResult.reason);
     return errorResponse("SCAN_UNAVAILABLE", 503);
   }

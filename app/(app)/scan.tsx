@@ -37,6 +37,9 @@ export default function ScanScreen() {
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<ScanMode>("camera");
   const [isPicking, setIsPicking] = useState(false);
+  // From the tap on photo / gallery until the preview opens: the choice
+  // screen is not shown again in between, and a second tap does nothing.
+  const pickingRef = useRef(false);
 
   const { setReceipt, setProcessing, clearReceipt, setPendingImage, isProcessing, processingStep } =
     useReceiptStore();
@@ -123,6 +126,21 @@ export default function ScanScreen() {
   };
 
   const handleCapture = async () => {
+    if (pickingRef.current || isProcessing) {
+      console.log("[scan] photo tap ignored — already picking");
+      return;
+    }
+    pickingRef.current = true;
+    setIsPicking(true);
+    try {
+      await captureFromCamera();
+    } finally {
+      pickingRef.current = false;
+      setIsPicking(false);
+    }
+  };
+
+  const captureFromCamera = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
       showDialog(t("avatar_camera_title"), t("avatar_camera_msg"));
@@ -143,6 +161,21 @@ export default function ScanScreen() {
   };
 
   const handleGallery = async () => {
+    if (pickingRef.current || isProcessing) {
+      console.log("[scan] gallery tap ignored — already picking");
+      return;
+    }
+    pickingRef.current = true;
+    setIsPicking(true);
+    try {
+      await pickFromGallery();
+    } finally {
+      pickingRef.current = false;
+      setIsPicking(false);
+    }
+  };
+
+  const pickFromGallery = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: false,
@@ -158,6 +191,7 @@ export default function ScanScreen() {
   };
 
   const handleManualEntry = () => {
+    if (pickingRef.current || isProcessing) return;
     setReceipt(createBlankReceipt());
     router.push("/(app)/review");
   };
