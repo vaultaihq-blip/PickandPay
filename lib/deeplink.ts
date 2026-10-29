@@ -34,7 +34,7 @@ export function parseDeepLink(url: string): {
     }
 
     const sessionMatch = url.match(/session\/([a-zA-Z0-9-]+)/);
-    if (sessionMatch) {
+    if (sessionMatch && sessionMatch[1] !== "join") {
       const refInSession = url.match(/[?&]ref=([a-zA-Z0-9_-]+)/);
       return { type: "session", id: sessionMatch[1], ref: refInSession?.[1] };
     }
@@ -81,7 +81,8 @@ export async function handleDeepLink(
   const parsed = parseDeepLink(url);
 
   if (parsed.type === "session" && parsed.id) {
-    router.push(`/(app)/session/join?sessionId=${parsed.id}`);
+    // The router already opened the entry screen for it (app/+native-intent.tsx);
+    // pushing it here too would stack a second one.
     if (parsed.ref) onReferral?.(parsed.ref);
   } else if (parsed.type === "referral" && parsed.ref) {
     onReferral?.(parsed.ref);
