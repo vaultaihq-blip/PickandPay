@@ -476,7 +476,7 @@ export default function ReviewReceiptScreen() {
         <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
           <KeyboardAvoidingView
             style={{ flex: 1 }}
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
             <GuidedTotalStep
               merchantName={receipt.restaurant ?? "Fatura"}
@@ -498,7 +498,7 @@ export default function ReviewReceiptScreen() {
         <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
           <KeyboardAvoidingView
             style={{ flex: 1 }}
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
             <GuidedItemStep
               item={guidedItem}
@@ -558,7 +558,7 @@ export default function ReviewReceiptScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <ScrollView
           ref={scrollViewRef}
           contentContainerStyle={[

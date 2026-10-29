@@ -169,7 +169,7 @@ function NativeScanner({ onScan, onClose, onCode, codeBusy, codeError }: QRScann
     : null;
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={styles.cameraArea}>
         {cameraOn ? (
           <>

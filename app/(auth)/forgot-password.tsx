@@ -71,7 +71,7 @@ export default function ForgotPasswordScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         {/* Back */}
         <TouchableOpacity style={styles.back} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={22} color={textColor} />

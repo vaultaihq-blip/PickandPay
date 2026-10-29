@@ -7,6 +7,8 @@ import {
   StyleSheet,
   Modal,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   TextInput,
   Share,
   TouchableOpacity,
@@ -192,9 +194,11 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* User section */}
         <View style={styles.userSection}>
@@ -356,6 +360,7 @@ export default function ProfileScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <BottomNavBar activeTab="profile" />
 

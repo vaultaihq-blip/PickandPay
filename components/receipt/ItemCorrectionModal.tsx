@@ -201,7 +201,7 @@ export function ItemCorrectionModal({
     >
       <KeyboardAvoidingView
         style={styles.backdrop}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={styles.sheet}>
           <View style={styles.handle} />

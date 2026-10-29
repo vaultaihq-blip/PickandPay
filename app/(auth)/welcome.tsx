@@ -169,7 +169,7 @@ export default function WelcomeScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <StatusBar style="light" backgroundColor={BG} translucent={false} />
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
           <ScrollView
             contentContainerStyle={styles.emailScroll}
             keyboardShouldPersistTaps="handled"

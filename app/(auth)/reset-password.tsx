@@ -73,7 +73,7 @@ export default function ResetPasswordScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <View style={styles.content}>
           <View style={[styles.iconWrap, { backgroundColor: Colors.primary + "22" }]}>
             <Ionicons name="key-outline" size={52} color={Colors.primary} />

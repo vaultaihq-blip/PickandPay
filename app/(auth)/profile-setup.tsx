@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   useColorScheme,
   ActivityIndicator,
@@ -164,7 +166,8 @@ export default function ProfileSetupScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.title, { color: textColor }]}>Set up your profile</Text>
@@ -280,6 +283,7 @@ export default function ProfileSetupScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
