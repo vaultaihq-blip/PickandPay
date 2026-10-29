@@ -1,6 +1,6 @@
 # Pick&Pay — Claude Code
 
-**As regras de produto em `docs/regras-de-produto.md` (R1 a R8) são obrigatórias. Qualquer alteração a elas tem de ser pedida pelo dono do projeto, Ricardo Costa.**
+**As regras de produto em `docs/regras-de-produto.md` (R1 a R9) são obrigatórias. Qualquer alteração a elas tem de ser pedida pelo dono do projeto, Ricardo Costa.**
 
 ## Windows shell
 Nunca passar código em linha a um shell (node -e, python -c, shell: true).

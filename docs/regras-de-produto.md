@@ -4,7 +4,7 @@ Estas regras são **obrigatórias**. Nenhuma pode ser alterada sem pedido explí
 - O servidor (Supabase) é sempre quem decide e quem garante cada regra. A app só mostra o resultado.
 - Uma app modificada não consegue contornar nenhuma delas.
 
-Estado a 29-10-2026, depois do C3-fix5 e da R8. Os relatórios com os pormenores estão em `docs/relatorios/`.
+Estado a 29-10-2026: R1 a R9, com as decisões do D (o D.1 já aplicado). Os relatórios com os pormenores estão em `docs/relatorios/`.
 
 ---
 
@@ -91,7 +91,7 @@ Estado a 29-10-2026, depois do C3-fix5 e da R8. Os relatórios com os pormenores
 | **O novo anfitrião pode fazer tudo:** finalizar, decidir pedidos de cancelar, marcar pagos (um a um ou todos), atribuir o cêntimo e fechar. | As permissões seguem o anfitrião atual, não quem criou a sessão. |
 | **O novo anfitrião vê um pop-up:** "O anfitrião <nome> desligou-se. Agora és tu o anfitrião." Inclui o pedido de cancelar (Aceitar/Recusar) se houver; "Todos escolheram os itens. Podes finalizar." se todos fizeram Done; e "És tu que registas quem já pagou." no ecrã de pagamentos. **Os outros** veem "<nome> é agora o anfitrião." | Cada pessoa sabe o que mudou e o que tem de fazer. |
 | **A troca não cobra nem devolve créditos.** **As cores não mudam:** o anfitrião original fica verde e com a etiqueta "Anfitrião original". **Se o anfitrião original voltar**, entra como participante. | A troca só muda quem conduz a divisão, nada mais. |
-| **Ecrã de pagamentos:** nunca expira. O pagamento faz-se **fora da app** (no restaurante, MB Way, Revolut ou como o grupo combinar). O anfitrião, ou quem o substituir, só **regista** quem pagou e, no fim, marca todos como pagos e fecha. O ecrã diz isto claramente. | A app não movimenta dinheiro, só ajuda a registar os pagamentos. |
+| **Ecrã de pagamentos:** não expira **enquanto está a ser usado**. Só fecha sozinho depois de **7 dias sem atividade** (ver "Ciclo de vida da sessão"), e mesmo assim os pagos continuam a poder ser registados pelo anfitrião atual. O pagamento faz-se **fora da app** (no restaurante, MB Way, Revolut ou como o grupo combinar). O anfitrião, ou quem o substituir, só **regista** quem pagou e, no fim, marca todos como pagos e fecha. O ecrã diz isto claramente. | A app não movimenta dinheiro, só ajuda a registar os pagamentos. |
 | **O histórico** segue o anfitrião atual lido do servidor. | Os botões de anfitrião ficam com quem é anfitrião de facto. |
 
 ## R8 — Código de sessão
@@ -108,11 +108,34 @@ Estado a 29-10-2026, depois do C3-fix5 e da R8. Os relatórios com os pormenores
 | **O botão de entrada chama-se "Entrar com código QR / código da sessão"** e abre um ecrã com as duas opções. Sem câmara (permissão recusada, aparelho sem câmara ou browser que não a suporta), o ecrã mostra logo o campo do código e uma linha a dizer porquê. | Ninguém fica sem forma de entrar. |
 | **Nenhum link usa o parâmetro `code`.** | O `code=` é reservado ao retorno do login. |
 
+## Ciclo de vida da sessão (decisões do D)
+
+| Regra | Porquê |
+|---|---|
+| **Uma sessão sem atividade fecha sozinha.** Conta como atividade qualquer alteração à sessão ou a uma linha de participante, e qualquer sinal de presença de um aparelho. Os prazos: **sem fatura, 2 h**; **com fatura, antes de finalizar, 24 h**; **em pagamento, 7 dias**. | Sessões abandonadas não podem ficar abertas para sempre, a aparecer no aviso de rejoin e no ecrã de entrada. |
+| **Uma sessão que já passou o prazo conta logo como terminada**, mesmo antes de o servidor a fechar: o ecrã de entrada diz "Esta sessão já terminou" e o aviso de rejoin não a mostra. O servidor fecha-a de 15 em 15 minutos. | Ninguém vê uma sessão abandonada à espera do próximo fecho. |
+| **Cada fecho fica registado**, com quem ou o quê fechou, o motivo e a última atividade. | Um fecho pode sempre ser explicado. |
+| **O anfitrião atual pode sempre terminar a sessão**, com ou sem fatura. | Uma sessão sem fatura não pode prender ninguém. |
+| **O crédito de um scan bem-sucedido não é devolvido** quando a sessão acaba sem fatura. Os erros nossos continuam a ser devolvidos (R1). | Um scan com sucesso já custou o OCR. Devolvê-lo permitiria OCR grátis sem fim (fazer scan, ver o resultado, sair, receber o crédito). |
+| **O resultado de um scan bem-sucedido fica gravado na sessão, no servidor.** Se a app cair depois do scan, o anfitrião volta à revisão com esse resultado, sem pagar outra vez. "Esta sessão ficou sem fatura" fica só para quando o scan nunca teve sucesso. (No D.4.) | Quem pagou o scan não perde o resultado. |
+| **Uma sessão fechada não muda.** A exceção são os pagos (e "coberto por"), que **só o anfitrião atual** pode continuar a registar depois do fecho. (No D.3.) | O que foi fechado fica como estava; registar quem pagou pode acontecer dias depois. |
+| **As partes de cada pessoa (`total_owed`) ficam gravadas no servidor.** A app do anfitrião envia-as, e o servidor só as aceita se somarem exatamente o total e nenhuma for negativa. (No D.6.) | O histórico e os outros aparelhos leem os mesmos valores, sem depender do telemóvel do anfitrião. |
+
+## R9 — Uma só sessão de login por conta
+
+| Regra | Porquê |
+|---|---|
+| **O último login ganha.** Quando uma conta entra num aparelho (app ou web, Google ou email), todas as outras sessões de login dessa conta terminam. Se dois logins acontecerem quase ao mesmo tempo, ganha o último que o servidor registar; nunca ficam os dois. | A mesma conta ligada em dois sítios confunde a presença, o anfitrião e as escritas. |
+| **É imediato:** o aparelho antigo é avisado em tempo real; ao voltar ao primeiro plano, ao arrancar ou ao voltar a ter rede, verifica outra vez. O servidor recusa as escritas importantes (join, seleção, Done, finalizar, pagos, scan) de uma sessão de login que já não é a ativa, com o erro `SESSION_REPLACED`. | Terminar as sessões no Supabase não chega: um aparelho ligado continua com o acesso válido até ele expirar. |
+| **O aparelho expulso** mostra "A tua conta entrou noutro dispositivo. Terminámos a sessão aqui." e vai para o ecrã de login. | A pessoa percebe o que aconteceu. |
+| **Uma divisão a meio não se perde:** no aparelho novo, o aviso de rejoin leva a pessoa ao ponto onde estava, com as seleções e o Done. A presença e o sinal passam para o aparelho novo. **Um anfitrião que muda de aparelho continua anfitrião**: isto não provoca troca de anfitrião. | É a mesma pessoa. |
+| **A mesma regra na app e na web**, com o mesmo RPC. | Um só caminho. |
+
 ---
 
 ## Decisões em aberto (não fazem parte das regras até serem decididas)
 
-- **D:** sessões abandonadas (por exemplo, fecho automático) e `total_owed` calculado no servidor. Está parado.
+- **D:** em curso, pelos sub-blocos D.1 → D.5 → R9 → D.3 → D.4 → D.2 → D.6 → D.7.
 - **E:** registo de créditos anonimizado quando uma sessão é apagada.
 - **F:** aviso de devolução de crédito e traduções do ecrã de boas-vindas.
 - **Fase 1:** domínio para os links universais. Espera pela decisão do domínio.
