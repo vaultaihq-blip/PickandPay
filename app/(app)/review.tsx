@@ -462,11 +462,14 @@ export default function ReviewScreen() {
       if (isPreExistingSession && existingSession) {
         sessionId = existingSession.id;
         if (user && !isOfflineSessionId(sessionId)) {
+          const itemCount = Object.values(receipt.categories ?? {}).flat().length;
+          console.log(`[review] saving receipt_data to session ${sessionId} (${itemCount} items)`);
           // Checked: without this row participants join with no receipt.
           await expectRows(
             "review: save receipt to session",
             supabase.from("sessions").update({ receipt_data: receipt, status: "draft" }).eq("id", sessionId).select("id")
           );
+          console.log(`[review] receipt_data saved to session ${sessionId}`);
         }
       } else if (user) {
         const { data, error } = await supabase

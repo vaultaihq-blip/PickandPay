@@ -65,7 +65,7 @@ export default function RootLayout() {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (__DEV__) console.log("[root] Session:", session?.user?.id ?? "none");
+      if (__DEV__) console.log("[root] User:", session?.user?.id ?? "none");
 
       const seenOnboarding = await AsyncStorage.getItem(ONBOARDING_KEY);
 

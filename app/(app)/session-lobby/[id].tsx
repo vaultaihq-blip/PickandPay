@@ -175,6 +175,8 @@ export default function SessionLobbyScreen() {
 
   const [accordionExpanded, setAccordionExpanded] = useState(false);
   const [qrExpanded, setQrExpanded] = useState(false);
+  // C3-fix6 — the host's session has no receipt in the DB nor on this phone.
+  const [hostNoReceipt, setHostNoReceipt] = useState(false);
   // R8 — the session code, made by the server; everyone in the lobby sees it.
   const [joinCode, setJoinCode] = useState<string | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -982,6 +984,14 @@ ${tr("host_now_you_all_picked")}`, [
           logReceiptState("db-empty", "no receipt_data in the DB yet — waiting for the host");
           return;
         }
+        // C3-fix6 — only this session's own receipt may be saved here (a receipt
+        // from another scan belongs to another session). With none on the
+        // phone either, the host is told and can scan again or end it.
+        if (!sess.receipt && !isOfflineSessionId(sess.id)) {
+          logReceiptState("host-no-receipt", `no receipt for session ${sess.id} in the DB or on this phone — showing "no receipt"`);
+          setHostNoReceipt(true);
+          return;
+        }
         if (!sess.receipt || receiptHealTried || isOfflineSessionId(sess.id)) return;
         receiptHealTried = true;
         console.log("[session-lobby] receipt_data missing in the DB — saving the host's receipt");
@@ -995,6 +1005,7 @@ ${tr("host_now_you_all_picked")}`, [
         return;
       }
       if (!sess) return;
+      setHostNoReceipt(false);
       const dbFp = fingerprint(receiptData);
       const firstRead = lastDbFingerprint === null;
       const dbChanged = !firstRead && dbFp !== lastDbFingerprint;
@@ -1417,10 +1428,13 @@ ${tr("host_now_you_all_picked")}`, [
     };
     try {
       if (isCreator && !isOfflineSession) {
-        await expectRows(
+        console.log(`[session-lobby] host ends session ${session.id}`);
+        const [row] = await expectRows<{ id: string; status: string }>(
           "lobby: host ends session (closed)",
-          supabase.from("sessions").update({ status: "closed" }).eq("id", session.id).select("id")
+          supabase.from("sessions").update({ status: "closed" }).eq("id", session.id).select("id, status")
         );
+        if (row?.status !== "closed") throw new Error(`session ${session.id} is ${row?.status ?? "unknown"}, not closed`);
+        console.log(`[session-lobby] session ${session.id} closed (verified)`);
       } else if (!isCreator && !isOfflineSession && myId) {
         await expectRows(
           "lobby: participant leaves (left)",
@@ -1434,7 +1448,13 @@ ${tr("host_now_you_all_picked")}`, [
       }
       leave();
     } catch (err) {
-      showLeaveWriteError(err, t, leave);
+      if (isCreator) {
+        // The host stays in the lobby: the session is still open on the server.
+        console.log(`[session-lobby] ending session failed: ${err instanceof Error ? err.message : String(err)}`);
+        showDialog(t("error"), `${t("lobby_end_failed")}\n\n${err instanceof Error ? err.message : String(err)}`);
+      } else {
+        showLeaveWriteError(err, t, leave);
+      }
     }
   }, [clearSession, isCreator, myId, session, t]);
 
@@ -2079,6 +2099,29 @@ ${tr("host_now_you_all_picked")}`, [
           </View>
         )}
 
+        {/* C3-fix6 — a host session with no receipt can always be ended. */}
+        {isCreator && hostNoReceipt && (
+          <View style={styles.noReceiptCard}>
+            <Text style={styles.noReceiptTitle}>{t("lobby_no_receipt_title")}</Text>
+            <Text style={styles.noReceiptBody}>{t("lobby_no_receipt_body")}</Text>
+            <View style={styles.noReceiptActions}>
+              <TouchableOpacity
+                style={[styles.noReceiptBtn, styles.noReceiptPrimary]}
+                onPress={() => {
+                  console.log(`[session-lobby] no receipt — scanning again for session ${id}`);
+                  router.push("/(app)/scan");
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.noReceiptPrimaryText}>{t("lobby_no_receipt_rescan")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.noReceiptBtn} onPress={() => void closeConfirmedSession()} activeOpacity={0.85}>
+                <Text style={styles.noReceiptBtnText}>{t("lobby_end_session")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* ── Invite card ──────────────────────────────────────────────────── */}
         <View style={styles.inviteCard}>
           <TouchableOpacity style={styles.qrWrapper} onPress={() => setQrExpanded(true)} activeOpacity={0.8}>
@@ -2573,6 +2616,29 @@ const styles = StyleSheet.create({
   inviteCopy: { flex: 1, gap: 4 },
   inviteTitle: { fontSize: 15, fontWeight: "700", color: HOME_THEME.text },
   inviteSub: { fontSize: 12, color: HOME_THEME.secondary },
+  noReceiptCard: {
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+    backgroundColor: "rgba(245,158,11,0.08)",
+    borderRadius: 14,
+    padding: 14,
+    gap: 8,
+    marginBottom: 12,
+  },
+  noReceiptTitle: { fontSize: 15, fontWeight: "700", color: HOME_THEME.text },
+  noReceiptBody: { fontSize: 13, lineHeight: 18, color: HOME_THEME.secondary },
+  noReceiptActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  noReceiptBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: HOME_THEME.border,
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  noReceiptBtnText: { fontSize: 14, fontWeight: "600", color: HOME_THEME.secondary },
+  noReceiptPrimary: { backgroundColor: HOME_THEME.primary, borderColor: HOME_THEME.primary },
+  noReceiptPrimaryText: { fontSize: 14, fontWeight: "700", color: "#fff" },
   joinCodeRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 8, marginTop: 4 },
   joinCodeLabel: { fontSize: 11, color: HOME_THEME.secondary },
   joinCodeText: {
