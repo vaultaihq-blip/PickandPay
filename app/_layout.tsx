@@ -142,6 +142,14 @@ export default function RootLayout() {
       }
       handleDeepLink(url, (ref) => { pendingRef.current = ref; });
     };
+    // On web every in-app navigation is a "url" event and the page's own path
+    // (e.g. /session/join) matches the session deep-link pattern, which made the
+    // router push to itself forever. On web only auth callbacks are deep links;
+    // /session/<id> opens through its own route (app/(app)/session/[id].tsx).
+    if (Platform.OS === "web") {
+      Linking.getInitialURL().then((url) => { if (url && isAuthCallbackUrl(url)) handleURL(url); });
+      return;
+    }
     Linking.getInitialURL().then((url) => { if (url) handleURL(url); });
     const sub = Linking.addEventListener("url", (e) => handleURL(e.url));
     return () => sub.remove();

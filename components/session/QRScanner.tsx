@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useI18nStore } from "@/store/i18nStore";
 import { formatJoinCode, JOIN_CODE_LENGTH, normalizeJoinCode } from "@/lib/joinCode";
+import { WebQRCamera, isWebCameraSupported } from "./WebQRCamera";
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -26,67 +27,20 @@ interface QRScannerProps {
   codeError?: string | null;
 }
 
-type NoCamera = "denied" | "device" | "browser" | null;
+type NoCamera = "denied" | "device" | null;
 
-const webHasCamera = () =>
-  Platform.OS !== "web" ||
-  (typeof navigator !== "undefined" && !!navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function");
-
-// R8 — one screen, two ways in: the camera (when there is one) and the
-// session code, always below it. Without a camera — permission refused, no
-// device, or a browser that can't use one — the code field is what shows,
-// with a line saying why.
-export function QRScanner({ onScan, onClose, onCode, codeBusy, codeError }: QRScannerProps) {
-  const { t, language } = useI18nStore();
-  void language;
-  const [scanned, setScanned] = useState(false);
+// R8 — the session code field, the same on native and on the web.
+function CodePanel({
+  onCode, codeBusy, codeError, reason, title, children,
+}: Pick<QRScannerProps, "onCode" | "codeBusy" | "codeError"> & { reason: string | null; title: string; children?: React.ReactNode }) {
+  const { t } = useI18nStore();
   const [code, setCode] = useState("");
-  const [permission, requestPermission] = useCameraPermissions();
-  const [mountFailed, setMountFailed] = useState(false);
-  // On the web the camera is only tried when asked (a prompt on load is unfriendly).
-  const [webCameraWanted, setWebCameraWanted] = useState(false);
-
-  // Native: ask once, straight away, when the OS still lets us.
-  useEffect(() => {
-    if (Platform.OS === "web" || !permission) return;
-    if (!permission.granted && permission.canAskAgain && permission.status === "undetermined") {
-      void requestPermission();
-    }
-  }, [permission?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const noCamera: NoCamera = !webHasCamera()
-    ? "browser"
-    : mountFailed
-      ? "device"
-      : permission && !permission.granted && permission.status === "denied"
-        ? "denied"
-        : null;
-  const cameraOn =
-    !noCamera && !!permission?.granted && (Platform.OS !== "web" || webCameraWanted);
-
-  useEffect(() => {
-    if (noCamera) console.log(`[join] no camera (${noCamera}) — showing the session code field`);
-  }, [noCamera]);
-
   const submit = () => {
     const c = normalizeJoinCode(code);
     if (!c || codeBusy) return;
     onCode(c);
   };
-
-  const handleBarcodeScanned = ({ data }: { data: string }) => {
-    if (scanned) return;
-    setScanned(true);
-    onScan(data);
-  };
-
-  const reason =
-    noCamera === "denied" ? t("join_no_camera_denied")
-    : noCamera === "device" ? t("join_no_camera_device")
-    : noCamera === "browser" ? t("join_no_camera_browser")
-    : null;
-
-  const codePanel = (
+  return (
     <View style={styles.panel}>
       {reason && (
         <View style={styles.reasonRow}>
@@ -94,7 +48,7 @@ export function QRScanner({ onScan, onClose, onCode, codeBusy, codeError }: QRSc
           <Text style={styles.reasonText}>{reason}</Text>
         </View>
       )}
-      <Text style={styles.panelTitle}>{cameraOn ? t("join_code_or") : t("join_code_label")}</Text>
+      <Text style={styles.panelTitle}>{title}</Text>
       <View style={styles.codeRow}>
         <TextInput
           style={styles.codeInput}
@@ -120,27 +74,99 @@ export function QRScanner({ onScan, onClose, onCode, codeBusy, codeError }: QRSc
         </TouchableOpacity>
       </View>
       {!!codeError && <Text style={styles.codeError}>{codeError}</Text>}
-      {noCamera === "denied" && Platform.OS !== "web" && (
-        <TouchableOpacity
-          style={styles.linkBtn}
-          onPress={() => (permission?.canAskAgain ? void requestPermission() : void Linking.openSettings())}
-        >
-          <Text style={styles.linkText}>{permission?.canAskAgain ? t("join_camera_allow") : t("join_camera_settings")}</Text>
-        </TouchableOpacity>
-      )}
-      {Platform.OS === "web" && !noCamera && !cameraOn && (
-        <TouchableOpacity
-          style={styles.linkBtn}
-          onPress={async () => {
-            const res = await requestPermission();
-            if (res.granted) setWebCameraWanted(true);
-          }}
-        >
-          <Text style={styles.linkText}>{t("join_camera_try")}</Text>
-        </TouchableOpacity>
-      )}
+      {children}
     </View>
   );
+}
+
+// R8 — one screen, two ways in: the camera and the session code.
+export function QRScanner(props: QRScannerProps) {
+  return Platform.OS === "web" ? <WebScanner {...props} /> : <NativeScanner {...props} />;
+}
+
+// Web: the camera (getUserMedia + BarcodeDetector / jsQR) opens by default
+// when the browser can; "Enter session code instead" switches to the code
+// panel, which links back to the camera. Whatever the camera reads goes to
+// the same onScan as on native.
+function WebScanner({ onScan, onClose, onCode, codeBusy, codeError }: QRScannerProps) {
+  const { t, language } = useI18nStore();
+  void language;
+  const cameraOk = isWebCameraSupported();
+  const [mode, setMode] = useState<"camera" | "code">(cameraOk ? "camera" : "code");
+  useEffect(() => {
+    if (!cameraOk) console.log("[join] no camera (browser) — showing the session code field");
+  }, [cameraOk]);
+
+  if (mode === "camera") {
+    return <WebQRCamera onScan={onScan} onClose={onClose} onUseCode={() => setMode("code")} />;
+  }
+  return (
+    <KeyboardAvoidingView style={styles.container}>
+      <View style={styles.cameraArea}>
+        <View style={styles.noCameraArt}>
+          <Ionicons name="keypad-outline" size={64} color={Colors.primary} />
+        </View>
+        <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </TouchableOpacity>
+      </View>
+      <CodePanel
+        onCode={onCode}
+        codeBusy={codeBusy}
+        codeError={codeError}
+        reason={cameraOk ? null : t("join_no_camera_browser")}
+        title={t("join_code_label")}
+      >
+        {cameraOk && (
+          <TouchableOpacity style={[styles.linkBtn, styles.linkRow]} onPress={() => setMode("camera")}>
+            <Ionicons name="camera-outline" size={18} color={Colors.primary} />
+            <Text style={styles.linkText}>{t("join_scan_with_camera")}</Text>
+          </TouchableOpacity>
+        )}
+      </CodePanel>
+    </KeyboardAvoidingView>
+  );
+}
+
+// Native: expo-camera on top, the code panel always below it. Without a
+// camera — permission refused or no device — the code field is what shows,
+// with a line saying why.
+function NativeScanner({ onScan, onClose, onCode, codeBusy, codeError }: QRScannerProps) {
+  const { t, language } = useI18nStore();
+  void language;
+  const [scanned, setScanned] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [mountFailed, setMountFailed] = useState(false);
+
+  // Ask once, straight away, when the OS still lets us.
+  useEffect(() => {
+    if (!permission) return;
+    if (!permission.granted && permission.canAskAgain && permission.status === "undetermined") {
+      void requestPermission();
+    }
+  }, [permission?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const noCamera: NoCamera = mountFailed
+    ? "device"
+    : permission && !permission.granted && permission.status === "denied"
+      ? "denied"
+      : null;
+  const cameraOn = !noCamera && !!permission?.granted;
+
+  useEffect(() => {
+    if (noCamera) console.log(`[join] no camera (${noCamera}) — showing the session code field`);
+  }, [noCamera]);
+
+  const handleBarcodeScanned = ({ data }: { data: string }) => {
+    if (scanned) return;
+    setScanned(true);
+    onScan(data);
+  };
+
+  const reason =
+    noCamera === "denied" ? t("join_no_camera_denied")
+    : noCamera === "device" ? t("join_no_camera_device")
+    : null;
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -174,7 +200,7 @@ export function QRScanner({ onScan, onClose, onCode, codeBusy, codeError }: QRSc
           </>
         ) : (
           <View style={styles.noCameraArt}>
-            {!permission && Platform.OS !== "web" ? (
+            {!permission ? (
               <ActivityIndicator color="rgba(255,255,255,0.6)" />
             ) : (
               <Ionicons name={noCamera ? "keypad-outline" : "qr-code-outline"} size={64} color={Colors.primary} />
@@ -185,7 +211,22 @@ export function QRScanner({ onScan, onClose, onCode, codeBusy, codeError }: QRSc
           <Ionicons name="close" size={28} color="#fff" />
         </TouchableOpacity>
       </View>
-      {codePanel}
+      <CodePanel
+        onCode={onCode}
+        codeBusy={codeBusy}
+        codeError={codeError}
+        reason={reason}
+        title={cameraOn ? t("join_code_or") : t("join_code_label")}
+      >
+        {noCamera === "denied" && (
+          <TouchableOpacity
+            style={styles.linkBtn}
+            onPress={() => (permission?.canAskAgain ? void requestPermission() : void Linking.openSettings())}
+          >
+            <Text style={styles.linkText}>{permission?.canAskAgain ? t("join_camera_allow") : t("join_camera_settings")}</Text>
+          </TouchableOpacity>
+        )}
+      </CodePanel>
     </KeyboardAvoidingView>
   );
 }
@@ -239,4 +280,5 @@ const styles = StyleSheet.create({
   codeError: { color: "#F87171", fontSize: 13, lineHeight: 18 },
   linkBtn: { alignSelf: "flex-start", paddingVertical: 4 },
   linkText: { color: Colors.primary, fontSize: 14, fontWeight: "600" },
+  linkRow: { flexDirection: "row", alignItems: "center", gap: 8 },
 });
