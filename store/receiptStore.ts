@@ -5,6 +5,8 @@ interface ReceiptState {
   receipt: ParsedReceipt | null;
   rawImageUri: string | null;
   rawOcrText: string | null;
+  pendingImageUri: string | null;
+  pendingImageBase64: string | null;
   isProcessing: boolean;
   processingStep: string;
   error: string | null;
@@ -13,6 +15,7 @@ interface ReceiptState {
   setReceipt: (receipt: ParsedReceipt) => void;
   setRawImageUri: (uri: string | null) => void;
   setRawOcrText: (text: string | null) => void;
+  setPendingImage: (uri: string, base64: string) => void;
   setProcessing: (isProcessing: boolean, step?: string) => void;
   setError: (error: string | null) => void;
   setRestaurantName: (name: string) => void;
@@ -31,6 +34,8 @@ export const useReceiptStore = create<ReceiptState>((set, get) => ({
   receipt: null,
   rawImageUri: null,
   rawOcrText: null,
+  pendingImageUri: null,
+  pendingImageBase64: null,
   isProcessing: false,
   processingStep: "",
   error: null,
@@ -40,6 +45,8 @@ export const useReceiptStore = create<ReceiptState>((set, get) => ({
   setRawImageUri: (rawImageUri) => set({ rawImageUri }),
 
   setRawOcrText: (rawOcrText) => set({ rawOcrText }),
+
+  setPendingImage: (uri, base64) => set({ pendingImageUri: uri, pendingImageBase64: base64 }),
 
   setProcessing: (isProcessing, step = "") =>
     set({ isProcessing, processingStep: step }),
@@ -170,6 +177,8 @@ export const useReceiptStore = create<ReceiptState>((set, get) => ({
       receipt: null,
       rawImageUri: null,
       rawOcrText: null,
+      pendingImageUri: null,
+      pendingImageBase64: null,
       isProcessing: false,
       processingStep: "",
       error: null,

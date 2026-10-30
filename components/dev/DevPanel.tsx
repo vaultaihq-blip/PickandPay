@@ -153,8 +153,9 @@ export function DevPanel({ visible, onClose }: DevPanelProps) {
       setReceipt(receipt!);
     }
     onClose();
-    // With receipt → go straight to lobby to pick items; without → session setup
-    router.push(withReceipt ? `/(app)/session-lobby/${sessionId}` : `/(app)/session/${sessionId}`);
+    // With receipt → go straight to lobby to pick items; without → scan the
+    // receipt first, as Start split does.
+    router.push(withReceipt ? `/(app)/session-lobby/${sessionId}` : "/(app)/scan");
   };
 
   // ── Load mock receipt into current session ────────────────────────────────

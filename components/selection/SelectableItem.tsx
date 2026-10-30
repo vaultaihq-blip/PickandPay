@@ -12,6 +12,17 @@ import { ReceiptItem as ReceiptItemType } from "@/types";
 import { Badge } from "@/components/ui/Badge";
 import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/utils/formatter";
+import { Avatar } from "@/components/ui/Avatar";
+
+export interface SelectorInfo {
+  userId: string;
+  name: string;
+  avatarIcon?: string;
+  avatarUrl?: string;
+  color: string;
+  color2?: string;
+  isMe: boolean;
+}
 
 interface SelectableItemProps {
   item: ReceiptItemType;
@@ -23,7 +34,10 @@ interface SelectableItemProps {
   availableQty?: number;
   totalQty?: number;
   quantitySelected?: number;
+  claimableQty?: number;
   totalAllocatedByOthers?: number;
+  selectors?: SelectorInfo[];
+  hidePrices?: boolean;
   onToggle: () => void;
   onShareTap?: () => void;
   onQuantityChange?: (delta: number) => void;
@@ -39,7 +53,10 @@ export function SelectableItem({
   availableQty,
   totalQty,
   quantitySelected = 1,
+  claimableQty,
   totalAllocatedByOthers = 0,
+  selectors,
+  hidePrices = false,
   onToggle,
   onShareTap,
   onQuantityChange,
@@ -51,11 +68,16 @@ export function SelectableItem({
   const isShareable = item.type === "shareable";
   const curr = currency as "EUR" | "USD" | "CAD" | "GBP";
 
-  const maxQty = item.quantity - totalAllocatedByOthers;
+  const maxQty = claimableQty ?? item.quantity;
   const canIncrement = selected && quantitySelected < maxQty;
   const canDecrement = selected && quantitySelected > 1;
 
+  // For multi-unit items, show proportional price based on sharing
+  const totalSelected = quantitySelected + totalAllocatedByOthers;
   let displayPrice = selected ? item.unitPrice * quantitySelected : item.unitPrice;
+  if (selected && item.quantity > 1 && !isShareable && totalAllocatedByOthers > 0) {
+    displayPrice = (quantitySelected / totalSelected) * item.totalPrice;
+  }
   if (isShareable && sharedWith.length > 0) {
     displayPrice = item.totalPrice / sharedWith.length;
   }
@@ -109,9 +131,9 @@ export function SelectableItem({
           </Text>
         )}
 
-        {totalQty !== undefined && totalQty > 1 && !selected && (
+        {item.quantity > 1 && !selected && totalAllocatedByOthers > 0 && (
           <Text style={[styles.availNote, { color: mutedColor }]}>
-            {availableQty !== undefined ? availableQty : totalQty} of {totalQty} available
+            {totalAllocatedByOthers} selected by others · tap to share
           </Text>
         )}
 
@@ -137,20 +159,55 @@ export function SelectableItem({
                 +
               </Text>
             </Pressable>
-            {item.quantity > 1 && (
+            {maxQty > 1 && (
               <Text style={[styles.qtyMeta, { color: mutedColor }]}>
-                {maxQty - quantitySelected > 0
-                  ? `${maxQty - quantitySelected} remaining`
-                  : "All taken"}
+                {quantitySelected}/{maxQty}
+                {totalAllocatedByOthers > 0 ? ` · +${totalAllocatedByOthers} others` : ""}
               </Text>
             )}
           </View>
         )}
       </View>
 
-      <Text style={[styles.price, { color: selected ? selectionColor : mutedColor }]}>
-        {formatCurrency(displayPrice, curr)}
-      </Text>
+      <View style={styles.rightCol}>
+        {!hidePrices && (
+          <Text style={[styles.price, { color: selected ? selectionColor : mutedColor }]}>
+            {formatCurrency(displayPrice, curr)}
+          </Text>
+        )}
+        {!hidePrices && selectors && selectors.length > 0 && (
+          <View style={styles.selectorCluster}>
+            {selectors.length === 1 && selectors[0].isMe ? (
+              <View style={[styles.selectorCheck, { backgroundColor: "#22C55E" }]}>
+                <Ionicons name="checkmark" size={13} color="#fff" />
+              </View>
+            ) : (
+              <View style={styles.selectorStack}>
+                {selectors.slice(0, 3).map((s, i) => (
+                  <View
+                    key={s.userId}
+                    style={[styles.selectorAvatar, { marginLeft: i > 0 ? -8 : 0, zIndex: 10 - i }]}
+                  >
+                    <Avatar
+                      name={s.name}
+                      avatarIcon={s.avatarIcon}
+                      avatarUrl={s.avatarUrl}
+                      color={s.color}
+                      color2={s.color2}
+                      size={22}
+                    />
+                  </View>
+                ))}
+                {selectors.length > 3 && (
+                  <View style={[styles.selectorOverflow, { marginLeft: -8 }]}>
+                    <Text style={styles.selectorOverflowText}>+{selectors.length - 3}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -235,10 +292,48 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontStyle: "italic",
   },
+  rightCol: {
+    alignItems: "flex-end",
+    gap: 4,
+  },
   price: {
     fontSize: 14,
     fontWeight: "600",
-    minWidth: 60,
+    minWidth: 56,
     textAlign: "right",
+  },
+  selectorCluster: {
+    alignItems: "flex-end",
+  },
+  selectorCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectorStack: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  selectorAvatar: {
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: "#0B0D10",
+  },
+  selectorOverflow: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#374151",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#0B0D10",
+  },
+  selectorOverflowText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "700",
   },
 });

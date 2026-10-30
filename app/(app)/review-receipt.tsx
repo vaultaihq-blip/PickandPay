@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+﻿import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -7,21 +7,32 @@ import {
   TextInput,
   Image,
   Modal,
-  StyleSheet,
   useColorScheme,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
-import { validateEditableItems, EditableItem } from "@/lib/receipt-validator";
+import { useCanonicalReceiptStore, visibleIssues } from "@/store/canonicalReceiptStore";
+import { validateEditableItems, type EditableRow } from "@/lib/receipt-validator";
+import { buildReceiptGuidance, type ReceiptGuidance } from "@/lib/receipt-guidance";
+import { GuidedTotalStep } from "@/components/receipt/guided/GuidedTotalStep";
+import { GuidedItemStep, type ItemField } from "@/components/receipt/guided/GuidedItemStep";
+import { GuidedClosingStep } from "@/components/receipt/guided/GuidedClosingStep";
 import { ItemCategory, ParsedReceipt, ReceiptItem } from "@/types";
 import { useSessionStore } from "@/store/sessionStore";
+import { useI18nStore } from "@/store/i18nStore";
+import { TranslationKey } from "@/constants/translations";
+import { formatCurrency } from "@/utils/formatter";
+import { styles } from "@/components/receipt/reviewReceiptStyles";
+import { supabase } from "@/lib/supabase";
+import { expectRows, showWriteError } from "@/lib/checkedWrite";
+import { isOfflineSessionId } from "@/constants/dev";
+import { showDialog } from "@/lib/dialog";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,8 +42,24 @@ const CATEGORIES: ItemCategory[] = [
 
 const STRICT_TOLERANCE = 0.01;
 
-function flattenItems(receipt: ParsedReceipt): EditableItem[] {
-  const result: EditableItem[] = [];
+/**
+ * FIX 45/46 — the guided correction flow. Only receipts that already failed
+ * validation reach this screen (receipt-preview.tsx routes clean ones
+ * straight to /review), so every receipt here has something to fix.
+ *
+ *   total (+ what's wrong) -> items (queue) -> closing
+ *
+ * FIX 46 merged the standalone diagnosis screen into the total step (A.1) —
+ * the total is the anchor, so the explanation belongs right next to it, not
+ * on a screen the user has to click past first.
+ *
+ * "all" is the pre-existing full list, kept exactly as it was and reachable
+ * from the item and closing steps via "ver todos os itens".
+ */
+type GuidedStep = "total" | "items" | "closing";
+
+function flattenItems(receipt: ParsedReceipt): EditableRow[] {
+  const result: EditableRow[] = [];
   for (const cat of CATEGORIES) {
     for (const item of receipt.categories[cat] ?? []) {
       result.push({
@@ -42,13 +69,28 @@ function flattenItems(receipt: ParsedReceipt): EditableItem[] {
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         totalPrice: item.totalPrice,
+        addOns: item.addOns,
+        reviewed: item.reviewed,
+        qtyText: String(item.quantity),
+        unitPriceText: item.unitPrice.toFixed(2),
+        totalText: item.totalPrice.toFixed(2),
       });
     }
   }
   return result;
 }
 
-function rebuildReceipt(original: ParsedReceipt, items: EditableItem[]): ParsedReceipt {
+/**
+ * FIX 45 — `confirmedTotal` is the total the user confirmed in step 2. It is
+ * the anchor the rest of the flow validates against, so when they corrected
+ * it (or supplied one the parser never found) it must reach the receipt
+ * rather than being discarded at the door. Null keeps the original.
+ */
+function rebuildReceipt(
+  original: ParsedReceipt,
+  items: EditableRow[],
+  confirmedTotal: number | null = null
+): ParsedReceipt {
   const categories: ParsedReceipt["categories"] = {
     starters: [], mains: [], drinks: [], desserts: [], others: [],
   };
@@ -64,44 +106,48 @@ function rebuildReceipt(original: ParsedReceipt, items: EditableItem[]): ParsedR
       unitPrice: item.unitPrice,
       totalPrice: item.totalPrice,
       type: "individual",
+      reviewed: item.reviewed,
     } as ReceiptItem);
   }
-  const computedTotal = Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100;
-  const receiptTotal = original.validation.receiptTotal;
-  const difference = Math.round((computedTotal - receiptTotal) * 100) / 100;
+  const userItemsTotal = Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100;
+  // Compare user's items against the subtotal (items only), not grand total (includes service/tax).
+  const subtotalTarget = original.validation.computedTotal ?? original.validation.receiptTotal;
+  const receiptTotal = confirmedTotal ?? original.validation.receiptTotal;
+  const difference = Math.round((userItemsTotal - subtotalTarget) * 100) / 100;
   return {
     ...original,
+    printed_total: confirmedTotal ?? original.printed_total,
     categories,
     suggestedTips: [
-      { percentage: 10, amount: Math.round(computedTotal * 0.1 * 100) / 100 },
-      { percentage: 15, amount: Math.round(computedTotal * 0.15 * 100) / 100 },
-      { percentage: 20, amount: Math.round(computedTotal * 0.2 * 100) / 100 },
+      { percentage: 10, amount: Math.round(userItemsTotal * 0.1 * 100) / 100 },
+      { percentage: 15, amount: Math.round(userItemsTotal * 0.15 * 100) / 100 },
+      { percentage: 20, amount: Math.round(userItemsTotal * 0.2 * 100) / 100 },
     ],
     validation: {
       receiptTotal,
-      computedTotal,
+      computedTotal: userItemsTotal,
       difference,
       status: Math.abs(difference) <= STRICT_TOLERANCE ? "ok" : "error",
     },
   };
 }
 
-function buildFixSuggestions(diff: number): string[] {
+function buildFixSuggestions(diff: number, t: (k: TranslationKey) => string, currency: string): string[] {
   if (Math.abs(diff) <= STRICT_TOLERANCE) return [];
   if (diff > 0) {
     return [
-      `Total is ${diff.toFixed(2)}€ too high.`,
-      "· Check for duplicate items and remove them",
-      "· Verify quantities (e.g. entered 2 instead of 1)",
-      "· Check that no free items were given a price",
+      `${t("review_fix_prefix")} ${diff.toFixed(2)} ${currency} ${t("review_fix_too_high")}`,
+      t("review_fix_dup"),
+      t("review_fix_qty_hint"),
+      t("review_fix_free_items"),
     ];
   }
   return [
-    `Total is ${Math.abs(diff).toFixed(2)}€ too low.`,
-    "· Look for missing items on the physical receipt",
-    '· Use "+ Add Missing Item" to add them',
-    "· Check quantities (e.g. entered 1 instead of 2)",
-    "· Retry scan with better lighting if receipt is unclear",
+    `${t("review_fix_prefix")} ${Math.abs(diff).toFixed(2)} ${currency} ${t("review_fix_too_low")}`,
+    t("review_fix_missing_items"),
+    t("review_fix_add_hint"),
+    t("review_fix_qty_hint2"),
+    t("review_fix_retry_scan"),
   ];
 }
 
@@ -110,18 +156,35 @@ function buildFixSuggestions(diff: number): string[] {
 export default function ReviewReceiptScreen() {
   const isDark = useColorScheme() === "dark";
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { receipt, setReceipt, rawImageUri } = useReceiptStore();
   const { currentSession, setSession } = useSessionStore();
+  const { t, language } = useI18nStore();
+  void language;
+  // Continue is pressed once per save (the receipt write below is awaited).
+  const savingRef = useRef(false);
 
   // ── All hooks before any conditional return ────────────────────────────────
 
-  const [items, setItems] = useState<EditableItem[]>(() =>
+  const [items, setItems] = useState<EditableRow[]>(() =>
     receipt ? flattenItems(receipt) : []
   );
   const [imageModalVisible, setImageModalVisible] = useState(false);
 
+  // ── FIX 45 — guided flow state ─────────────────────────────────────────────
+  // Every step renders inside this same component, so nothing unmounts and no
+  // edit is ever lost by moving back and forth between steps.
+  const [step, setStep] = useState<GuidedStep>("total");
+  const [queueIndex, setQueueIndex] = useState(0);
+  const [showAllItems, setShowAllItems] = useState(false);
+
   useEffect(() => {
-    if (!receipt) router.replace("/(app)/scan");
+    if (!receipt) {
+      router.replace("/(app)/scan");
+      return;
+    }
+    const itemCount = Object.values(receipt.categories).flat().length;
+    console.log(`[review-receipt] Loaded receipt: ${receipt.restaurant} (${itemCount} items)`);
   }, []);
 
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
@@ -130,7 +193,11 @@ export default function ReviewReceiptScreen() {
   const borderColor = isDark ? Colors.cardBorderDark : Colors.cardBorderLight;
   const cardColor = isDark ? Colors.cardDark : Colors.cardLight;
 
-  const receiptTotal = receipt?.validation.receiptTotal ?? 0;
+  // subtotalTarget = items-only sum from OCR (before service charge / tax).
+  // Grand total (receiptTotal) is only used for the display row, not for validation.
+  const subtotalTarget = receipt?.validation.computedTotal ?? receipt?.validation.receiptTotal ?? 0;
+  const grandTotal = receipt?.validation.receiptTotal ?? subtotalTarget;
+  const currency = receipt?.currency ?? "EUR";
 
   const calculatedTotal = useMemo(
     () => Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100,
@@ -138,9 +205,90 @@ export default function ReviewReceiptScreen() {
   );
 
   const validation = useMemo(
-    () => validateEditableItems(items, receiptTotal),
-    [items, receiptTotal]
+    () => validateEditableItems(items, subtotalTarget, currency),
+    [items, subtotalTarget, currency]
   );
+
+  // Separate origin from validateEditableItems above: these come from the
+  // canonical pipeline's evidence check (lib/receipt/evidence.ts), which
+  // compares a value against the model's own cited line text — catches a
+  // different class of defect (a value that reconciles but doesn't match
+  // what was read) than the item-math/price-variant checks above.
+  const canonicalIssues = useCanonicalReceiptStore(visibleIssues);
+  const dismissCanonicalIssue = useCanonicalReceiptStore((s) => s.dismissIssue);
+
+  const formatMoney = useCallback(
+    (value: number) => formatCurrency(value, currency as any),
+    [currency]
+  );
+
+  const chargesSum = useMemo(
+    () =>
+      Math.round((receipt?.globalCosts ?? []).reduce((s, c) => s + (c.amount ?? 0), 0) * 100) / 100,
+    [receipt]
+  );
+
+  // FIX 45 — computed ONCE, from the analysis as it arrived. Recomputing it
+  // as the user edits would make items disappear from the queue mid-flow
+  // ("item 2 de 5" turning into "item 2 de 3" under their thumb); the queue
+  // is the list of things the parser flagged, not a live to-do list.
+  const [guidance] = useState<ReceiptGuidance>(() =>
+    buildReceiptGuidance(
+      {
+        canonical: useCanonicalReceiptStore.getState().receipt,
+        items,
+        printedTotal: receipt?.validation.receiptTotal ?? null,
+        itemsSum: receipt?.validation.computedTotal ?? 0,
+        chargesSum: Math.round(
+          (receipt?.globalCosts ?? []).reduce((s, c) => s + (c.amount ?? 0), 0) * 100
+        ) / 100,
+      },
+      (value) => formatCurrency(value, (receipt?.currency ?? "EUR") as any)
+    )
+  );
+
+  // The anchor. Blank when the parser never identified a total, which is
+  // exactly when step 2 matters most.
+  const [confirmedTotalText, setConfirmedTotalText] = useState(() => {
+    if (guidance.missingTotal) return "";
+    const printed = receipt?.validation.receiptTotal ?? 0;
+    return printed > 0 ? printed.toFixed(2) : "";
+  });
+
+  const confirmedTotal = useMemo(() => {
+    const parsed = parseFloat(confirmedTotalText.replace(",", "."));
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }, [confirmedTotalText]);
+
+  /** Ids in the queue that still exist in `items` (an item can be deleted). */
+  const attentionQueue = useMemo(
+    () => guidance.attentionItemIds.filter((id) => items.some((i) => i.id === id)),
+    [guidance, items]
+  );
+
+  // Tapping an issue scrolls to and briefly highlights the item it points at
+  // (issue.itemId survives the canonical -> legacy projection unchanged, see
+  // lib/receipt/adapter.ts:toLegacyItem, so it matches an EditableItem.id
+  // here directly). No modal: ItemCorrectionModal edits CanonicalReceipt via
+  // ReceiptEdit, a model this screen's own items/rebuildReceipt never reads
+  // from — wiring it in without also bridging that would let a "fix" vanish
+  // silently when the user saves. Scrolling to the existing, already-wired
+  // inline fields is the safe option.
+  const scrollViewRef = useRef<ScrollView>(null);
+  const itemLayoutY = useRef<Record<string, number>>({});
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
+
+  const scrollToItem = useCallback((itemId: string | undefined) => {
+    if (itemId === undefined) return;
+    const y = itemLayoutY.current[itemId];
+    if (y !== undefined) {
+      scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 100), animated: true });
+    }
+    setHighlightedItemId(itemId);
+    setTimeout(() => {
+      setHighlightedItemId((current) => (current === itemId ? null : current));
+    }, 2500);
+  }, []);
 
   const errorMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -148,76 +296,260 @@ export default function ReviewReceiptScreen() {
     return m;
   }, [validation]);
 
-  const totalDiff = calculatedTotal - receiptTotal;
-  const canContinue = validation.isValid;
-  const fixSuggestions = useMemo(() => buildFixSuggestions(totalDiff), [totalDiff]);
+  const totalDiff = calculatedTotal - subtotalTarget;
+  // FIX 44 — editing must never be refused for not reconciling ("a app pode
+  // mostrar que a soma não bate, não pode recusar"). The Continue button is
+  // always enabled (see handleContinue and the JSX below); hasBlockingIssues
+  // only drives the informational banners, unchanged from before.
+  const hasBlockingIssues = !validation.isValid;
+  const isWarning = validation.isWarning;
+  const fixSuggestions = useMemo(() => buildFixSuggestions(totalDiff, t, currency), [totalDiff, t, currency]);
 
+  // FIX 44 — the three-field rule: quantity x unitPrice = total. Whichever
+  // field the user just edited keeps its own raw text exactly as typed; the
+  // OTHER dependent field(s) recompute from it (see EditableRow's own header
+  // comment for why raw text is tracked separately from the numeric value).
+  // Editing anything on an item activates its reviewed mark automatically.
   const updateItem = useCallback(
-    (id: string, field: "name" | "quantity" | "unitPrice", raw: string) => {
+    (id: string, field: ItemField, raw: string) => {
       setItems((prev) =>
         prev.map((item) => {
           if (item.id !== id) return item;
-          if (field === "name") return { ...item, name: raw };
+          if (field === "name") return { ...item, name: raw, reviewed: true };
+
           if (field === "quantity") {
             const qty = Math.max(1, parseInt(raw) || 1);
-            return { ...item, quantity: qty, totalPrice: Math.round(qty * item.unitPrice * 100) / 100 };
+            const total = Math.round(qty * item.unitPrice * 100) / 100;
+            return { ...item, qtyText: raw, quantity: qty, totalPrice: total, totalText: total.toFixed(2), reviewed: true };
           }
-          const price = parseFloat(raw.replace(",", ".")) || 0;
-          return { ...item, unitPrice: price, totalPrice: Math.round(item.quantity * price * 100) / 100 };
+
+          if (field === "unitPrice") {
+            const price = parseFloat(raw.replace(",", ".")) || 0;
+            const total = Math.round(item.quantity * price * 100) / 100;
+            return { ...item, unitPriceText: raw, unitPrice: price, totalPrice: total, totalText: total.toFixed(2), reviewed: true };
+          }
+
+          // field === "totalPrice" — the exact typed value is the ground
+          // truth ("o que conta para a conta é o total"); unitPrice is
+          // re-derived by division and rounded for display only.
+          const total = parseFloat(raw.replace(",", ".")) || 0;
+          const unitPrice = item.quantity > 0 ? Math.round((total / item.quantity) * 100) / 100 : item.unitPrice;
+          return { ...item, totalText: raw, totalPrice: total, unitPrice, unitPriceText: unitPrice.toFixed(2), reviewed: true };
         })
       );
     },
     []
   );
 
+  // FIX 44 — toggled by hand, independent of editing a field ("pode ser
+  // ativada à mão sem editar nada, para confirmar que está certo").
+  const toggleReviewed = useCallback((id: string) => {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, reviewed: !item.reviewed } : item)));
+  }, []);
+
   const addItem = useCallback(() => {
     setItems((prev) => [
       ...prev,
-      { id: `manual_${Date.now()}`, category: "others", name: "", quantity: 1, unitPrice: 0, totalPrice: 0 },
+      {
+        id: `manual_${Date.now()}`,
+        category: "others",
+        name: "",
+        quantity: 1,
+        unitPrice: 0,
+        totalPrice: 0,
+        qtyText: "1",
+        unitPriceText: "0.00",
+        totalText: "0.00",
+      },
     ]);
   }, []);
 
   const removeItem = useCallback((id: string) => {
-    Alert.alert("Remove Item", "Remove this item from the receipt?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Remove", style: "destructive", onPress: () => setItems((p) => p.filter((i) => i.id !== id)) },
+    showDialog(t("review_receipt_remove_title"), t("review_receipt_remove_msg"), [
+      { text: t("cancel"), style: "cancel" },
+      { text: t("review_receipt_remove_btn"), style: "destructive", onPress: () => setItems((p) => p.filter((i) => i.id !== id)) },
     ]);
-  }, []);
+  }, [t]);
 
   // ── Early return after all hooks ────────────────────────────────────────────
   if (!receipt) return null;
 
-  const handleContinue = () => {
-    if (!canContinue) {
-      Alert.alert(
-        "Fix Errors First",
-        `The items must add up to exactly ${receiptTotal.toFixed(2)}€.\n\nCurrent difference: ${totalDiff > 0 ? "+" : ""}${totalDiff.toFixed(2)}€`,
-        [{ text: "OK" }]
-      );
-      return;
-    }
-    const rebuilt = rebuildReceipt(receipt, items);
+  const handleContinue = async () => {
+    if (savingRef.current) return;
+    // FIX 45 — the total the user confirmed wins over whatever was parsed.
+    // Zero means they left it blank; in that case keep the original rather
+    // than writing a total of 0.00 onto the receipt.
+    const rebuilt = rebuildReceipt(receipt, items, confirmedTotal > 0 ? confirmedTotal : null);
     setReceipt(rebuilt);
 
     const liveId = currentSession?.id;
     const isLiveSession = liveId && !liveId.startsWith("session_");
+    console.log(
+      `[review-receipt] handleContinue: isLiveSession=${!!isLiveSession} sessionId=${liveId ?? "none"} -> ${isLiveSession ? `session-lobby/${liveId}` : "review"}`
+    );
     if (isLiveSession) {
-      // Set receipt in session store so the redirectToSelection effect can fire
+      // The session exists already (Start split creates it before the scan),
+      // so this is where its receipt reaches the DB. Participants load
+      // receipt_data when they join and the lobby polls it; without this
+      // write they never get the items ("Session not found" in selection).
+      if (!isOfflineSessionId(liveId)) {
+        savingRef.current = true;
+        try {
+          await expectRows(
+            "review-receipt: save receipt to session",
+            supabase.from("sessions").update({ receipt_data: rebuilt }).eq("id", liveId).select("id")
+          );
+          console.log(`[review-receipt] receipt saved to session ${liveId}`);
+        } catch (err) {
+          showWriteError(err, t);
+          return;
+        } finally {
+          savingRef.current = false;
+        }
+      }
       setSession({ ...currentSession!, receipt: rebuilt });
-      // Replace (not push) so the user can't accidentally re-confirm via back
-      router.replace(`/(app)/session/${liveId}?redirectToSelection=1`);
+      router.replace(`/(app)/session-lobby/${liveId}`);
     } else {
-      router.push("/(app)/review");
+      router.replace("/(app)/review");
     }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // ── FIX 45 — step navigation ───────────────────────────────────────────────
+  // Every transition is logged, matching FIX 44's own navigation logging, so
+  // a real-device run still shows where the user actually went.
+  const goToStep = (next: GuidedStep) => {
+    console.log(`[review-receipt] guided step: ${step} -> ${next} (queue ${attentionQueue.length})`);
+    setStep(next);
+  };
+
+  /** After the total: the item queue, or straight to the close when empty. */
+  const afterTotal = () => {
+    if (attentionQueue.length === 0) {
+      goToStep("closing");
+      return;
+    }
+    setQueueIndex(0);
+    goToStep("items");
+  };
+
+  const advanceQueue = (confirmed: boolean) => {
+    const current = attentionQueue[queueIndex];
+    if (confirmed && current !== undefined) {
+      setItems((prev) =>
+        prev.map((item) => (item.id === current ? { ...item, reviewed: true } : item))
+      );
+    }
+    if (queueIndex + 1 >= attentionQueue.length) {
+      goToStep("closing");
+      return;
+    }
+    setQueueIndex(queueIndex + 1);
+  };
+
+  const retreatQueue = () => {
+    if (queueIndex === 0) {
+      goToStep("total");
+      return;
+    }
+    setQueueIndex(queueIndex - 1);
+  };
+
+  const reviewAgain = () => {
+    if (attentionQueue.length === 0) {
+      setShowAllItems(true);
+      return;
+    }
+    setQueueIndex(0);
+    goToStep("items");
+  };
+
+  const guidedItem = items.find((i) => i.id === attentionQueue[queueIndex]);
+  const itemReason = guidedItem ? guidance.attentionReasons[guidedItem.id] : undefined;
+  const itemsSum = calculatedTotal;
+  const closingDifference = Math.round((itemsSum + chargesSum - confirmedTotal) * 100) / 100;
+
+  // ── FIX 45 — guided flow renders instead of the full list, unless the user
+  // asked to see everything. The list below is unchanged from before. ────────
+  if (!showAllItems) {
+    if (step === "total") {
+      return (
+        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <GuidedTotalStep
+              merchantName={receipt.restaurant ?? "Fatura"}
+              problems={guidance.problems}
+              totalText={confirmedTotalText}
+              onChangeTotal={setConfirmedTotalText}
+              missingTotal={guidance.missingTotal}
+              currencyLabel={currency}
+              onConfirm={afterTotal}
+              onBack={() => router.back()}
+            />
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      );
+    }
+
+    if (step === "items" && guidedItem !== undefined) {
+      return (
+        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <GuidedItemStep
+              item={guidedItem}
+              position={queueIndex + 1}
+              total={attentionQueue.length}
+              reason={itemReason}
+              currencyLabel={currency}
+              onChangeField={updateItem}
+              onToggleReviewed={toggleReviewed}
+              onConfirm={() => advanceQueue(true)}
+              onSkip={() => advanceQueue(false)}
+              onBack={retreatQueue}
+              onSeeAll={() => setShowAllItems(true)}
+            />
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      );
+    }
+
+    if (step === "closing" || step === "items") {
+      return (
+        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+          <GuidedClosingStep
+            itemsSum={itemsSum}
+            chargesSum={chargesSum}
+            confirmedTotal={confirmedTotal}
+            difference={closingDifference}
+            formatMoney={formatMoney}
+            onAccept={handleContinue}
+            onReviewAgain={reviewAgain}
+            onBack={() => (attentionQueue.length > 0 ? goToStep("items") : goToStep("total"))}
+            onSeeAll={() => setShowAllItems(true)}
+          />
+        </SafeAreaView>
+      );
+    }
+  }
+
+  // ─── Render — the full item list ("ver todos os itens") ───────────────────
+  // Unchanged from before FIX 45 apart from the back button, which returns to
+  // the guided flow instead of leaving the screen when that is where the user
+  // came from. The reviewed marks (FIX 44) stay visible here.
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity
+          onPress={() => (showAllItems ? setShowAllItems(false) : router.back())}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
           <Ionicons name="arrow-back" size={24} color={textColor} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>
@@ -226,8 +558,16 @@ export default function ReviewReceiptScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: 20 + Math.max(insets.bottom, 16) },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
 
           {/* Restaurant */}
           <View style={[styles.restaurantCard, { backgroundColor: cardColor, borderColor }]}>
@@ -238,17 +578,39 @@ export default function ReviewReceiptScreen() {
             </View>
           </View>
 
-          {/* Blocked state — prominent error box */}
-          {!canContinue && (
+          {/* Warning state — small discrepancy, can continue */}
+          {isWarning && !hasBlockingIssues && (
+            <View style={styles.warningBox}>
+              <View style={styles.warningBoxHeader}>
+                <Ionicons name="warning" size={18} color={Colors.warning} />
+                <Text style={styles.warningBoxTitle}>Small discrepancy</Text>
+              </View>
+              <Text style={styles.warningBoxDesc}>
+                Items sum to{" "}
+                <Text style={styles.warningBoxAmount}>{formatCurrency(calculatedTotal, currency as any)}</Text>
+                {" "}but receipt subtotal is{" "}
+                <Text style={styles.warningBoxAmount}>{formatCurrency(subtotalTarget, currency as any)}</Text>
+                {" "}(diff: {totalDiff > 0 ? "+" : ""}{formatCurrency(Math.abs(totalDiff), currency as any)}).
+              </Text>
+              <Text style={styles.warningBoxHint}>
+                Likely missing add-ons or rounding. You can continue or retry the scan for better accuracy.
+              </Text>
+            </View>
+          )}
+
+          {/* Discrepancy state — informational only, never blocks Continue
+              (FIX 44 — "a app pode mostrar que a soma não bate, não pode
+              recusar"). Same box as before, just no longer a refusal. */}
+          {hasBlockingIssues && (
             <View style={styles.blockedBox}>
               <View style={styles.blockedHeader}>
-                <Ionicons name="lock-closed" size={18} color="#DC2626" />
-                <Text style={styles.blockedTitle}>Cannot continue — fix errors first</Text>
+                <Ionicons name="warning" size={18} color="#DC2626" />
+                <Text style={styles.blockedTitle}>Items don't add up</Text>
               </View>
               <Text style={styles.blockedDesc}>
                 Items must add up to exactly{" "}
-                <Text style={styles.blockedAmount}>{receiptTotal.toFixed(2)}€</Text>.
-                {" "}Current total: <Text style={styles.blockedAmount}>{calculatedTotal.toFixed(2)}€</Text>.
+                <Text style={styles.blockedAmount}>{formatCurrency(subtotalTarget, currency as any)}</Text>.
+                {" "}Current total: <Text style={styles.blockedAmount}>{formatCurrency(calculatedTotal, currency as any)}</Text>.
               </Text>
               {fixSuggestions.length > 0 && (
                 <View style={styles.fixSuggestions}>
@@ -268,13 +630,13 @@ export default function ReviewReceiptScreen() {
               <Ionicons name="alert-circle" size={15} color="#EF4444" />
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={styles.errorBannerTitle}>
-                  {validation.errors.length} item error{validation.errors.length !== 1 ? "s" : ""}
+                  {validation.errors.length} {validation.errors.length !== 1 ? t("review_receipt_item_errors") : t("review_receipt_item_error")}
                 </Text>
                 {validation.errors.filter(e => e.itemId).slice(0, 3).map((e, i) => (
                   <Text key={i} style={styles.errorBannerItem}>· {e.message}</Text>
                 ))}
                 {validation.errors.filter(e => e.itemId).length > 3 && (
-                  <Text style={styles.errorBannerMore}>+ {validation.errors.filter(e => e.itemId).length - 3} more</Text>
+                  <Text style={styles.errorBannerMore}>+ {validation.errors.filter(e => e.itemId).length - 3} {t("review_receipt_more")}</Text>
                 )}
               </View>
             </View>
@@ -286,7 +648,7 @@ export default function ReviewReceiptScreen() {
               <Ionicons name="information-circle" size={15} color={Colors.warning} />
               <View style={{ flex: 1, gap: 4 }}>
                 <Text style={styles.warningBannerTitle}>
-                  {validation.warnings.length} warning{validation.warnings.length !== 1 ? "s" : ""}
+                  {validation.warnings.length} {validation.warnings.length !== 1 ? t("review_receipt_warnings") : t("review_receipt_warning")}
                 </Text>
                 {validation.warnings.map((w, i) => (
                   <Text key={i} style={styles.warningBannerItem}>· {w.message}</Text>
@@ -295,26 +657,88 @@ export default function ReviewReceiptScreen() {
             </View>
           )}
 
+          {/* Canonical evidence issues — separate origin from the warnings above.
+              diagnoseReceipt returns competing hypotheses for the SAME delta,
+              ranked by confidence, not independent defects — so only the top
+              one is actionable; the rest are alternative explanations, not
+              additional problems, and are collapsed into a count. */}
+          {canonicalIssues.length > 0 && (
+            <View style={styles.evidenceBanner}>
+              <Ionicons name="search" size={15} color={Colors.primary} />
+              <View style={{ flex: 1, gap: 10 }}>
+                <Text style={styles.evidenceBannerTitle}>
+                  {t("review_receipt_possible_read_error")}
+                </Text>
+                <View style={styles.evidenceIssueRow}>
+                  <TouchableOpacity
+                    disabled={canonicalIssues[0].itemId === undefined}
+                    onPress={() => scrollToItem(canonicalIssues[0].itemId)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.evidenceIssueMessage}>{canonicalIssues[0].message}</Text>
+                    {canonicalIssues[0].sourceLine && (
+                      <Text style={styles.evidenceIssueSourceLine}>
+                        {t("review_receipt_cited_line")} "{canonicalIssues[0].sourceLine}"
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.evidenceDismissBtn}
+                    onPress={() => dismissCanonicalIssue(canonicalIssues[0].id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.evidenceDismissBtnText}>
+                      {t("review_receipt_dismiss")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {canonicalIssues.length > 1 && (
+                  <Text style={styles.evidenceMoreText}>
+                    + {canonicalIssues.length - 1} {t("review_receipt_more")}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* Items */}
           <Text style={[styles.sectionTitle, { color: mutedColor }]}>
-            ITEMS ({items.length})
+            {t("review_receipt_items_label")} ({items.length})
           </Text>
 
           {items.map((item, index) => {
             const hasError = errorMap.has(item.id);
+            const isHighlighted = item.id === highlightedItemId;
             return (
               <View
                 key={item.id}
+                onLayout={(e) => { itemLayoutY.current[item.id] = e.nativeEvent.layout.y; }}
                 style={[
                   styles.itemCard,
-                  { backgroundColor: cardColor, borderColor: hasError ? "#EF4444" : borderColor },
+                  {
+                    backgroundColor: cardColor,
+                    borderColor: hasError ? "#EF4444" : isHighlighted ? Colors.primary : borderColor,
+                    borderWidth: isHighlighted ? 2 : 1,
+                  },
                 ]}
               >
                 <View style={styles.itemHeader}>
                   <Text style={[styles.itemIndex, { color: mutedColor }]}>#{index + 1}</Text>
-                  <TouchableOpacity onPress={() => removeItem(item.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                    <Ionicons name="trash-outline" size={16} color={mutedColor} />
-                  </TouchableOpacity>
+                  <View style={styles.itemHeaderActions}>
+                    <TouchableOpacity
+                      onPress={() => toggleReviewed(item.id)}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Ionicons
+                        name={item.reviewed ? "checkmark-circle" : "checkmark-circle-outline"}
+                        size={18}
+                        color={item.reviewed ? Colors.success : mutedColor}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => removeItem(item.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Ionicons name="trash-outline" size={16} color={mutedColor} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {hasError && (
@@ -334,30 +758,34 @@ export default function ReviewReceiptScreen() {
 
                 <View style={styles.fieldRow}>
                   <View style={styles.fieldCol}>
-                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>Qty</Text>
+                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_field_qty")}</Text>
                     <TextInput
-                      value={String(item.quantity)}
+                      value={item.qtyText}
                       onChangeText={(v) => updateItem(item.id, "quantity", v)}
                       keyboardType="number-pad"
                       style={[styles.fieldInput, { color: textColor, borderColor }]}
                     />
                   </View>
                   <View style={styles.fieldCol}>
-                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>Unit Price</Text>
+                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_receipt_unit_price")}</Text>
                     <TextInput
-                      value={item.unitPrice.toFixed(2)}
+                      value={item.unitPriceText}
                       onChangeText={(v) => updateItem(item.id, "unitPrice", v)}
                       keyboardType="decimal-pad"
                       style={[styles.fieldInput, { color: textColor, borderColor }]}
                     />
                   </View>
                   <View style={styles.fieldCol}>
-                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>Total</Text>
-                    <View style={[styles.fieldReadonly, { borderColor: hasError ? "#EF4444" : borderColor }]}>
-                      <Text style={[styles.fieldReadonlyText, { color: hasError ? "#EF4444" : Colors.primary }]}>
-                        {item.totalPrice.toFixed(2)}
-                      </Text>
-                    </View>
+                    <Text style={[styles.fieldLabel, { color: mutedColor }]}>{t("review_total")}</Text>
+                    <TextInput
+                      value={item.totalText}
+                      onChangeText={(v) => updateItem(item.id, "totalPrice", v)}
+                      keyboardType="decimal-pad"
+                      style={[
+                        styles.fieldInput,
+                        { color: hasError ? "#EF4444" : Colors.primary, borderColor: hasError ? "#EF4444" : borderColor, fontWeight: "700" },
+                      ]}
+                    />
                   </View>
                 </View>
               </View>
@@ -367,7 +795,7 @@ export default function ReviewReceiptScreen() {
           {/* Add item */}
           <TouchableOpacity style={[styles.addItemBtn, { borderColor: Colors.primary }]} onPress={addItem} activeOpacity={0.7}>
             <Ionicons name="add" size={18} color={Colors.primary} />
-            <Text style={styles.addItemText}>Add Missing Item</Text>
+            <Text style={styles.addItemText}>{t("review_receipt_add_missing")}</Text>
           </TouchableOpacity>
 
           {/* Original receipt photo — tap to expand */}
@@ -384,7 +812,7 @@ export default function ReviewReceiptScreen() {
               />
               <View style={styles.photoOverlay}>
                 <Ionicons name="expand-outline" size={20} color="#fff" />
-                <Text style={styles.photoOverlayText}>View Original Receipt</Text>
+                <Text style={styles.photoOverlayText}>{t("review_receipt_view_original")}</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -392,35 +820,46 @@ export default function ReviewReceiptScreen() {
           {/* Totals — prominent, shows match or mismatch */}
           <View style={[
             styles.totalCard,
-            { backgroundColor: canContinue ? cardColor : "#FEF2F2", borderColor: canContinue ? borderColor : "#FCA5A5" },
+            { backgroundColor: hasBlockingIssues ? "#FEF2F2" : cardColor, borderColor: hasBlockingIssues ? "#FCA5A5" : borderColor },
           ]}>
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: mutedColor }]}>Items sum</Text>
-              <Text style={[styles.totalValue, { color: canContinue ? textColor : "#DC2626" }]}>
-                {calculatedTotal.toFixed(2)} {receipt.currency}
+              <Text style={[styles.totalLabel, { color: mutedColor }]}>{t("review_receipt_items_sum")}</Text>
+              <Text style={[styles.totalValue, { color: hasBlockingIssues ? "#DC2626" : textColor }]}>
+                {formatCurrency(calculatedTotal, currency as any)}
               </Text>
             </View>
             <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: mutedColor }]}>Receipt total</Text>
+              <Text style={[styles.totalLabel, { color: mutedColor }]}>{t("review_receipt_total_label")}</Text>
               <Text style={[styles.totalValue, { color: textColor }]}>
-                {receiptTotal.toFixed(2)} {receipt.currency}
+                {formatCurrency(subtotalTarget, currency as any)}
               </Text>
             </View>
+            {grandTotal !== subtotalTarget && (
+              <>
+                <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
+                <View style={styles.totalRow}>
+                  <Text style={[styles.totalLabel, { color: mutedColor }]}>Grand total</Text>
+                  <Text style={[styles.totalValue, { color: mutedColor }]}>
+                    {formatCurrency(grandTotal, currency as any)}
+                  </Text>
+                </View>
+              </>
+            )}
             <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
             <View style={styles.totalRow}>
-              {canContinue ? (
+              {!hasBlockingIssues ? (
                 <>
                   <View style={styles.matchRow}>
                     <Ionicons name="checkmark-circle" size={15} color="#10B981" />
-                    <Text style={styles.matchText}>Totals match — ready to continue</Text>
+                    <Text style={styles.matchText}>{t("review_receipt_match")}</Text>
                   </View>
                 </>
               ) : (
                 <>
-                  <Text style={styles.diffLabel}>Difference</Text>
+                  <Text style={styles.diffLabel}>{t("review_receipt_diff_label")}</Text>
                   <Text style={styles.diffValue}>
-                    {totalDiff > 0 ? "+" : ""}{totalDiff.toFixed(2)} {receipt.currency}
+                    {totalDiff > 0 ? "+" : ""}{formatCurrency(Math.abs(totalDiff), currency as any)}
                   </Text>
                 </>
               )}
@@ -430,28 +869,37 @@ export default function ReviewReceiptScreen() {
         </ScrollView>
 
         {/* Bottom actions */}
-        <View style={[styles.actions, { borderTopColor: borderColor, backgroundColor: bgColor }]}>
+        <View
+          style={[
+            styles.actions,
+            {
+              borderTopColor: borderColor,
+              backgroundColor: bgColor,
+              paddingBottom: 16 + Math.max(insets.bottom, 16),
+            },
+          ]}
+        >
           <TouchableOpacity
             style={[styles.retryBtn, { borderColor }]}
             onPress={() => router.back()}
             activeOpacity={0.8}
           >
             <Ionicons name="refresh-outline" size={15} color={mutedColor} />
-            <Text style={[styles.retryBtnText, { color: mutedColor }]}>Retry Scan</Text>
+            <Text style={[styles.retryBtnText, { color: mutedColor }]}>{t("review_receipt_retry")}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.continueBtn, !canContinue && styles.continueBtnLocked]}
+            style={[
+              styles.continueBtn,
+              (isWarning || hasBlockingIssues) && styles.continueBtnWarning,
+            ]}
             onPress={handleContinue}
-            activeOpacity={canContinue ? 0.85 : 1}
+            activeOpacity={0.85}
           >
-            {canContinue ? (
-              <Text style={styles.continueBtnText}>Looks Good →</Text>
+            {!isWarning && !hasBlockingIssues ? (
+              <Text style={styles.continueBtnText}>{t("review_receipt_looks_good")}</Text>
             ) : (
-              <View style={styles.lockedBtnInner}>
-                <Ionicons name="lock-closed" size={14} color="#9CA3AF" />
-                <Text style={styles.continueBtnTextLocked}>Fix Errors First</Text>
-              </View>
+              <Text style={styles.continueBtnText}>Continue anyway →</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -484,249 +932,3 @@ export default function ReviewReceiptScreen() {
     </SafeAreaView>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-  },
-  headerTitle: { fontSize: 17, fontWeight: "700" },
-  scroll: { paddingHorizontal: 20, paddingBottom: 20, gap: 14 },
-
-  restaurantCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  restaurantName: { fontSize: 15, fontWeight: "700" },
-  restaurantDate: { fontSize: 12, marginTop: 2 },
-
-  // ── Blocked state ──────────────────────────────────────────────────────────
-  blockedBox: {
-    padding: 16,
-    borderRadius: 14,
-    backgroundColor: "#FEF2F2",
-    borderWidth: 1.5,
-    borderColor: "#FCA5A5",
-    gap: 10,
-  },
-  blockedHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  blockedTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#DC2626",
-    flex: 1,
-  },
-  blockedDesc: {
-    fontSize: 13,
-    color: "#7F1D1D",
-    lineHeight: 20,
-  },
-  blockedAmount: {
-    fontWeight: "700",
-  },
-  fixSuggestions: {
-    gap: 4,
-    paddingTop: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#FCA5A5",
-  },
-  fixSuggestionHead: {
-    fontWeight: "700",
-    paddingTop: 4,
-  },
-  fixSuggestionLine: {
-    fontSize: 12,
-    color: "#991B1B",
-    lineHeight: 18,
-  },
-
-  // ── Errors / warnings ─────────────────────────────────────────────────────
-  errorBanner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#FEF2F2",
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
-  },
-  errorBannerTitle: { fontSize: 12, fontWeight: "700", color: "#EF4444" },
-  errorBannerItem: { fontSize: 11, color: "#DC2626", lineHeight: 16 },
-  errorBannerMore: { fontSize: 11, color: "#DC2626", fontStyle: "italic" },
-
-  warningBanner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#FFFBEB",
-    borderWidth: 1,
-    borderColor: "#FCD34D",
-  },
-  warningBannerTitle: { fontSize: 12, fontWeight: "700", color: Colors.warning },
-  warningBannerItem: { fontSize: 11, color: Colors.warning, lineHeight: 16 },
-
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    marginBottom: -4,
-  },
-
-  // ── Item cards ─────────────────────────────────────────────────────────────
-  itemCard: { borderRadius: 12, borderWidth: 1, padding: 14, gap: 10 },
-  itemHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  itemIndex: { fontSize: 11, fontWeight: "600" },
-  itemErrorRow: { flexDirection: "row", alignItems: "flex-start", gap: 5 },
-  itemErrorText: { fontSize: 11, color: "#EF4444", flex: 1, lineHeight: 16 },
-  nameInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14,
-  },
-  fieldRow: { flexDirection: "row", gap: 8 },
-  fieldCol: { flex: 1, gap: 4 },
-  fieldLabel: { fontSize: 10, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.3 },
-  fieldInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-    textAlign: "right",
-  },
-  fieldReadonly: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    alignItems: "flex-end",
-  },
-  fieldReadonlyText: { fontSize: 14, fontWeight: "700" },
-
-  // ── Add item ───────────────────────────────────────────────────────────────
-  addItemBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-  },
-  addItemText: { color: Colors.primary, fontSize: 14, fontWeight: "600" },
-
-  // ── Totals ─────────────────────────────────────────────────────────────────
-  totalCard: { borderRadius: 14, borderWidth: 1.5, padding: 16, gap: 12 },
-  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  totalLabel: { fontSize: 14 },
-  totalValue: { fontSize: 15, fontWeight: "700" },
-  totalDivider: { height: StyleSheet.hairlineWidth },
-  matchRow: { flexDirection: "row", alignItems: "center", gap: 6, flex: 1 },
-  matchText: { fontSize: 13, color: "#10B981", fontWeight: "600" },
-  diffLabel: { fontSize: 14, fontWeight: "700", color: "#DC2626" },
-  diffValue: { fontSize: 15, fontWeight: "800", color: "#DC2626" },
-
-  // ── Bottom actions ─────────────────────────────────────────────────────────
-  actions: {
-    flexDirection: "row",
-    gap: 10,
-    padding: 16,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  retryBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  retryBtnText: { fontSize: 13, fontWeight: "600" },
-  continueBtn: {
-    flex: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 15,
-    borderRadius: 12,
-    backgroundColor: Colors.primary,
-  },
-  continueBtnLocked: {
-    backgroundColor: "#F3F4F6",
-  },
-  continueBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  continueBtnTextLocked: { color: "#9CA3AF", fontSize: 14, fontWeight: "600" },
-  lockedBtnInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  // ── Original receipt photo preview ─────────────────────────────────────────
-  photoCard: {
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: "hidden",
-    height: 160,
-  },
-  photoThumb: {
-    width: "100%",
-    height: "100%",
-  },
-  photoOverlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 10,
-    backgroundColor: "rgba(0,0,0,0.45)",
-  },
-  photoOverlayText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-
-  // ── Full-screen photo modal ────────────────────────────────────────────────
-  photoModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  photoModalClose: {
-    position: "absolute",
-    top: 56,
-    right: 20,
-    zIndex: 10,
-  },
-  photoModalImage: {
-    flex: 1,
-  },
-});

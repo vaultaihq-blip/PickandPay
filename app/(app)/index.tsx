@@ -1,19 +1,22 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   StyleSheet,
   useColorScheme,
-  Alert,
   Modal,
   Share,
   Platform,
   ActivityIndicator,
+  Image,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useAuthStore } from "@/store/authStore";
@@ -23,13 +26,68 @@ import { useReceiptStore } from "@/store/receiptStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { Session, SessionParticipant } from "@/types";
 import { supabase } from "@/lib/supabase";
+import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
+import { ensureCreditsForNewSession, fetchFreshCredits, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
 import { DevPanel } from "@/components/dev/DevPanel";
-import { isDeveloperUser } from "@/constants/dev";
+import { isDeveloperUser, DEV_PIN } from "@/constants/dev";
+import { useI18nStore } from "@/store/i18nStore";
 import { getColorForIndex } from "@/constants/colors";
+import { BottomNavBar } from "@/components/ui/BottomNavBar";
+import { showDialog } from "@/lib/dialog";
+
+const HOME_THEME = {
+  background: "#0A0A0F",
+  card: "#1A1B26",
+  cardPrimary: "#2A2D5F",
+  border: "#252A32",
+  primary: "#5B68F4",
+  success: "#10B981",
+  warning: "#F59E0B",
+  text: "#FFFFFF",
+  secondary: "#8B8FA3",
+  muted: "#6B7280",
+  teal: "#2DD4BF",
+};
+
+const tokenImg = require("@/assets/images/token.png");
+
+
+function getRestaurantInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "SM";
+}
+
+function formatHistoryDate(date: string) {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "Today";
+  const today = new Date();
+  const isToday =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  const month = d.toLocaleString("en-US", { month: "short" });
+  const day = d.getDate();
+  const year = String(d.getFullYear()).slice(-2);
+  return `${isToday ? "Today, " : ""}${month} ${day}/${year}`;
+}
 
 export default function HomeScreen() {
   const isDark = useColorScheme() === "dark";
-  const { profile, user, isGuest } = useAuthStore();
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const { profile, user } = useAuthStore();
+  // The balance shown is the server's: read again each time home opens.
+  useFocusEffect(
+    useCallback(() => {
+      if (profile?.id) void fetchFreshCredits(profile.id);
+    }, [profile?.id])
+  );
+  const { t, language } = useI18nStore();
+  void language;
   const { clearReceipt } = useReceiptStore();
   const { clearSession, setSession, completedSessions, setViewingSession, removeCompletedSession, currentSession } = useSessionStore();
 
@@ -38,20 +96,30 @@ export default function HomeScreen() {
   const [billActionTarget, setBillActionTarget] = useState<Session | null>(null);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [showDevPanel, setShowDevPanel] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinValue, setPinValue] = useState("");
+  const [pinError, setPinError] = useState(false);
   const [rejoinSession, setRejoinSession] = useState<{
     id: string;
     restaurant: string | null;
     hostName: string;
   } | null>(null);
   const [isRejoining, setIsRejoining] = useState(false);
+  const [carouselIdx, setCarouselIdx] = useState(0);
 
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
   const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
-  const bgColor = isDark ? Colors.bgDark : Colors.bgLight;
   const borderColor = isDark ? Colors.cardBorderDark : Colors.cardBorderLight;
+  const cardColor = isDark ? Colors.cardDark : Colors.cardLight;
 
+  useEffect(() => {
+    const timer = setInterval(() => setCarouselIdx((i) => (i + 1) % 4), 3000);
+    return () => clearInterval(timer);
+  }, []);
 
-  // Query for rejoinable sessions when no active session is in store
+  // Query for rejoinable sessions when no active session is in store. R7: the
+  // same rule as the QR's "already part of it" (my_rejoinable_session on the
+  // server): current or original host, still in it, or left after paying.
   useEffect(() => {
     if (!profile?.id || currentSession) {
       setRejoinSession(null);
@@ -60,30 +128,16 @@ export default function HomeScreen() {
     let cancelled = false;
     const checkRejoin = async () => {
       try {
-        const { data } = await supabase
-          .from("session_participants")
-          .select("session_id, status, sessions!inner(id, status, receipt_data, created_at, host_id)")
-          .eq("user_id", profile.id)
-          .in("status", ["joined", "left"])
-          .neq("sessions.status", "closed")
-          .order("sessions.created_at", { foreignTable: "sessions", ascending: false })
-          .limit(1);
-
-        if (cancelled || !data || data.length === 0) { setRejoinSession(null); return; }
-        const row = data[0] as any;
-        const sessionRow = row.sessions;
-        const { data: hostProfile } = await supabase
-          .from("profiles")
-          .select("name")
-          .eq("id", sessionRow.host_id)
-          .single();
-        if (!cancelled) {
-          setRejoinSession({
-            id: row.session_id as string,
-            restaurant: sessionRow.receipt_data?.restaurant ?? null,
-            hostName: hostProfile?.name ?? "Host",
-          });
-        }
+        const { data, error } = await supabase.rpc("my_rejoinable_session");
+        if (error) console.log(`[home] rejoinable-session lookup failed: ${error.message}`);
+        const row = (data ?? null) as { session_id?: string; host_name?: string | null; restaurant?: string | null } | null;
+        if (cancelled) return;
+        if (!row?.session_id) { setRejoinSession(null); return; }
+        setRejoinSession({
+          id: row.session_id,
+          restaurant: row.restaurant ?? null,
+          hostName: row.host_name ?? "Host",
+        });
       } catch {
         // Non-critical — just don't show the banner
       }
@@ -96,14 +150,16 @@ export default function HomeScreen() {
     if (!rejoinSession || !profile) return;
     setIsRejoining(true);
     try {
-      // Restore status to "joined"
-      await supabase
-        .from("session_participants")
-        .update({ status: "joined" })
-        .eq("session_id", rejoinSession.id)
-        .eq("user_id", profile.id);
+      await expectRows(
+        "home: rejoin (→ joined)",
+        supabase
+          .from("session_participants")
+          .update({ status: "joined" })
+          .eq("session_id", rejoinSession.id)
+          .eq("user_id", profile.id)
+          .select("id")
+      );
 
-      // Load full session from DB
       const { data: sessionData, error } = await supabase
         .from("sessions")
         .select("*, session_participants(*)")
@@ -112,7 +168,11 @@ export default function HomeScreen() {
 
       if (error || !sessionData) throw new Error("Session not found");
 
-      const participantRows: any[] = sessionData.session_participants ?? [];
+      // Someone still pending (scanned, not confirmed) or cancelled is not a
+      // participant, and must not count in the split's divisor (C.2).
+      const participantRows: any[] = (sessionData.session_participants ?? []).filter(
+        (sp: any) => sp.status !== "cancelled" && sp.status !== "pending"
+      );
       const userIds: string[] = participantRows.map((sp: any) => sp.user_id as string);
 
       const { data: profilesData } = await supabase
@@ -165,33 +225,37 @@ export default function HomeScreen() {
       setSession(rebuiltSession);
       setRejoinSession(null);
 
-      if (sessionData.receipt_data) {
-        router.push(`/(app)/session-lobby/${rejoinSession.id}`);
-      } else {
-        router.push(`/(app)/session/${rejoinSession.id}`);
-      }
+      router.push(`/(app)/session-lobby/${rejoinSession.id}`);
     } catch (err: any) {
-      Alert.alert("Error", "Could not rejoin session. Please try again.");
+      // R3: coming back after leaving needs a credit (the server refuses left → joined at 0).
+      if (isNoCreditsError(err)) showNoCreditsDialog(t);
+      else if (err instanceof WriteError) showWriteError(err, t);
+      else showDialog(t("error"), t("home_rejoin_error"));
     } finally {
       setIsRejoining(false);
     }
   };
 
   const handleStartNewSession = async () => {
-    if (!user && !isGuest) {
-      Alert.alert("Sign in required", "Please sign in to start a session.");
+    if (!user) {
+      showDialog(t("error"), t("home_sign_in_msg"));
       return;
     }
+    if (isCreatingSession) return;
     setIsCreatingSession(true);
+    // R3: no new session at 0 credits (fresh balance; the server refuses too).
+    if (!(await ensureCreditsForNewSession(user.id, t))) {
+      setIsCreatingSession(false);
+      return;
+    }
     try {
       let sessionId: string;
       const creatorId = profile?.id ?? user?.id ?? `guest_${Date.now()}`;
 
       if (user) {
-        console.log("[home] Starting session for user:", user.id);
+        if (__DEV__) console.log("[home] Starting session for user:", user.id);
 
-        // VERIFY profile exists first — sessions.host_id has FK constraint
-        console.log("[home] Verifying profile exists...");
+        if (__DEV__) console.log("[home] Verifying profile exists...");
         const { data: existingProfile } = await supabase
           .from("profiles")
           .select("id")
@@ -199,7 +263,7 @@ export default function HomeScreen() {
           .single();
 
         if (!existingProfile) {
-          console.log("[home] Profile missing, creating...");
+          if (__DEV__) console.log("[home] Profile missing, creating...");
           const { error: createError } = await supabase
             .from("profiles")
             .insert({
@@ -207,38 +271,41 @@ export default function HomeScreen() {
               email: user.email,
               name: user.email?.split("@")[0] || "User",
               color: "#3B82F6",
-              bill_credits: 3,
+              // bill_credits / is_pro / referral_count are server-owned: the
+              // profile trigger forces 0/false on client inserts, and
+              // initialize-user-credits grants the sign-up credits.
               avatar_icon: "👤",
-              referral_count: 0,
-              is_pro: false,
             });
           if (createError) {
             console.error("[home] Profile creation failed:", JSON.stringify(createError));
             throw new Error("Could not create profile. Please log out and log in again.");
           }
-          console.log("[home] Profile created");
+          if (__DEV__) console.log("[home] Profile created");
         } else {
-          console.log("[home] Profile verified:", existingProfile.id);
+          if (__DEV__) console.log("[home] Profile verified:", existingProfile.id);
         }
 
-        // NOW create session
-        console.log("[home] Inserting session row...");
+        if (__DEV__) console.log("[home] Inserting session row...");
         const { data, error } = await supabase
           .from("sessions")
           .insert({
             host_id: user.id,
-            status: "waiting_participants",
+            status: "draft",
           })
           .select("id")
           .single();
         if (error) {
           console.error("[home] sessions insert error:", JSON.stringify(error));
+          if (isNoCreditsError(error)) {
+            showNoCreditsDialog(t);
+            return;
+          }
           throw new Error(error.message ?? "sessions insert failed");
         }
         sessionId = data.id;
-        console.log("[home] Session created:", sessionId);
+        if (__DEV__) console.log("[home] Session created:", sessionId);
 
-        console.log("[home] Inserting participant row...");
+        if (__DEV__) console.log("[home] Inserting participant row...");
         const { error: pErr } = await supabase.from("session_participants").insert({
           session_id: sessionId,
           user_id: user.id,
@@ -283,28 +350,32 @@ export default function HomeScreen() {
       };
 
       setSession(emptySession);
-      router.push(`/(app)/session/${sessionId}`);
+      router.push("/(app)/scan");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[home] Session creation failed:", msg);
-      Alert.alert("Could not start session", msg || "Please check your connection and try again.");
+      showDialog(t("error_start_session"), msg || t("error_connection"));
     } finally {
       setIsCreatingSession(false);
     }
   };
 
   const handleJoinQR = () => {
+    // R7: the scanner opens at any balance; after the scan the entry screen
+    // shows what the server says (rejoin, join, no credits, ended, full).
     router.push("/(app)/session/join");
   };
 
   const handleShareApp = async () => {
+    const appStoreId = process.env.EXPO_PUBLIC_APP_STORE_ID;
+    if (Platform.OS === "ios" && !appStoreId) return; // App Store listing not live yet
     const appLink =
       Platform.OS === "ios"
-        ? "https://apps.apple.com/app/pickandpay/id123456789"
-        : "https://play.google.com/store/apps/details?id=com.pickandpay";
+        ? `https://apps.apple.com/app/pickandpay/id${appStoreId}`
+        : "https://play.google.com/store/apps/details?id=com.pickandpay.app";
     try {
       await Share.share({
-        message: `Check out Pick&Pay - The easiest way for groups to split bills fairly and avoid awkward conversations. Join now and get 3 free bills to split.\n\n${appLink}`,
+        message: `${t("home_share_msg")}\n\n${appLink}`,
         title: "Try Pick&Pay",
       });
     } catch {
@@ -313,213 +384,284 @@ export default function HomeScreen() {
   };
 
   const handleClearCache = () => {
-    Alert.alert("Clear Cache", "Clear stored receipt and session data?", [
-      { text: "Cancel", style: "cancel" },
+    showDialog(t("home_clear_cache"), t("home_clear_cache_msg"), [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Clear",
+        text: t("home_clear_btn"),
         style: "destructive",
         onPress: () => {
           clearReceipt();
           clearSession();
-          Alert.alert("Done", "Cache cleared.");
+          showDialog(t("done"), t("home_cache_cleared"));
         },
       },
     ]);
   };
 
+  const firstName =
+    profile?.name || (user?.email ? user.email.split("@")[0] : "");
+  const creditCount = profile?.billCredits ?? 0;
+  const activeSessionPeople = currentSession?.participants.length ?? 0;
+  const activeSessionRestaurant = currentSession?.receipt?.restaurant ?? "";
+  const totalSaved = completedSessions.reduce((sum, session) => {
+    const participantCount = session.participants.length || 1;
+    const userParticipant = session.participants.find((p) => p.userId === profile?.id);
+    if (!userParticipant) return sum;
+    const total =
+      Object.values(session.receipt?.categories ?? {})
+        .flat()
+        .reduce((s, i) => s + i.totalPrice, 0) +
+      (session.receipt?.globalCosts ?? []).reduce((s, c) => s + c.amount, 0) +
+      (session.receipt?.selectedTip ?? 0);
+    const equalShare = total / participantCount;
+    return sum + Math.max(0, equalShare - (userParticipant.totalOwed ?? 0));
+  }, 0);
+
+  const dominantCurrency = (() => {
+    if (completedSessions.length === 0) return "EUR" as const;
+    const counts: Record<string, number> = {};
+    for (const s of completedSessions) {
+      const c = s.receipt?.currency ?? "EUR";
+      counts[c] = (counts[c] || 0) + 1;
+    }
+    return (Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]) as "EUR" | "USD" | "GBP" | "CAD";
+  })();
+
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
+    <SafeAreaView style={styles.safe}>
+      <StatusBar style="light" backgroundColor={HOME_THEME.background} translucent={false} />
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: 112 + Math.max(insets.bottom, 16) },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
         <View style={styles.header}>
-          <View>
-            <Text style={[styles.appName, { color: textColor }]}>Pick&Pay</Text>
-            <Text style={[styles.tagline, { color: mutedColor }]}>Split bills effortlessly</Text>
-          </View>
           <TouchableOpacity
-            onPress={() => router.push("/(app)/profile")}
-            style={styles.headerProfile}
-            activeOpacity={0.8}
+            onPress={() => { if (isDeveloperUser(profile?.email)) setShowPinModal(true); }}
+            activeOpacity={1}
+            style={styles.brandBlock}
           >
-            <View style={{ alignItems: "flex-end", gap: 1 }}>
-              <Text style={[styles.greeting, { color: mutedColor }]}>
-                {isGuest ? "Guest mode" : "Welcome back"}
+            <Text style={styles.appName}>
+              Pick<Text style={styles.logoAmp}>&</Text>Pay
+            </Text>
+            <Text style={styles.appMotto}>{t("home_motto")}</Text>
+          </TouchableOpacity>
+          <View style={styles.profileCluster}>
+            <View style={styles.profileGreeting}>
+              <Text style={styles.profileGreetingText}>
+                {(() => { const h = new Date().getHours(); return h < 12 ? t("greeting_morning") : h < 18 ? t("greeting_afternoon") : t("greeting_evening"); })()}
               </Text>
-              <Text style={[styles.userName, { color: textColor }]}>
-                {profile?.name ?? (isGuest ? "Guest" : "")}
-              </Text>
+              <Text style={styles.profileNameText} numberOfLines={1}>{firstName}</Text>
             </View>
-            {profile ? (
-              <Avatar
-                name={profile.name}
-                avatarIcon={profile.avatarIcon}
-                avatarUrl={profile.avatarUrl}
-                color={profile.color}
-                size={44}
-              />
-            ) : (
-              <View style={styles.profileFallback}>
-                <Ionicons name="person-outline" size={22} color={Colors.primary} />
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/profile")}
+              activeOpacity={0.8}
+            >
+              {profile ? (
+                <Avatar
+                  name={profile.name}
+                  avatarIcon={profile.avatarIcon}
+                  avatarUrl={profile.avatarUrl}
+                  color={profile.color}
+                  size={44}
+                />
+              ) : (
+                <View style={styles.profileFallback}>
+                  <Text style={styles.profileFallbackText}>{firstName.slice(0, 1).toUpperCase()}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={[styles.homeCore, { minHeight: Math.max(420, height - 250) }]}>
+          {/* Main actions */}
+          <TouchableOpacity
+            style={[styles.primaryAction, isCreatingSession && { opacity: 0.7 }]}
+            onPress={handleStartNewSession}
+            activeOpacity={0.85}
+            disabled={isCreatingSession}
+          >
+            <View style={styles.primaryActionInner}>
+              <View style={styles.actionCardIcon}>
+                <Ionicons name="receipt-outline" size={26} color="#fff" />
+                <Text style={styles.actionCardEuroBadge}>{"€"}</Text>
               </View>
-            )}
+              <View style={styles.primaryActionCopy}>
+                <Text style={styles.primaryActionTitle}>{t("home_start_split")}</Text>
+                <Text style={styles.primaryActionSub}>
+                  {isCreatingSession ? t("home_creating_session") : t("home_start_subtitle")}
+                </Text>
+              </View>
+              <View style={styles.primaryArrowButton}>
+                {isCreatingSession
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Ionicons name="add" size={26} color="#fff" />
+                }
+              </View>
+            </View>
           </TouchableOpacity>
-        </View>
 
-        {/* Active session banner — visible for all users with an ongoing session */}
-        {currentSession && (
           <TouchableOpacity
-            style={styles.activeSessionBanner}
-            onPress={() => {
-              // Navigate to the most relevant screen based on session state
-              const allPicked =
-                currentSession.receipt != null &&
-                currentSession.participants.length > 0 &&
-                currentSession.participants.every((p) => p.selections.length > 0);
-              if (allPicked) {
-                router.push(`/(app)/dashboard/${currentSession.id}?source=lobby`);
-              } else if (currentSession.receipt) {
-                router.push(`/(app)/session-lobby/${currentSession.id}`);
-              } else {
-                router.push(`/(app)/session/${currentSession.id}`);
-              }
-            }}
+            style={styles.secondaryAction}
+            onPress={handleJoinQR}
             activeOpacity={0.85}
           >
-            <View style={styles.activeSessionDot} />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.activeSessionTitle}>Active Session</Text>
-              <Text style={styles.activeSessionSub}>
-                {currentSession.participants.length} participant{currentSession.participants.length !== 1 ? "s" : ""}
-                {currentSession.receipt?.restaurant ? ` · ${currentSession.receipt.restaurant}` : ""}
-              </Text>
+            <View style={[styles.actionCardIcon, styles.actionCardIconTeal]}>
+              <Ionicons name="qr-code-outline" size={26} color="#fff" />
             </View>
-            <Text style={styles.activeSessionReturn}>Return →</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Rejoin session banner — shown when a previous session is still active */}
-        {!currentSession && rejoinSession && (
-          <TouchableOpacity
-            style={styles.rejoinBanner}
-            onPress={handleRejoin}
-            disabled={isRejoining}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="return-down-forward-outline" size={20} color={Colors.primary} />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.rejoinTitle}>Resume Session</Text>
-              <Text style={styles.rejoinSub}>
-                {rejoinSession.restaurant
-                  ? `${rejoinSession.restaurant} · ${rejoinSession.hostName}`
-                  : `Host: ${rejoinSession.hostName}`}
+            <View style={styles.secondaryCopy}>
+              <Text style={styles.secondaryActionText}>
+                {t("home_join_qr")}
               </Text>
+              <Text style={styles.secondarySub}>{t("home_scan_qr_sub")}</Text>
             </View>
-            {isRejoining
-              ? <ActivityIndicator size="small" color={Colors.primary} />
-              : <Text style={styles.rejoinCta}>Rejoin →</Text>
-            }
+            <View style={styles.qrScanFrame}>
+              <Ionicons name="scan-outline" size={22} color={HOME_THEME.secondary} />
+            </View>
           </TouchableOpacity>
-        )}
 
-        {/* Main actions */}
-        <TouchableOpacity
-          style={[styles.primaryAction, isCreatingSession && { opacity: 0.7 }]}
-          onPress={handleStartNewSession}
-          activeOpacity={0.85}
-          disabled={isCreatingSession}
-        >
-          <View style={styles.primaryActionInner}>
-            <View style={styles.primaryIcon}>
-              {isCreatingSession
-                ? <ActivityIndicator color="#fff" />
-                : <Ionicons name="people-outline" size={32} color="#fff" />
+          {/* Active session banner */}
+          {currentSession && (
+            <TouchableOpacity
+              style={styles.activeSessionBanner}
+              onPress={() => {
+                const allPicked =
+                  currentSession.receipt != null &&
+                  currentSession.participants.length > 0 &&
+                  currentSession.participants.every((p) => p.selections.length > 0);
+                if (allPicked) {
+                  router.push(`/(app)/dashboard/${currentSession.id}?source=lobby`);
+                } else if (currentSession.receipt) {
+                  router.push(`/(app)/session-lobby/${currentSession.id}`);
+                } else {
+                  router.push("/(app)/scan");
+                }
+              }}
+              activeOpacity={0.85}
+            >
+              <View style={styles.activeIcon}>
+                <Ionicons name="people" size={23} color={HOME_THEME.success} />
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.activeSessionTitle}>{t("home_active_session")}</Text>
+                <Text style={styles.activeSessionSub}>
+                  {activeSessionRestaurant} {"•"} {activeSessionPeople} {t("home_people_suffix")}
+                </Text>
+              </View>
+              <View style={styles.activeOpenPill}>
+                <Text style={styles.activeSessionReturn}>{t("home_return")}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {/* Rejoin session banner */}
+          {!currentSession && rejoinSession && (
+            <TouchableOpacity
+              style={styles.rejoinBanner}
+              onPress={handleRejoin}
+              disabled={isRejoining}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="return-down-forward-outline" size={20} color={Colors.primary} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.rejoinTitle}>{t("home_resume_session")}</Text>
+                <Text style={styles.rejoinSub}>
+                  {rejoinSession.restaurant
+                    ? `${rejoinSession.restaurant} • ${rejoinSession.hostName}`
+                    : `${t("home_host_prefix")} ${rejoinSession.hostName}`}
+                </Text>
+              </View>
+              {isRejoining
+                ? <ActivityIndicator size="small" color={Colors.primary} />
+                : <Text style={styles.rejoinCta}>{t("home_rejoin_cta")}</Text>
               }
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.primaryActionTitle}>Start a New Split Session</Text>
-              <Text style={styles.primaryActionSub}>
-                {isCreatingSession ? "Setting up session..." : "Share QR · Scan bill · Split"}
-              </Text>
-            </View>
-            {!isCreatingSession && (
-              <Ionicons name="arrow-forward" size={20} color="rgba(255,255,255,0.7)" />
-            )}
-          </View>
-        </TouchableOpacity>
+            </TouchableOpacity>
+          )}
 
-        <TouchableOpacity
-          style={[styles.secondaryAction, { borderColor }]}
-          onPress={handleJoinQR}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="qr-code-outline" size={24} color={Colors.primary} />
-          <Text style={[styles.secondaryActionText, { color: textColor }]}>
-            Join with QR Code
-          </Text>
-          <Ionicons name="arrow-forward" size={18} color={mutedColor} />
-        </TouchableOpacity>
-
-        {/* Utility row */}
-        <View style={styles.utilRow}>
+          {/* Credits card */}
           <TouchableOpacity
-            style={[styles.utilBtn, { borderColor }]}
-            onPress={handleShareApp}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="share-social-outline" size={18} color={mutedColor} />
-            <Text style={[styles.utilBtnText, { color: mutedColor }]}>Share App</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.utilBtn, { borderColor }]}
-            onPress={() => router.push("/onboarding")}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="book-outline" size={18} color={mutedColor} />
-            <Text style={[styles.utilBtnText, { color: mutedColor }]}>How It Works</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Credits card — tap to go to paywall */}
-        {!isGuest && profile && (
-          <TouchableOpacity
-            style={[styles.creditsCard, { borderColor: Colors.primary + "44" }]}
+            style={styles.creditsCard}
             onPress={() => router.push("/(app)/paywall")}
             activeOpacity={0.8}
           >
-            <View style={styles.creditsCardLeft}>
-              <Text style={[styles.creditsCardLabel, { color: mutedColor }]}>Your Credits</Text>
-              <Text style={[styles.creditsCardCount, { color: Colors.primary }]}>
-                {profile.billCredits}
+            <View style={styles.creditsIcon}>
+              <Image source={tokenImg} style={styles.creditsTokenImage} resizeMode="contain" />
+            </View>
+            <View style={styles.creditsContent}>
+              <View style={styles.creditsTitleRow}>
+                <Text style={styles.creditsCardLabel}>{t("home_credits_label")}</Text>
+                <Ionicons name="information-circle-outline" size={13} color={HOME_THEME.secondary} />
+                <View style={{ flex: 1 }} />
+                <View style={styles.topUpButton}>
+                  <Text style={styles.topUpButtonText}>{t("home_top_up")}</Text>
+                </View>
+              </View>
+              <Text style={styles.creditsCardCount}>
+                {creditCount} {t("paywall_credits")} = {creditCount} {t("home_bills_unit")}
               </Text>
-              <Text style={[styles.creditsCardSub, { color: mutedColor }]}>bills remaining</Text>
-            </View>
-            <View style={styles.creditsCardRight}>
-              <Text style={styles.creditsCardEmoji}>🪙</Text>
-              <Text style={[styles.creditsCardBuy, { color: Colors.primary }]}>Buy More →</Text>
             </View>
           </TouchableOpacity>
-        )}
 
-        {/* Dev Panel trigger — visible in guest/demo mode or for developer email */}
-        {(isGuest || isDeveloperUser(profile?.email)) && (
-          <TouchableOpacity
-            style={[styles.devPanelBtn, { borderColor: Colors.warning }]}
-            onPress={() => setShowDevPanel(true)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.devPanelIcon}>🧪</Text>
-            <Text style={[styles.devPanelText, { color: Colors.warning }]}>
-              Developer Panel
-            </Text>
-            <Ionicons name="chevron-forward" size={16} color={Colors.warning} />
-          </TouchableOpacity>
-        )}
+          {/* Savings carousel */}
+          {(() => {
+            const CAROUSEL = [
+              {
+                icon: "trending-up-outline" as const,
+                label: t("home_carousel_1_label"),
+                value: formatCurrency(totalSaved, dominantCurrency),
+                sub: t("home_carousel_1_sub"),
+              },
+              {
+                icon: "sparkles-outline" as const,
+                label: t("home_carousel_2_label"),
+                value: t("home_carousel_2_value"),
+                sub: "",
+              },
+              {
+                icon: "shield-checkmark-outline" as const,
+                label: t("home_carousel_3_label"),
+                value: formatCurrency(totalSaved, dominantCurrency),
+                sub: t("home_carousel_3_sub"),
+              },
+              {
+                icon: "ribbon-outline" as const,
+                label: t("home_carousel_4_label"),
+                value: totalSaved > 0 ? t("home_carousel_4_value_yes") : t("home_carousel_4_value_no"),
+                sub: t("home_carousel_4_sub"),
+              },
+            ];
+            const slide = CAROUSEL[carouselIdx];
+            return (
+              <View style={styles.savingsCard}>
+                <View style={styles.savingsCardRow}>
+                  <View style={styles.savingsIcon}>
+                    <Ionicons name={slide.icon} size={22} color={HOME_THEME.success} />
+                  </View>
+                  <View style={styles.savingsCopy}>
+                    <Text style={styles.savingsLabel}>{slide.label}</Text>
+                    <Text style={styles.savingsValue}>{slide.value}</Text>
+                    {slide.sub ? <Text style={styles.savingsSub}>{slide.sub}</Text> : null}
+                  </View>
+                </View>
+                <View style={styles.carouselDots}>
+                  {CAROUSEL.map((_, i) => (
+                    <View
+                      key={i}
+                      style={[styles.carouselDot, i === carouselIdx && styles.carouselDotActive]}
+                    />
+                  ))}
+                </View>
+              </View>
+            );
+          })()}
+        </View>
 
         {/* Recent Bills */}
-        {completedSessions.length > 0 && (() => {
+        {false && completedSessions.length > 0 && (() => {
           const displayed = showAllHistory ? completedSessions : completedSessions.slice(0, 3);
           return (
             <View style={styles.recentSection}>
@@ -528,16 +670,12 @@ export default function HomeScreen() {
                 onPress={() => setBillsExpanded((v) => !v)}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.sectionTitle, { color: mutedColor }]}>
-                  RECENT BILLS
-                </Text>
-                <Ionicons
-                  name={billsExpanded ? "chevron-up" : "chevron-down"}
-                  size={16}
-                  color={mutedColor}
-                />
+                <View style={styles.creditsTitleRow}>
+                  <Text style={[styles.sectionTitle, { color: HOME_THEME.secondary }]}>{t("home_recent_bills")}</Text>
+                </View>
+                <Text style={styles.seeAllText}>See all</Text>
               </TouchableOpacity>
-              {billsExpanded && <View style={[styles.billsCard, { borderColor }]}>
+              {billsExpanded && <View style={styles.billsCard}>
                 {displayed.map((session, idx) => {
                   const total = Object.values(session.receipt?.categories ?? {})
                     .flat()
@@ -549,22 +687,22 @@ export default function HomeScreen() {
                       key={session.id}
                       style={[
                         styles.billRow,
-                        idx < displayed.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor },
+                        idx < displayed.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: HOME_THEME.border },
                       ]}
                       onPress={() => setBillActionTarget(session)}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="document-text-outline" size={22} color={mutedColor} style={styles.billIcon} />
+                      <Ionicons name="document-text-outline" size={22} color={HOME_THEME.secondary} style={styles.billIcon} />
                       <View style={styles.billInfo}>
                         <View style={styles.billNameRow}>
-                          <Text style={[styles.billName, { color: textColor }]} numberOfLines={1}>
-                            {session.receipt?.restaurant ?? "Bill"}
+                          <Text style={styles.billName} numberOfLines={1}>
+                            {session.receipt?.restaurant ?? t("home_bill_fallback")}
                           </Text>
                           {session.participants.some((p) => !p.paid) && (
                             <View style={styles.unpaidDot} />
                           )}
                         </View>
-                        <Text style={[styles.billMeta, { color: mutedColor }]}>
+                        <Text style={styles.billMeta}>
                           {session.participants.length > 0
                             ? `${session.participants.length} people · `
                             : ""}
@@ -572,7 +710,7 @@ export default function HomeScreen() {
                           {session.participants.some((p) => !p.paid) ? " · Unpaid" : ""}
                         </Text>
                       </View>
-                      <Text style={[styles.billTotal, { color: textColor }]}>
+                      <Text style={styles.billTotal}>
                         {formatCurrency(total, session.receipt?.currency ?? "EUR")}
                       </Text>
                     </TouchableOpacity>
@@ -584,44 +722,65 @@ export default function HomeScreen() {
                   style={styles.viewAllBtn}
                   onPress={() => setShowAllHistory((v) => !v)}
                 >
-                  <Text style={[styles.viewAllText, { color: Colors.primary }]}>
+                  <Text style={styles.viewAllText}>
                     {showAllHistory
-                      ? "Show less"
-                      : `View all history (${completedSessions.length}) →`}
+                      ? t("home_show_less")
+                      : `${t("home_history_title")} (${completedSessions.length}) →`}
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
           );
         })()}
+      </ScrollView>
 
-        {/* Dev tools */}
-        {__DEV__ && (
-          <View style={styles.devSection}>
+      <BottomNavBar activeTab="home" onCenterPress={handleStartNewSession} />
+
+      <DevPanel visible={showDevPanel} onClose={() => setShowDevPanel(false)} />
+
+      {/* Hidden developer access — PIN modal */}
+      <Modal
+        visible={showPinModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setShowPinModal(false); setPinValue(""); setPinError(false); }}
+      >
+        <View style={styles.pinOverlay}>
+          <View style={[styles.pinCard, { backgroundColor: cardColor }]}>
+            <TextInput
+              style={[styles.pinInput, { color: textColor, borderColor }]}
+              value={pinValue}
+              onChangeText={(v) => { setPinValue(v); setPinError(false); }}
+              keyboardType="numeric"
+              maxLength={4}
+              secureTextEntry
+              autoFocus
+              placeholder="••••"
+              placeholderTextColor={HOME_THEME.secondary}
+            />
+            {pinError && <Text style={styles.pinError}>{t("home_pin_error")}</Text>}
             <TouchableOpacity
-              style={[styles.devClearBtn, { borderColor: mutedColor }]}
-              onPress={handleClearCache}
+              style={[styles.pinSubmit, { backgroundColor: Colors.primary }]}
+              onPress={() => {
+                if (pinValue === DEV_PIN) {
+                  setShowPinModal(false);
+                  setPinValue("");
+                  setPinError(false);
+                  setShowDevPanel(true);
+                } else {
+                  setPinError(true);
+                  setPinValue("");
+                }
+              }}
             >
-              <Text style={[styles.devClearText, { color: mutedColor }]}>
-                🗑 Clear Cache (Dev)
-              </Text>
+              <Text style={styles.pinSubmitText}>{t("confirm")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setShowPinModal(false); setPinValue(""); setPinError(false); }}>
+              <Text style={[styles.pinCancel, { color: HOME_THEME.secondary }]}>{t("cancel")}</Text>
             </TouchableOpacity>
           </View>
-        )}
-
-        {/* Report Bug / Suggestions — bottom of page */}
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/report-bug")}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.bugBtn}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="bug-outline" size={16} color={mutedColor} />
-          <Text style={[styles.bugBtnText, { color: mutedColor }]}>Report Bug / Suggestion</Text>
-        </TouchableOpacity>
-      </ScrollView>
-      {/* Dev Panel modal */}
-      <DevPanel visible={showDevPanel} onClose={() => setShowDevPanel(false)} />
+        </View>
+      </Modal>
 
       {/* Bill action sheet */}
       {billActionTarget && (() => {
@@ -631,7 +790,6 @@ export default function HomeScreen() {
           .reduce((acc, i) => acc + i.totalPrice, 0)
           + (s.receipt?.globalCosts ?? []).reduce((acc, c) => acc + c.amount, 0)
           + (s.receipt?.selectedTip ?? 0);
-        const isClosed = s.status === "closed";
         return (
           <Modal transparent animationType="slide" visible onRequestClose={() => setBillActionTarget(null)}>
             <TouchableOpacity
@@ -639,10 +797,10 @@ export default function HomeScreen() {
               activeOpacity={1}
               onPress={() => setBillActionTarget(null)}
             />
-            <View style={[styles.actionSheet, { backgroundColor: isDark ? Colors.cardDark : Colors.cardLight }]}>
-              <View style={[styles.sheetHandle, { backgroundColor: borderColor }]} />
-              <Text style={[styles.sheetTitle, { color: isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight }]} numberOfLines={1}>
-                {s.receipt?.restaurant ?? "Bill"} · {formatCurrency(total, s.receipt?.currency ?? "EUR")}
+            <View style={[styles.actionSheet, { backgroundColor: HOME_THEME.card }]}>
+              <View style={[styles.sheetHandle, { backgroundColor: HOME_THEME.border }]} />
+              <Text style={[styles.sheetTitle, { color: HOME_THEME.text }]} numberOfLines={1}>
+                {s.receipt?.restaurant ?? t("home_bill_fallback")} · {formatCurrency(total, s.receipt?.currency ?? "EUR")}
               </Text>
 
               <TouchableOpacity
@@ -654,16 +812,16 @@ export default function HomeScreen() {
                 }}
               >
                 <Text style={styles.sheetOptionEmoji}>📊</Text>
-                <Text style={[styles.sheetOptionText, { color: "#fff" }]}>View Split</Text>
+                <Text style={[styles.sheetOptionText, { color: "#fff" }]}>{t("home_view_split")}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.sheetOption, { backgroundColor: "#EF4444" }]}
                 onPress={() => {
-                  Alert.alert("Delete from History", "Remove this bill from your history?", [
-                    { text: "Cancel", style: "cancel" },
+                  showDialog(t("home_delete_title"), t("home_delete_confirm"), [
+                    { text: t("cancel"), style: "cancel" },
                     {
-                      text: "Delete",
+                      text: t("delete"),
                       style: "destructive",
                       onPress: () => {
                         removeCompletedSession(s.id);
@@ -674,14 +832,14 @@ export default function HomeScreen() {
                 }}
               >
                 <Text style={styles.sheetOptionEmoji}>🗑️</Text>
-                <Text style={[styles.sheetOptionText, { color: "#fff" }]}>Delete from History</Text>
+                <Text style={[styles.sheetOptionText, { color: "#fff" }]}>{t("home_delete_history")}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.sheetCancel, { backgroundColor: "#6B7280" }]}
                 onPress={() => setBillActionTarget(null)}
               >
-                <Text style={[styles.sheetCancelText, { color: "#fff" }]}>Cancel</Text>
+                <Text style={[styles.sheetCancelText, { color: "#fff" }]}>{t("cancel")}</Text>
               </TouchableOpacity>
             </View>
           </Modal>
@@ -692,189 +850,417 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: HOME_THEME.background },
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingHorizontal: 18,
+  },
+  homeCore: {
+    justifyContent: "center",
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 20,
-    paddingBottom: 28,
+    paddingTop: 8,
+    paddingBottom: 18,
   },
-  headerProfile: {
+  brandBlock: {
+    flexShrink: 1,
+    gap: 2,
+  },
+  appName: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: HOME_THEME.text,
+  },
+  logoAmp: {
+    color: HOME_THEME.primary,
+  },
+  appMotto: {
+    color: HOME_THEME.secondary,
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  profileCluster: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    maxWidth: "50%",
   },
-  userName: {
-    fontSize: 14,
-    fontWeight: "700",
+  profileGreeting: {
+    alignItems: "flex-end",
+    flexShrink: 1,
   },
-  devPanelBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    marginVertical: 4,
+  profileGreetingText: {
+    color: HOME_THEME.secondary,
+    fontSize: 12,
+    fontWeight: "500",
   },
-  devPanelIcon: { fontSize: 16 },
-  devPanelText: { flex: 1, fontSize: 14, fontWeight: "600" },
+  profileNameText: {
+    color: HOME_THEME.text,
+    fontSize: 15,
+    fontWeight: "800",
+    maxWidth: 92,
+  },
   profileFallback: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.primary + "22",
+    backgroundColor: HOME_THEME.primary,
     alignItems: "center",
     justifyContent: "center",
   },
-  bugBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 8,
-    marginTop: 8,
+  profileFallbackText: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "900",
   },
-  bugBtnText: {
+  pinOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pinCard: {
+    width: 260,
+    borderRadius: 16,
+    padding: 24,
+    gap: 16,
+    alignItems: "center",
+  },
+  pinInput: {
+    width: "100%",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    fontSize: 24,
+    textAlign: "center",
+    letterSpacing: 12,
+  },
+  pinError: {
+    color: "#ef4444",
     fontSize: 13,
-    fontWeight: "500",
   },
-  greeting: {
+  pinSubmit: {
+    width: "100%",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  pinSubmitText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  pinCancel: {
     fontSize: 14,
     fontWeight: "500",
   },
-  appName: {
-    fontSize: 28,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-  },
-  tagline: {
-    fontSize: 13,
-    fontWeight: "500",
-    marginTop: 2,
-  },
   primaryAction: {
-    backgroundColor: Colors.primary,
-    borderRadius: 18,
-    marginBottom: 14,
+    backgroundColor: HOME_THEME.cardPrimary,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: HOME_THEME.primary + "38",
+    marginBottom: 12,
     overflow: "hidden",
+    width: "100%",
+    alignSelf: "center",
+    shadowColor: HOME_THEME.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 6,
   },
   primaryActionInner: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 20,
-    gap: 16,
+    padding: 16,
+    gap: 14,
   },
-  primaryIcon: {
-    width: 52,
-    height: 52,
+  primaryActionCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  actionCardIcon: {
+    width: 48,
+    height: 48,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: HOME_THEME.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionCardEuroBadge: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  actionCardIconTeal: {
+    backgroundColor: HOME_THEME.teal,
+  },
+  primaryArrowButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: HOME_THEME.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   primaryActionTitle: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
   },
   primaryActionSub: {
-    color: "rgba(255,255,255,0.7)",
+    color: "#C9CCFF",
     fontSize: 13,
+    fontWeight: "500",
     marginTop: 2,
   },
   secondaryAction: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    padding: 16,
     borderRadius: 16,
-    borderWidth: 1.5,
-    gap: 12,
-    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: HOME_THEME.border,
+    gap: 14,
+    marginBottom: 12,
+    backgroundColor: HOME_THEME.card,
+    width: "100%",
+    alignSelf: "center",
+  },
+  secondaryCopy: {
+    flex: 1,
+    gap: 4,
   },
   secondaryActionText: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 17,
+    fontWeight: "700",
+    color: HOME_THEME.text,
   },
-  utilRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 24,
-    marginTop: -10,
+  secondarySub: {
+    color: HOME_THEME.secondary,
+    fontSize: 13,
+    fontWeight: "500",
   },
-  utilBtn: {
-    flex: 1,
-    flexDirection: "row",
+  qrScanFrame: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(139,143,163,0.15)",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  utilBtnText: {
-    fontSize: 13,
-    fontWeight: "600",
   },
   creditsCard: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    borderRadius: 16,
     borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: Colors.primary + "0A",
-    marginBottom: 16,
-    marginTop: -8,
+    borderColor: HOME_THEME.border,
+    padding: 16,
+    backgroundColor: HOME_THEME.card,
+    marginBottom: 12,
+    gap: 14,
+    width: "100%",
+    alignSelf: "center",
   },
-  creditsCardLeft: {
-    gap: 2,
+  creditsIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  creditsTokenImage: {
+    width: 50,
+    height: 50,
+  },
+  creditsContent: {
     flex: 1,
+    gap: 4,
+  },
+  creditsTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 4,
   },
   creditsCardLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
+    fontSize: 13,
+    fontWeight: "500",
+    color: HOME_THEME.secondary,
   },
   creditsCardCount: {
-    fontSize: 32,
+    color: HOME_THEME.text,
+    fontSize: 18,
+    fontWeight: "800",
+    lineHeight: 24,
+  },
+  topUpButton: {
+    borderWidth: 1,
+    borderColor: HOME_THEME.primary,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  topUpButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: HOME_THEME.primary,
+  },
+  savingsCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: HOME_THEME.success + "33",
+    backgroundColor: HOME_THEME.success + "12",
+    padding: 16,
+    marginBottom: 18,
+    width: "100%",
+    alignSelf: "center",
+    gap: 10,
+  },
+  savingsCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  savingsIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: HOME_THEME.success + "1F",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  savingsCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  savingsLabel: {
+    color: HOME_THEME.secondary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  savingsValue: {
+    color: HOME_THEME.text,
+    fontSize: 20,
     fontWeight: "900",
   },
-  creditsCardSub: {
+  savingsSub: {
+    color: HOME_THEME.secondary,
     fontSize: 12,
     fontWeight: "500",
   },
-  creditsCardRight: {
+  carouselDots: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 5,
+    marginTop: 2,
+  },
+  carouselDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: HOME_THEME.secondary + "55",
+  },
+  carouselDotActive: {
+    width: 18,
+    backgroundColor: HOME_THEME.success,
+  },
+
+  // ── Active session banner ──────────────────────────────────────────────────────
+  activeSessionBanner: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 12,
+    backgroundColor: HOME_THEME.success + "14",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: HOME_THEME.success + "36",
+    borderLeftWidth: 4,
+    borderLeftColor: HOME_THEME.success,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginBottom: 12,
+    width: "100%",
+    alignSelf: "center",
   },
-  creditsCardEmoji: {
-    fontSize: 36,
+  activeIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: HOME_THEME.success + "33",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  creditsCardBuy: {
+  activeSessionTitle: {
+    color: HOME_THEME.success,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  activeSessionSub: {
     fontSize: 13,
+    color: HOME_THEME.secondary,
+    fontWeight: "400",
+  },
+  activeOpenPill: {
+    borderWidth: 1,
+    borderColor: HOME_THEME.success,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  activeSessionReturn: {
+    color: HOME_THEME.success,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  // ── Rejoin session banner ──────────────────────────────────────────────────────
+  rejoinBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: Colors.primary + "55",
+    backgroundColor: Colors.primary + "10",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 14,
+  },
+  rejoinTitle: {
+    color: Colors.primary,
+    fontSize: 14,
     fontWeight: "700",
   },
+  rejoinSub: {
+    fontSize: 12,
+    color: Colors.primary + "99",
+  },
+  rejoinCta: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  // ── Recent bills ──────────────────────────────────────────────────────────────
   recentSection: {
     gap: 8,
+    marginTop: 4,
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 4,
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 11,
@@ -882,15 +1268,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
+  seeAllText: {
+    color: HOME_THEME.primary,
+    fontSize: 14,
+    fontWeight: "600",
+  },
   billsCard: {
+    borderRadius: 16,
     borderWidth: 1,
-    borderRadius: 14,
+    borderColor: HOME_THEME.border,
     overflow: "hidden",
+    backgroundColor: HOME_THEME.card,
   },
   billRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 14,
     gap: 12,
   },
@@ -899,7 +1292,7 @@ const styles = StyleSheet.create({
   },
   billInfo: {
     flex: 1,
-    gap: 3,
+    gap: 2,
   },
   billNameRow: {
     flexDirection: "row",
@@ -907,8 +1300,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   billName: {
+    color: HOME_THEME.text,
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "700",
     flexShrink: 1,
   },
   unpaidDot: {
@@ -919,10 +1313,13 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   billMeta: {
+    color: HOME_THEME.secondary,
     fontSize: 12,
+    fontWeight: "400",
   },
   billTotal: {
-    fontSize: 15,
+    color: HOME_THEME.text,
+    fontSize: 16,
     fontWeight: "700",
   },
   viewAllBtn: {
@@ -932,24 +1329,10 @@ const styles = StyleSheet.create({
   viewAllText: {
     fontSize: 13,
     fontWeight: "600",
-  },
-  devSection: {
-    alignItems: "center",
-    paddingVertical: 20,
-  },
-  devClearBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: "dashed",
-  },
-  devClearText: {
-    fontSize: 12,
-    fontWeight: "500",
+    color: HOME_THEME.primary,
   },
 
-  // ── Bill action sheet ────────────────────────────────────────────────────────
+  // ── Bill action sheet ──────────────────────────────────────────────────────────
   sheetOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
@@ -998,66 +1381,6 @@ const styles = StyleSheet.create({
   },
   sheetCancelText: {
     fontSize: 15,
-    fontWeight: "700",
-  },
-
-  // ── Rejoin session banner ─────────────────────────────────────────────────────
-  rejoinBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: Colors.primary + "55",
-    backgroundColor: Colors.primary + "0D",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 14,
-  },
-  rejoinTitle: {
-    color: Colors.primary,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  rejoinSub: {
-    fontSize: 12,
-    color: Colors.primary + "99",
-  },
-  rejoinCta: {
-    color: Colors.primary,
-    fontSize: 14,
-    fontWeight: "700",
-  },
-
-  // ── Active session banner ─────────────────────────────────────────────────────
-  activeSessionBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    marginBottom: 14,
-  },
-  activeSessionDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#10B981",
-  },
-  activeSessionTitle: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  activeSessionSub: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.7)",
-  },
-  activeSessionReturn: {
-    color: "#fff",
-    fontSize: 14,
     fontWeight: "700",
   },
 });

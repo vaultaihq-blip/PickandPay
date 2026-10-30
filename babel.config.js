@@ -1,11 +1,10 @@
 module.exports = function (api) {
   api.cache(true);
   return {
-    presets: [
-      ["babel-preset-expo", { jsxImportSource: "nativewind" }],
-    ],
+    presets: ["babel-preset-expo"],
     plugins: [
-      "react-native-reanimated/plugin",
+      // zustand uses import.meta.env.MODE (Vite syntax) — not valid in Metro classic scripts.
+      ["babel-plugin-transform-import-meta", {}],
     ],
   };
 };

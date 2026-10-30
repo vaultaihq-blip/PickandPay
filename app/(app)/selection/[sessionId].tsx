@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
+﻿import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -7,24 +7,30 @@ import {
   TextInput,
   StyleSheet,
   useColorScheme,
-  Alert,
   Modal,
+  BackHandler,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router, useLocalSearchParams } from "expo-router";
+import { showDialog } from "@/lib/dialog";
+import { endSession, showEndSessionError } from "@/lib/endSession";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { router, useLocalSearchParams, Stack } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useSessionStore } from "@/store/sessionStore";
 import { useAuthStore } from "@/store/authStore";
+import { useReceiptStore } from "@/store/receiptStore";
 import { useSessionMonitor } from "@/hooks/useSessionMonitor";
 import { GlobalCostsSection } from "@/components/receipt/GlobalCosts";
-import { SelectableItem } from "@/components/selection/SelectableItem";
+import { SelectableItem, SelectorInfo } from "@/components/selection/SelectableItem";
 import { SharedItemModal } from "@/components/selection/SharedItemModal";
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
 import { formatCurrency } from "@/utils/formatter";
 import { ReceiptItem, ItemSelection } from "@/types";
 import { supabase } from "@/lib/supabase";
+import { expectRows, showLeaveWriteError, showWriteError, withTimeout, WriteError } from "@/lib/checkedWrite";
+import { useI18nStore } from "@/store/i18nStore";
 
 const ORDERED_CATEGORIES = [
   "starters",
@@ -89,8 +95,12 @@ export default function SelectionScreen() {
     takenBy?: string;
   }>();
   const isDark = useColorScheme() === "dark";
-  const { currentSession, updateSelections, countdownActive } = useSessionStore();
+  const insets = useSafeAreaInsets();
+  const { currentSession, updateSelections, countdownActive, clearSession } = useSessionStore();
+  const { clearReceipt } = useReceiptStore();
   const { profile } = useAuthStore();
+  const { t, language } = useI18nStore();
+  void language;
 
   // ── Selections state ─────────────────────────────────────────────────────────
   const [selections, setSelections] = useState<Map<string, ItemSelection>>(() => {
@@ -115,6 +125,12 @@ export default function SelectionScreen() {
   useSessionMonitor();
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  // Prevent re-firing the "selecting" status update when the store changes mid-session
+  const hasSetSelectingRef = useRef(false);
+  // Stop draft broadcasts the moment Done is pressed (before router.back() finishes)
+  const doneRef = useRef(false);
+  // Last "[selection] blocked" line printed — see the not-found branch below.
+  const lastBlockedLogRef = useRef<string | null>(null);
 
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
   const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
@@ -125,6 +141,7 @@ export default function SelectionScreen() {
   const session = currentSession;
   const receipt = session?.receipt;
   const isIndividualTip = receipt?.tipMode === "individual";
+  const isCreator = session?.creatorId === profile?.id;
 
   const activeParticipant =
     session?.participants.find((p) => p.userId === userId) ??
@@ -150,9 +167,27 @@ export default function SelectionScreen() {
     const sid = sessionId ?? session?.id;
     if (!sid || String(sid).startsWith("session_") || String(sid).startsWith("dev_session_")) return;
     const channelName = returnTo === "lobby" ? `lobby:${sid}` : `selection:${sid}`;
-    const ch = supabase.channel(channelName).subscribe();
+    // FIX 49 — supabase.channel() returns the *existing* channel object when
+    // one with this topic is already open. Coming from the lobby, that's the
+    // lobby's own presence/broadcast channel (it stays mounted underneath),
+    // and removing it here on unmount left the lobby deaf: no broadcasts and
+    // no way to re-track presence, so the user showed as disconnected to
+    // everyone. This screen is a guest on a channel it didn't open — borrow
+    // it for sends, never close it. Only a channel created here is removed.
+    const existing = supabase.getChannels().find((c) => c.topic === `realtime:${channelName}`);
+    if (existing) {
+      channelRef.current = existing;
+      return () => {
+        channelRef.current = null;
+      };
+    }
+    // C.2 — session channels are private (realtime.messages RLS: host or member).
+    const ch = supabase.channel(channelName, { config: { private: true } }).subscribe();
     channelRef.current = ch;
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      channelRef.current = null;
+      supabase.removeChannel(ch);
+    };
   }, [sessionId, session?.id, returnTo]);
 
   // ── Countdown started by host (via store) — pop back to lobby ───────────
@@ -161,6 +196,114 @@ export default function SelectionScreen() {
       router.back(); // reveals lobby (still mounted in stack) where countdown card is shown
     }
   }, [countdownActive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (hasSetSelectingRef.current) return;
+    const sid = sessionId ?? session?.id;
+    if (
+      returnTo !== "lobby" ||
+      !sid ||
+      !activeParticipant ||
+      String(sid).startsWith("session_") ||
+      String(sid).startsWith("dev_session_")
+    ) {
+      return;
+    }
+    hasSetSelectingRef.current = true;
+    expectRows(
+      "selection: mark selecting",
+      supabase
+        .from("session_participants")
+        .update({ status: "selecting" })
+        .eq("session_id", sid)
+        .eq("user_id", activeParticipant.userId)
+        .select("id")
+    ).catch((err) => showWriteError(err, t));
+  }, [activeParticipant, returnTo, session?.id, sessionId, t]);
+
+  const closeConfirmedSession = useCallback(async () => {
+    if (!session) return;
+    const isOfflineSession = session.id.startsWith("session_") || session.id.startsWith("dev_session_");
+    const leave = () => {
+      clearSession();
+      router.replace("/(app)");
+    };
+    try {
+      if (isCreator && !isOfflineSession) {
+        await endSession("selection: host ends session", session.id);
+      } else if (!isCreator && !isOfflineSession && profile?.id) {
+        await expectRows(
+          "selection: participant leaves (left)",
+          supabase
+            .from("session_participants")
+            .update({ status: "left" })
+            .eq("session_id", session.id)
+            .eq("user_id", profile.id)
+            .select("id")
+        );
+      }
+      leave();
+    } catch (err) {
+      // The host stays: the session is still open on the server (D.5).
+      if (isCreator) showEndSessionError(err, t);
+      else showLeaveWriteError(err, t, leave);
+    }
+  }, [clearSession, isCreator, profile?.id, session, t]);
+
+  const confirmExitSession = useCallback(() => {
+    showDialog(
+      isCreator ? "Terminar sessão?" : "Sair da sessão?",
+      isCreator
+        ? "A fatura já foi confirmada. Voltar atrás irá terminar a sessão para todos."
+        : "A fatura já foi confirmada. Voltar atrás irá sair da sessão.",
+      [
+        { text: "Ficar", style: "cancel" },
+        {
+          text: isCreator ? "Terminar sessão" : "Sair da sessão",
+          style: "destructive",
+          onPress: closeConfirmedSession,
+        },
+      ]
+    );
+  }, [closeConfirmedSession, isCreator]);
+
+  const leaveSelectionToLobby = useCallback(() => {
+    const sid = sessionId ?? session?.id;
+    if (
+      sid &&
+      activeParticipant &&
+      !String(sid).startsWith("session_") &&
+      !String(sid).startsWith("dev_session_")
+    ) {
+      const selectionsArray = Array.from(selections.values());
+      // Save selections but keep status "selecting" — lobby shows Cancel+Edit for draft
+      expectRows(
+        "selection: save draft (selecting)",
+        supabase
+          .from("session_participants")
+          .update({ selections: selectionsArray, status: "selecting" })
+          .eq("session_id", sid)
+          .eq("user_id", activeParticipant.userId)
+          .select("id")
+      ).catch((err) => showWriteError(err, t));
+      updateSelections(activeParticipant.userId, selectionsArray);
+    }
+    router.back();
+  }, [activeParticipant, session?.id, sessionId, selections, updateSelections, t]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+        if (returnTo === "lobby") {
+          leaveSelectionToLobby();
+          return true;
+        }
+        confirmExitSession();
+        return true;
+      });
+      return () => subscription.remove();
+    }, [confirmExitSession, leaveSelectionToLobby, returnTo])
+  );
 
   // ── IDs claimed by other Done participants (selections saved to store) ────────
   const otherDoneSelectionIds = useMemo(() => {
@@ -172,6 +315,36 @@ export default function SelectionScreen() {
     }
     return ids;
   }, [session, userId]);
+
+  // ── Per-item selector map: who has selected each item (all participants) ──────
+  const itemSelectors = useMemo(() => {
+    const map = new Map<string, SelectorInfo[]>();
+    if (!session) return map;
+    for (const p of session.participants) {
+      const color = p.profile.color;
+      const isMe = p.userId === userId;
+      // For current user use local selections; for others use store
+      const itemIds: string[] = isMe
+        ? Array.from(selections.keys())
+        : p.selections.map((s) => s.itemId);
+      for (const itemId of itemIds) {
+        if (!map.has(itemId)) map.set(itemId, []);
+        const list = map.get(itemId)!;
+        if (!list.find((e) => e.userId === p.userId)) {
+          list.push({
+            userId: p.userId,
+            name: p.profile.name,
+            avatarIcon: p.profile.avatarIcon,
+            avatarUrl: p.profile.avatarUrl,
+            color,
+            color2: p.profile.color2,
+            isMe,
+          });
+        }
+      }
+    }
+    return map;
+  }, [session, userId, selections]);
 
   // ── All items flat list (shared across memos) ────────────────────────────────
   const allItems = useMemo<ReceiptItem[]>(() => {
@@ -211,15 +384,21 @@ export default function SelectionScreen() {
       ) {
         total += item.totalPrice;
         if (item.addOns) for (const addon of item.addOns) total += addon.totalPrice;
-      } else if (item.type === "quantity") {
-        const othersCount =
-          session?.participants.filter(
-            (p) => p.userId !== userId && p.selections.some((s) => s.itemId === itemId)
-          ).length ?? 0;
-        const shareCount = Math.max(othersCount + 1, 1);
-        total += item.totalPrice / shareCount;
+      } else if (item.type === "quantity" || item.quantity > 1) {
+        // Proportional: my share = my quantity / total quantity selected by everyone
+        const myQty = sel.quantity ?? 1;
+        const othersTotal =
+          session?.participants
+            .filter((p) => p.userId !== userId)
+            .reduce((sum, p) => {
+              const otherSel = p.selections.find((s) => s.itemId === itemId);
+              return sum + (otherSel?.quantity ?? 0);
+            }, 0) ?? 0;
+        const totalSelected = Math.max(myQty + othersTotal, 1);
+        const ratio = myQty / totalSelected;
+        total += item.totalPrice * ratio;
         if (item.addOns)
-          for (const addon of item.addOns) total += addon.totalPrice / shareCount;
+          for (const addon of item.addOns) total += addon.totalPrice * ratio;
       } else if (item.type === "shareable") {
         const shareCount = Math.max(sel.sharedWith?.length ?? 1, 1);
         total += item.totalPrice / shareCount;
@@ -261,7 +440,41 @@ export default function SelectionScreen() {
     updateSelections(activeParticipant.userId, selectionArray, tipContrib);
   }, [session, activeParticipant, selections, isIndividualTip, tipContribution, updateSelections]);
 
-  // ── Quantity change for individual items ────────────────────────────────────
+  useEffect(() => {
+    const sid = sessionId ?? session?.id;
+    if (
+      returnTo !== "lobby" ||
+      !sid ||
+      !activeParticipant ||
+      String(sid).startsWith("session_") ||
+      String(sid).startsWith("dev_session_")
+    ) {
+      return;
+    }
+
+    const sendDraft = () => {
+      if (doneRef.current) return;
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "going_to_selection",
+        payload: { userId: activeParticipant.userId },
+      });
+      channelRef.current?.send({
+        type: "broadcast",
+        event: "selection_draft",
+        payload: {
+          userId: activeParticipant.userId,
+          selections: Array.from(selections.values()),
+        },
+      });
+    };
+
+    sendDraft();
+    const interval = setInterval(sendDraft, 1000);
+    return () => clearInterval(interval);
+  }, [activeParticipant, returnTo, selections, session?.id, sessionId]);
+
+  // ── Quantity change — max is item.quantity (sharing model: no exclusivity cap) ─
   const handleQuantityChange = useCallback((itemId: string, delta: number) => {
     setSelections((prev) => {
       const next = new Map(prev);
@@ -269,22 +482,24 @@ export default function SelectionScreen() {
       if (!current) return next;
       const item = allItems.find((i) => i.id === itemId);
       if (!item) return next;
-      const othersAllocated = session?.participants
-        .filter((p) => p.userId !== userId)
-        .reduce((sum, p) => {
-          const sel = p.selections.find((s) => s.itemId === itemId);
-          return sum + (sel ? (sel.quantity ?? 1) : 0);
-        }, 0) ?? 0;
-      const maxQty = item.quantity - othersAllocated;
-      const newQty = Math.max(1, Math.min(maxQty, (current.quantity ?? 1) + delta));
+      const newQty = Math.max(1, Math.min(item.quantity, (current.quantity ?? 1) + delta));
       next.set(itemId, { ...current, quantity: newQty });
       return next;
     });
-  }, [allItems, userId, session]);
+  }, [allItems]);
 
   // ── Done: save + broadcast finalization ─────────────────────────────────────
   const handleDone = async () => {
-    if (!session || !activeParticipant) return;
+    doneRef.current = true; // stop draft interval broadcasts immediately
+    if (!session || !activeParticipant) {
+      console.warn("[selection] handleDone: missing session or activeParticipant", {
+        session: session?.id,
+        activeParticipant: activeParticipant?.userId,
+        userId,
+        profileId: profile?.id,
+      });
+      return;
+    }
     setSaving(true);
     try {
       const selectionArray = Array.from(selections.values());
@@ -294,15 +509,36 @@ export default function SelectionScreen() {
       const isTestUser = activeParticipant.userId.startsWith("test_") || activeParticipant.userId.startsWith("dev_");
       const isOfflineSession = session.id.startsWith("session_") || session.id.startsWith("dev_session_");
       if (!isOfflineSession && !isTestUser) {
-        await supabase
+        const { data: savedParticipant, error: saveError } = await withTimeout("selection: save Done", supabase
           .from("session_participants")
-          .update({ selections: selectionArray, total_owed: runningTotal })
+          // total_owed is not client-writable (B.3); every device computes the
+          // split from the selections, and the server fills total_owed in C.
+          .update({ selections: selectionArray, status: "items_picked" })
           .eq("session_id", session.id)
-          .eq("user_id", activeParticipant.userId);
+          .eq("user_id", activeParticipant.userId)
+          .select("user_id")
+          .single());
+        if (saveError || !savedParticipant) {
+          console.error("[selection] Failed to save participant selections:", {
+            error: saveError,
+            sessionId: session.id,
+            userId: activeParticipant.userId,
+            selectionCount: selectionArray.length,
+            totalOwed: runningTotal,
+          });
+          if (saveError?.code === "PGRST204") {
+            throw new Error(
+              "Database schema is missing session_participants.selections. Run migration 006_repair_session_participants_columns.sql and reload the Supabase API schema cache."
+            );
+          }
+          throw saveError ?? new Error("Selection was not saved.");
+        }
       }
 
       if (returnTo === "lobby") {
-        // Lobby flow: broadcast selection_complete and return to lobby
+        // Lobby flow: broadcast selection_complete then pop back to the already-mounted lobby.
+        // router.back() is used instead of router.replace() to avoid creating a new lobby instance,
+        // which breaks state (selectionDone, channels) and silently fails for dev_session_ IDs.
         if (!isOfflineSession && channelRef.current) {
           channelRef.current.send({
             type: "broadcast",
@@ -310,7 +546,7 @@ export default function SelectionScreen() {
             payload: { userId: activeParticipant.userId, selections: selectionArray },
           });
         }
-        router.replace(`/(app)/session-lobby/${session.id}`);
+        router.back();
         return;
       }
 
@@ -323,29 +559,32 @@ export default function SelectionScreen() {
         });
       }
 
-      // Host selecting for someone else → go back; selecting for self → stay (allReady shows overlay)
-      const isTakeover = userId && userId !== profile?.id;
+      // Fake/takeover users always go back; real user stays so allReady overlay can appear
+      const isDevUser = activeParticipant.userId.startsWith("test_") || activeParticipant.userId.startsWith("dev_");
+      const isTakeover = isDevUser || (userId && userId !== profile?.id);
       if (isTakeover) {
         router.back();
       }
     } catch (err) {
-      Alert.alert("Error", "Failed to save selections.");
+      if (err instanceof WriteError) {
+        showWriteError(err, t);
+      } else {
+        const message = err instanceof Error ? err.message : t("error_generic");
+        showDialog(t("error"), message);
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  // ── Back press — behaves exactly like Done ───────────────────────────────────
-  const handleBack = () => {
-    Alert.alert(
-      "Confirm Selection",
-      "Are you done selecting your items?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Confirm", onPress: handleDone },
-      ]
-    );
-  };
+  // ── Back press: after receipt confirmation, always closes/leaves session ──────
+  const handleBack = useCallback(() => {
+    if (returnTo === "lobby") {
+      leaveSelectionToLobby();
+      return;
+    }
+    confirmExitSession();
+  }, [confirmExitSession, leaveSelectionToLobby, returnTo]);
 
   const handleToggleItem = useCallback(
     (item: ReceiptItem) => {
@@ -386,7 +625,12 @@ export default function SelectionScreen() {
         }
         const firstUnclaimed = originalIds.find((id) => !claimedByOthers.has(id));
         if (firstUnclaimed) {
-          next.set(firstUnclaimed, { itemId: firstUnclaimed, quantity: 1, isShared: false, sharedWith: [] });
+          const rec = sess?.receipt;
+          const allRec: ReceiptItem[] = rec
+            ? [...rec.categories.starters, ...rec.categories.mains, ...rec.categories.drinks, ...rec.categories.desserts, ...rec.categories.others]
+            : [];
+          const origItem = allRec.find((i) => i.id === firstUnclaimed);
+          next.set(firstUnclaimed, { itemId: firstUnclaimed, quantity: origItem?.quantity ?? 1, isShared: false, sharedWith: [] });
         }
       }
       return next;
@@ -452,6 +696,21 @@ export default function SelectionScreen() {
       : "$";
 
   if (!session || !receipt || !activeParticipant) {
+    // FIX 46 — "Session not found" collapsed three distinct causes into one
+    // message with no way to tell them apart from the logs: no session at
+    // all in the local store, a session with no receipt yet (FIX 44's own
+    // documented gap — a participant who joined before the host scanned),
+    // or a session whose participants list doesn't include this device's
+    // own id. Logged once per distinct state, not on every re-render, since
+    // this branch stays mounted while the condition holds (FIX 49: the
+    // "once" was only claimed before; it printed on every render).
+    const blockedLine =
+      `[selection] blocked: session=${!!session} receipt=${!!receipt} activeParticipant=${!!activeParticipant} ` +
+      `userId=${userId ?? "none"} sessionParticipants=${session?.participants.length ?? "n/a"}`;
+    if (lastBlockedLogRef.current !== blockedLine) {
+      lastBlockedLogRef.current = blockedLine;
+      console.log(blockedLine);
+    }
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
         <View style={styles.emptyContainer}>
@@ -464,32 +723,32 @@ export default function SelectionScreen() {
   const selectedIds = new Set(selections.keys());
   const curr = receipt.currency as "EUR" | "USD" | "CAD" | "GBP";
 
+  const SEL_BG = "#0B0D10";
+  const SEL_CARD = "#15181D";
+  const SEL_BORDER = "#252A32";
+  const SEL_TEXT = "#F9FAFB";
+  const SEL_MUTED = "#9CA3AF";
+
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        {/* Issue 1: back saves first */}
-        <TouchableOpacity onPress={handleBack}>
-          <Ionicons name="arrow-back" size={24} color={textColor} />
+    <SafeAreaView style={[styles.safe, { backgroundColor: SEL_BG }]}>
+      <Stack.Screen options={{ gestureEnabled: false }} />
+
+      {/* ── Header ── */}
+      <View style={styles.selHeader}>
+        <TouchableOpacity
+          onPress={handleBack}
+          style={styles.selHeaderBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="chevron-back" size={26} color={SEL_TEXT} />
         </TouchableOpacity>
-        <View style={styles.personInfo}>
-          <Avatar
-            name={activeProfile?.name ?? "?"}
-            avatarIcon={activeProfile?.avatarIcon}
-            avatarUrl={activeProfile?.avatarUrl}
-            color={accentColor}
-            size={34}
-          />
-          <View>
-            <Text style={[styles.selectingFor, { color: mutedColor }]}>
-              Selecting for:
-            </Text>
-            <Text style={[styles.personName, { color: textColor }]}>
-              {activeProfile?.name ?? "Unknown"}
-            </Text>
-          </View>
+        <View style={styles.selHeaderCenter}>
+          <Text style={styles.selHeaderTitle}>Select your items</Text>
+          <Text style={styles.selHeaderSub} numberOfLines={1}>
+            {receipt.restaurant}
+          </Text>
         </View>
-        <View style={{ width: 60 }} />
+        <View style={styles.selHeaderBtn} />
       </View>
 
       {/* Takeover banner */}
@@ -507,30 +766,41 @@ export default function SelectionScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           paddingBottom: isIndividualTip
-            ? 210
+            ? 210 + Math.max(insets.bottom, 16)
             : (receipt.selectedTip ?? 0) > 0
-            ? 180
-            : 110,
+            ? 180 + Math.max(insets.bottom, 16)
+            : 110 + Math.max(insets.bottom, 16),
         }}
       >
-        <Card style={styles.receiptCard} padding={0}>
+        <View style={[styles.receiptCard, { backgroundColor: SEL_CARD, borderColor: SEL_BORDER }]}>
           {ORDERED_CATEGORIES.map((cat) => {
             const groups = groupedCategories[cat] ?? [];
             if (groups.length === 0) return null;
             return (
               <View key={cat}>
-                <View style={[styles.catHeader, { borderColor }]}>
-                  <Text style={[styles.catLabel, { color: mutedColor }]}>
-                    {cat.toUpperCase()}
+                <View style={[styles.catHeader, { borderColor: SEL_BORDER }]}>
+                  <Text style={[styles.catLabel, { color: SEL_MUTED }]}>
+                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
                   </Text>
+                  <Ionicons name="chevron-down" size={14} color={SEL_MUTED} />
                 </View>
                 {groups.map((entry) => {
                   if (entry.kind === "merged") {
                     const { item, originalIds } = entry;
                     const myClaimedFromGroup = originalIds.filter((id) => selectedIds.has(id));
-                    const claimedByOthers = originalIds.filter((id) => otherDoneSelectionIds.has(id)).length;
-                    const totalQty = originalIds.length;
-                    const availableQty = totalQty - claimedByOthers;
+                    // Unit-based counts: each originalId may represent multiple units (e.g. a 2x receipt line)
+                    const unitsClaimedByOthers = originalIds.reduce((sum, id) => {
+                      if (otherDoneSelectionIds.has(id)) {
+                        const orig = allItems.find((i) => i.id === id);
+                        return sum + (orig?.quantity ?? 1);
+                      }
+                      return sum;
+                    }, 0);
+                    const unitsSelectedByMe = myClaimedFromGroup.reduce((sum, id) => {
+                      const orig = allItems.find((i) => i.id === id);
+                      return sum + (orig?.quantity ?? 1);
+                    }, 0);
+                    const availableQty = item.quantity - unitsClaimedByOthers;
                     return (
                       <SelectableItem
                         key={`merged_${item.id}`}
@@ -540,9 +810,34 @@ export default function SelectionScreen() {
                         selectionColor={accentColor}
                         sharedWith={[]}
                         availableQty={availableQty}
-                        totalQty={totalQty}
+                        totalQty={item.quantity}
+                        quantitySelected={unitsSelectedByMe || 1}
+                        claimableQty={availableQty}
+                        selectors={undefined}
+                        hidePrices
                         onToggle={() => handleToggleMerged(originalIds)}
                         onShareTap={() => {}}
+                        onQuantityChange={(delta) => {
+                          setSelections((prev) => {
+                            const next = new Map(prev);
+                            const myClaimed = originalIds.filter((id) => next.has(id));
+                            if (delta > 0) {
+                              const claimedByOthersSet = new Set(
+                                (useSessionStore.getState().currentSession?.participants ?? [])
+                                  .filter((p) => p.userId !== userId)
+                                  .flatMap((p) => p.selections.map((s) => s.itemId))
+                              );
+                              const nextId = originalIds.find((id) => !next.has(id) && !claimedByOthersSet.has(id));
+                              if (nextId) {
+                                const orig = allItems.find((i) => i.id === nextId);
+                                next.set(nextId, { itemId: nextId, quantity: orig?.quantity ?? 1, isShared: false, sharedWith: [] });
+                              }
+                            } else if (myClaimed.length > 1) {
+                              next.delete(myClaimed[myClaimed.length - 1]);
+                            }
+                            return next;
+                          });
+                        }}
                       />
                     );
                   }
@@ -564,6 +859,8 @@ export default function SelectionScreen() {
                           hasPriceVariant
                           quantitySelected={selections.get(entry.item.id)?.quantity ?? 1}
                           totalAllocatedByOthers={othersAllocatedVariant}
+                          selectors={undefined}
+                          hidePrices
                           onToggle={() => handleToggleItem(entry.item)}
                           onShareTap={() => setSharedModalItem(entry.item)}
                           onQuantityChange={(delta) => handleQuantityChange(entry.item.id, delta)}
@@ -595,6 +892,8 @@ export default function SelectionScreen() {
                       sharedWith={selections.get(entry.item.id)?.sharedWith ?? []}
                       quantitySelected={selections.get(entry.item.id)?.quantity ?? 1}
                       totalAllocatedByOthers={othersAllocatedSingle}
+                      selectors={undefined}
+                      hidePrices
                       onToggle={() => handleToggleItem(entry.item)}
                       onShareTap={() => setSharedModalItem(entry.item)}
                       onQuantityChange={(delta) => handleQuantityChange(entry.item.id, delta)}
@@ -609,33 +908,29 @@ export default function SelectionScreen() {
             currency={receipt.currency}
             tipAmount={isIndividualTip ? undefined : receipt.selectedTip}
           />
-        </Card>
+        </View>
       </ScrollView>
 
       {/* ── Equal tip breakdown info card ── */}
       {!isIndividualTip && (receipt.selectedTip ?? 0) > 0 && session.participants.length > 0 && (
-        <View style={[styles.tipInfoCard, { backgroundColor: cardColor, borderColor }]}>
+        <View
+          style={[
+            styles.tipInfoCard,
+            {
+              backgroundColor: cardColor,
+              borderColor,
+              bottom: 78 + Math.max(insets.bottom, 16),
+            },
+          ]}
+        >
           {receipt.tipPercentage && receipt.tipPercentage > 0 ? (
             // Percentage tip: each person pays their own % of their items
-            <>
-              <View style={styles.tipInfoRow}>
-                <Text style={[styles.tipInfoLabel, { color: mutedColor }]}>Tip rate</Text>
-                <Text style={[styles.tipInfoValue, { color: textColor }]}>
-                  {receipt.tipPercentage}% of your items
-                </Text>
-              </View>
-              <View style={[styles.tipInfoRowTotal, { borderColor }]}>
-                <Text style={[styles.tipInfoLabel, { color: textColor, fontWeight: "700" }]}>
-                  Your tip
-                </Text>
-                <Text style={[styles.tipInfoValueBold, { color: accentColor }]}>
-                  {formatCurrency(
-                    Math.round(personalItemsSubtotal * (receipt.tipPercentage / 100) * 100) / 100,
-                    curr
-                  )}
-                </Text>
-              </View>
-            </>
+            <View style={styles.tipInfoRow}>
+              <Text style={[styles.tipInfoLabel, { color: mutedColor }]}>Tip rate</Text>
+              <Text style={[styles.tipInfoValue, { color: textColor }]}>
+                {receipt.tipPercentage}% of your items
+              </Text>
+            </View>
           ) : (
             // Flat custom amount: divided equally
             <>
@@ -648,17 +943,6 @@ export default function SelectionScreen() {
               <Text style={[styles.tipInfoDivide, { color: mutedColor }]}>
                 ÷ {session.participants.length} people
               </Text>
-              <View style={[styles.tipInfoRowTotal, { borderColor }]}>
-                <Text style={[styles.tipInfoLabel, { color: textColor, fontWeight: "700" }]}>
-                  = per person
-                </Text>
-                <Text style={[styles.tipInfoValueBold, { color: accentColor }]}>
-                  {formatCurrency(
-                    Math.round((receipt.selectedTip! / session.participants.length) * 100) / 100,
-                    curr
-                  )}
-                </Text>
-              </View>
             </>
           )}
         </View>
@@ -666,12 +950,18 @@ export default function SelectionScreen() {
 
       {/* ── Issue 3: Individual tip selector panel ── */}
       {isIndividualTip && (
-        <View style={[styles.tipPanel, { backgroundColor: bgColor, borderColor }]}>
+        <View
+          style={[
+            styles.tipPanel,
+            {
+              backgroundColor: bgColor,
+              borderColor,
+              bottom: 78 + Math.max(insets.bottom, 16),
+            },
+          ]}
+        >
           <View style={styles.tipPanelHeader}>
             <Text style={[styles.tipPanelTitle, { color: mutedColor }]}>Your tip</Text>
-            <Text style={[styles.tipPanelAmount, { color: tipContribution > 0 ? accentColor : mutedColor }]}>
-              Tip: {formatCurrency(tipContribution, curr)}
-            </Text>
           </View>
 
           {tipInputMode === "choose" && (
@@ -703,7 +993,7 @@ export default function SelectionScreen() {
                         { color: isSelected ? accentColor : mutedColor },
                       ]}
                     >
-                      {pct === 0 ? "No tip" : `${pct}%`}
+                      {pct === 0 ? t("selection_no_tip") : `${pct}%`}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -778,11 +1068,19 @@ export default function SelectionScreen() {
       )}
 
       {/* Running total bar */}
-      <View style={[styles.totalBar, { backgroundColor: bgColor, borderColor }]}>
+      <View
+        style={[
+          styles.totalBar,
+          {
+            backgroundColor: "#15181D",
+            borderColor: "#252A32",
+            paddingBottom: 12 + Math.max(insets.bottom, 16),
+          },
+        ]}
+      >
         <View style={styles.totalInfo}>
-          <Text style={[styles.totalLabel, { color: mutedColor }]}>Items selected</Text>
-          <Text style={[styles.totalAmount, { color: accentColor }]}>
-            {selections.size} item{selections.size !== 1 ? "s" : ""}
+          <Text style={[styles.totalLabel, { color: "#9CA3AF" }]}>
+            {selections.size} item{selections.size !== 1 ? "s" : ""} selected
           </Text>
         </View>
         <TouchableOpacity
@@ -794,7 +1092,8 @@ export default function SelectionScreen() {
           onPress={handleDone}
           disabled={saving}
         >
-          <Text style={styles.doneBarBtnText}>{saving ? "..." : "Done →"}</Text>
+          <Text style={styles.doneBarBtnText}>{saving ? "..." : t("selection_done")}</Text>
+          {!saving && <Ionicons name="arrow-forward" size={16} color="#fff" />}
         </TouchableOpacity>
       </View>
 
@@ -817,6 +1116,70 @@ export default function SelectionScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
+
+  // ── New selection header ──────────────────────────────────────────────────────
+  selHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 58,
+  },
+  selHeaderBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selHeaderCenter: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+  },
+  selHeaderTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#F9FAFB",
+  },
+  selHeaderSub: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontWeight: "400",
+  },
+
+  // ── Legend row ────────────────────────────────────────────────────────────────
+  selLegend: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#252A32",
+  },
+  selLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  selLegendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  selLegendText: {
+    fontSize: 12,
+    color: "#9CA3AF",
+    fontWeight: "500",
+  },
+  selLegendDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: "#252A32",
+  },
+
+  // ── (kept for compat but unused in new header) ────────────────────────────────
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -839,8 +1202,17 @@ const styles = StyleSheet.create({
   },
   doneBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   scroll: { flex: 1 },
-  receiptCard: { marginHorizontal: 16, marginVertical: 8, overflow: "hidden" },
+  receiptCard: {
+    marginHorizontal: 16,
+    marginVertical: 8,
+    overflow: "hidden",
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   catHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -928,12 +1300,14 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: 12 },
   totalAmount: { fontSize: 24, fontWeight: "800" },
   doneBarBtn: {
-    paddingHorizontal: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 12,
     minHeight: 48,
-    alignItems: "center",
-    justifyContent: "center",
   },
   doneBarBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   emptyContainer: { flex: 1, alignItems: "center", justifyContent: "center" },

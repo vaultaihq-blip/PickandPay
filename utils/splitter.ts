@@ -64,29 +64,71 @@ export function calculateSplit(session: Session): Map<string, SplitResult> {
         );
       }
     } else {
-      // All other types: split equally, distribute remainder one cent at a time
       const selectors = participants.filter((p) =>
         p.selections.some((s) => s.itemId === item.id)
       );
       if (selectors.length === 0) continue;
-      const count = selectors.length;
-      const perCents = Math.floor(itemTotalCents / count);
-      const remainder = itemTotalCents - perCents * count;
 
-      selectors.forEach((participant, idx) => {
-        const amt = perCents + (idx < remainder ? 1 : 0);
-        results.get(participant.userId)!.itemBreakdown.push({
-          itemId: item.id,
-          itemName: item.name,
-          amount: fromCents(amt),
-          itemTotal: itemTotalFloat,
-          splitCount: count,
+      if (item.type === "quantity" || item.quantity > 1) {
+        // Proportional split: each person pays based on how many units they selected.
+        // Multiple people may select the same units (sharing); cost distributes by weight.
+        const totalSelected = selectors.reduce((sum, p) => {
+          const sel = p.selections.find((s) => s.itemId === item.id)!;
+          return sum + (sel.quantity ?? 1);
+        }, 0);
+
+        // Largest-remainder method: floor each share, then award remaining cents
+        // to those with the largest fractional parts.
+        const exactShares = selectors.map((p) => {
+          const sel = p.selections.find((s) => s.itemId === item.id)!;
+          return ((sel.quantity ?? 1) / totalSelected) * itemTotalCents;
         });
-        totalCentsMap.set(
-          participant.userId,
-          (totalCentsMap.get(participant.userId) ?? 0) + amt
-        );
-      });
+        const floors = exactShares.map(Math.floor);
+        let rem = itemTotalCents - floors.reduce((a, b) => a + b, 0);
+        const order = exactShares
+          .map((e, i) => [i, e - floors[i]] as [number, number])
+          .sort((a, b) => b[1] - a[1]);
+        for (const [idx] of order) {
+          if (rem <= 0) break;
+          floors[idx] += 1;
+          rem -= 1;
+        }
+
+        selectors.forEach((participant, idx) => {
+          const amt = floors[idx];
+          results.get(participant.userId)!.itemBreakdown.push({
+            itemId: item.id,
+            itemName: item.name,
+            amount: fromCents(amt),
+            itemTotal: itemTotalFloat,
+            splitCount: totalSelected,
+          });
+          totalCentsMap.set(
+            participant.userId,
+            (totalCentsMap.get(participant.userId) ?? 0) + amt
+          );
+        });
+      } else {
+        // Single-unit item: split equally among all who selected it
+        const count = selectors.length;
+        const perCents = Math.floor(itemTotalCents / count);
+        const remainder = itemTotalCents - perCents * count;
+
+        selectors.forEach((participant, idx) => {
+          const amt = perCents + (idx < remainder ? 1 : 0);
+          results.get(participant.userId)!.itemBreakdown.push({
+            itemId: item.id,
+            itemName: item.name,
+            amount: fromCents(amt),
+            itemTotal: itemTotalFloat,
+            splitCount: count,
+          });
+          totalCentsMap.set(
+            participant.userId,
+            (totalCentsMap.get(participant.userId) ?? 0) + amt
+          );
+        });
+      }
     }
   }
 
@@ -154,7 +196,18 @@ export function calculateSplit(session: Session): Map<string, SplitResult> {
     }
   }
 
-  // ── 4. Convert cent accumulators to display amounts ────────────────────────
+  // ── 4. Rounding adjustment stored on the session (B.2): the chosen person
+  //      pays the leftover cents, so the shares add up to the bill exactly
+  //      and every device that has the same session data shows the same split.
+  const adjustment = session.centAdjustment;
+  if (adjustment && totalCentsMap.has(adjustment.assignedTo)) {
+    totalCentsMap.set(
+      adjustment.assignedTo,
+      (totalCentsMap.get(adjustment.assignedTo) ?? 0) + toCents(adjustment.amount)
+    );
+  }
+
+  // ── 5. Convert cent accumulators to display amounts ────────────────────────
   for (const [userId, result] of results) {
     result.amount = fromCents(totalCentsMap.get(userId) ?? 0);
     result.globalCostsShare = fromCents(globalCentsCentsMap.get(userId) ?? 0);

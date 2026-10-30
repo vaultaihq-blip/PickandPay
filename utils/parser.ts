@@ -1,5 +1,5 @@
-import { ParsedReceipt, ReceiptItem, ItemCategory } from "@/types";
-import { extractReceiptHybrid } from "@/lib/hybrid-ocr";
+import { ParsedReceipt, ReceiptItem, ItemCategory, TaxMode } from "@/types";
+import { useCanonicalReceiptStore } from "@/store/canonicalReceiptStore";
 
 // ─── Receipt Parser Utilities ──────────────────────────────────────────────────
 // These helpers are used to normalize data coming from the GPT-4o Edge Function
@@ -36,6 +36,11 @@ export function detectCategory(name: string): ItemCategory {
 // ─── Blank Receipt Template ────────────────────────────────────────────────────
 
 export function createBlankReceipt(): ParsedReceipt {
+  // A blank receipt is a new identity too — a canonical receipt/issues left
+  // over from an earlier scan (e.g. the user cancelled and entered manually
+  // instead) must not survive into it.
+  useCanonicalReceiptStore.getState().clear();
+
   return {
     restaurant: "New Receipt",
     date: new Date().toISOString().split("T")[0],
@@ -58,22 +63,18 @@ export function createBlankReceipt(): ParsedReceipt {
   };
 }
 
-// ─── Receipt Analyzer ────────────────────────────────────────────────────────
+// analyzeReceipt (the call to the parse-receipt edge function) lives in
+// utils/analyzeReceipt.ts: it needs lib/supabase, and this file must stay
+// loadable from a plain Node test environment.
 
-export async function analyzeReceipt(
-  imageUri: string
-): Promise<{ receipt: ParsedReceipt; rawText: string }> {
-  console.log("📸 [parser] Starting hybrid OCR pipeline:", imageUri);
-  try {
-    const { receipt, method, rawText } = await extractReceiptHybrid(imageUri);
-    console.log(`✅ [parser] OCR complete via ${method}:`, receipt.restaurant);
-    return { receipt, rawText: rawText ?? "" };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg === "MISSING_KEY") throw err; // bubble up so scan.tsx can show the key alert
-    console.warn("⚠️ [parser] OCR failed, falling back to blank template:", msg);
-    return { receipt: createBlankReceipt(), rawText: "" };
-  }
+// ─── Tax Mode Detection ────────────────────────────────────────────────────────
+
+function detectTaxMode(currency: string, raw: Partial<ParsedReceipt>): TaxMode {
+  if (raw.tax_mode === "inclusive") return "inclusive";
+  if (raw.tax_mode === "exclusive") return "exclusive";
+  if (currency === "EUR" || currency === "GBP") return "inclusive";
+  if (currency === "USD" || currency === "CAD") return "exclusive";
+  return "inclusive"; // default: safer for EUR primary market
 }
 
 // ─── Receipt Normalizer ────────────────────────────────────────────────────────
@@ -99,44 +100,107 @@ export function normalizeReceiptItem(raw: Partial<ReceiptItem>): ReceiptItem {
 }
 
 export function normalizeReceipt(raw: Partial<ParsedReceipt>): ParsedReceipt {
+  const currency = raw.currency ?? "EUR";
+  const taxMode = detectTaxMode(currency, raw);
+
   const categories = raw.categories ?? {
-    starters: [],
-    mains: [],
-    drinks: [],
-    desserts: [],
-    others: [],
+    starters: [], mains: [], drinks: [], desserts: [], others: [],
   };
+
+  const normalizedCategories = {
+    starters: (categories.starters ?? []).map(normalizeReceiptItem),
+    mains:    (categories.mains    ?? []).map(normalizeReceiptItem),
+    drinks:   (categories.drinks   ?? []).map(normalizeReceiptItem),
+    desserts: (categories.desserts ?? []).map(normalizeReceiptItem),
+    others:   (categories.others   ?? []).map(normalizeReceiptItem),
+  };
+
+  const itemsSum = Math.round(
+    Object.values(normalizedCategories).flat().reduce((s, i) => s + i.totalPrice, 0) * 100
+  ) / 100;
+
+  const printedTotal: number | undefined = raw.printed_total ??
+    (raw.validation?.receiptTotal && raw.validation.receiptTotal > 0
+      ? raw.validation.receiptTotal
+      : undefined);
+
+  // ── Mathematical reconciliation ────────────────────────────────────────────────
+  // Determine whether tax global costs are real (exclusive) or display-only metadata
+  // (inclusive). We do this by checking which scenario makes the numbers add up.
+  //
+  // Tolerance of 0.50€ absorbs rounding errors and minor GPT price misreads.
+  //
+  // Scenario A: itemsSum + nonTaxCosts ≈ printed_total
+  //   → tax lines are VAT metadata; adding them would overcharge. Strip them.
+  // Scenario B: itemsSum + nonTaxCosts + taxCosts ≈ printed_total
+  //   → all costs are genuine (e.g. US sales tax added on top). Keep all.
+  // Fallback: no printed_total available → use currency heuristic.
+  const TOLERANCE = 0.50;
+
+  const rawGlobalCosts = raw.globalCosts ?? [];
+  const taxCosts    = rawGlobalCosts.filter((gc) => gc.type === "tax");
+  const nonTaxCosts = rawGlobalCosts.filter((gc) => gc.type !== "tax");
+  const taxSum    = Math.round(taxCosts.reduce((s, gc) => s + (gc.amount ?? 0), 0) * 100) / 100;
+  const nonTaxSum = Math.round(nonTaxCosts.reduce((s, gc) => s + (gc.amount ?? 0), 0) * 100) / 100;
+
+  let finalGlobalCosts: typeof rawGlobalCosts;
+  if (printedTotal !== undefined) {
+    const diffWithoutTax = Math.abs(itemsSum + nonTaxSum - printedTotal);
+    const diffWithAll    = Math.abs(itemsSum + nonTaxSum + taxSum - printedTotal);
+
+    if (diffWithoutTax <= TOLERANCE) {
+      finalGlobalCosts = nonTaxCosts; // tax lines are metadata, not costs
+    } else if (diffWithAll <= TOLERANCE) {
+      finalGlobalCosts = rawGlobalCosts; // all costs are genuine (US/CA exclusive tax)
+    } else {
+      // Can't reconcile — fall back to heuristic
+      finalGlobalCosts = taxMode === "inclusive" ? nonTaxCosts : rawGlobalCosts;
+    }
+  } else {
+    finalGlobalCosts = taxMode === "inclusive" ? nonTaxCosts : rawGlobalCosts;
+  }
+
+  const normalizedGlobalCosts = finalGlobalCosts.map((gc) => ({
+    id: gc.id ?? generateCostId(),
+    name: gc.name ?? "Cost",
+    amount: gc.amount ?? 0,
+    type: gc.type ?? "other",
+    splitByAll: true as const,
+    editable: gc.editable ?? true,
+    status: gc.status ?? "included",
+  }));
+
+  const effectiveTotal = printedTotal ?? itemsSum;
+
+  // Status must compare the printed total against items + the costs that were
+  // actually kept (finalGlobalCosts), not against itemsSum alone — otherwise
+  // any receipt with real tax/service (the normal case for USD/CAD) always
+  // shows a gap equal to those charges and never reports "ok".
+  const globalCostsSum =
+    Math.round(finalGlobalCosts.reduce((s, gc) => s + (gc.amount ?? 0), 0) * 100) / 100;
+  const reconciledTotal = Math.round((itemsSum + globalCostsSum) * 100) / 100;
+  const validationStatus: "ok" | "warning" | "error" =
+    Math.abs(effectiveTotal - reconciledTotal) > TOLERANCE ? "warning" : "ok";
 
   return {
     restaurant: raw.restaurant ?? "Unknown Restaurant",
     date: raw.date,
-    currency: raw.currency ?? "EUR",
+    currency,
+    tax_mode: taxMode,
+    printed_total: printedTotal,
     peopleCountDetected: raw.peopleCountDetected,
-    categories: {
-      starters: (categories.starters ?? []).map(normalizeReceiptItem),
-      mains: (categories.mains ?? []).map(normalizeReceiptItem),
-      drinks: (categories.drinks ?? []).map(normalizeReceiptItem),
-      desserts: (categories.desserts ?? []).map(normalizeReceiptItem),
-      others: (categories.others ?? []).map(normalizeReceiptItem),
-    },
-    globalCosts: (raw.globalCosts ?? []).map((gc) => ({
-      id: gc.id ?? generateCostId(),
-      name: gc.name ?? "Cost",
-      amount: gc.amount ?? 0,
-      type: gc.type ?? "other",
-      splitByAll: true as const,
-      editable: gc.editable ?? true,
-      status: gc.status ?? "included",
-    })),
+    categories: normalizedCategories,
+    globalCosts: normalizedGlobalCosts,
     suggestedTips: raw.suggestedTips ?? [],
     tipMode: "equal" as const,
     selectedTip: 0,
     isSimpleMode: raw.isSimpleMode,
-    validation: raw.validation ?? {
-      receiptTotal: 0,
-      computedTotal: 0,
-      difference: 0,
-      status: "ok",
+    ocr_passes: raw.ocr_passes,
+    validation: {
+      receiptTotal: effectiveTotal,
+      computedTotal: itemsSum,
+      difference: Math.round((effectiveTotal - itemsSum) * 100) / 100,
+      status: validationStatus,
     },
   };
 }

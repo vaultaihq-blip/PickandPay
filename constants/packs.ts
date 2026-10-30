@@ -1,38 +1,53 @@
 export interface CreditPack {
   id: string;
-  credits: number;
+  credits: number; // -1 = unlimited
   price: number;
   currency: string;
   label: string;
   highlight?: string;
+  icon?: string;
+  idealFor?: string;
+  isSubscription?: boolean;
+  comingSoon?: boolean;
 }
 
 export const CREDIT_PACKS: CreditPack[] = [
   {
-    id: "pack_1",
-    credits: 1,
-    price: 0.99,
-    currency: "USD",
-    label: "Starter",
-    highlight: undefined,
-  },
-  {
-    id: "pack_5",
-    credits: 5,
-    price: 3.99,
-    currency: "USD",
-    label: "Value",
-    highlight: "Most Popular",
-  },
-  {
-    id: "pack_15",
+    id: "pack_value",
     credits: 15,
+    price: 4.99,
+    currency: "EUR",
+    label: "Value Pack",
+    highlight: "Most Popular",
+    icon: "⭐",
+    idealFor: "Regular users",
+  },
+  {
+    id: "pack_pro",
+    credits: 50,
     price: 9.99,
-    currency: "USD",
-    label: "Pro",
+    currency: "EUR",
+    label: "Pro Pack",
     highlight: "Best Value",
+    icon: "💎",
+    idealFor: "Power users",
+  },
+  {
+    id: "pack_unlimited",
+    credits: -1,
+    price: 4.99,
+    currency: "EUR",
+    label: "Plus Monthly",
+    icon: "♾️",
+    idealFor: "Heavy users — 30 scans/month",
+    isSubscription: true,
+    comingSoon: true,
   },
 ];
 
+// Display only. The amount actually granted is c_signup_credits in the
+// grant_signup_credits SQL function (migration 20261027150000_b_session_data.sql)
+// — keep the two equal. The same number is also written by hand in
+// constants/translations.ts (see the note at the top of that file).
 export const FREE_CREDITS_ON_SIGNUP = 3;
 export const FREE_CREDITS_PER_REFERRAL = 1;

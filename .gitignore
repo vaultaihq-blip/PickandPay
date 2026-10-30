@@ -10,6 +10,7 @@ web-build/
 *.key
 *.mobileprovision
 *.orig.*
+
 web-build/
 .DS_Store
 
@@ -30,3 +31,22 @@ expo-env.d.ts
 # ─── API Keys Backup ──────────────────────────────────────────────────────────
 *.env.backup
 .env.backup.*
+# --- Local inspection / temp directories
+_apk_inspect/
+.claude-flow/
+.claude/
+.mcp.json
+
+# --- Android signing keys
+*.keystore
+android/keystores/
+pickandpay-ocr-0cd12f7b4f97-google-cloud.json
+
+dist2/
+
+batch_results/
+
+# web builds (Netlify Drop) and the patch they came from
+pickandpay-site/
+web-dist*/
+.expo/pickandpay-web.patch

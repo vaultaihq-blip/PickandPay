@@ -15,13 +15,6 @@ export function buildSessionLink(sessionId: string): string {
   return DEEP_LINK_PATHS.session(sessionId);
 }
 
-export function buildSessionShareText(
-  sessionId: string,
-  restaurant: string
-): string {
-  return `Join my Pick&Pay session for ${restaurant}!\n${buildSessionLink(sessionId)}`;
-}
-
 export function parseDeepLink(url: string): {
   type: "session" | "profile" | "referral" | "unknown";
   id?: string;
@@ -34,7 +27,7 @@ export function parseDeepLink(url: string): {
     }
 
     const sessionMatch = url.match(/session\/([a-zA-Z0-9-]+)/);
-    if (sessionMatch) {
+    if (sessionMatch && sessionMatch[1] !== "join") {
       const refInSession = url.match(/[?&]ref=([a-zA-Z0-9_-]+)/);
       return { type: "session", id: sessionMatch[1], ref: refInSession?.[1] };
     }
@@ -59,6 +52,8 @@ async function handleAuthCallback(url: string): Promise<boolean> {
     if (url.includes("type=recovery")) {
       router.replace("/(auth)/reset-password");
     }
+    // Email confirmation (type=email or type=signup) — SIGNED_IN fires automatically,
+    // _layout.tsx listener handles navigation to /(app)
   } catch (error) {
     console.error(
       "[DeepLink] Auth callback failed:",
@@ -79,7 +74,8 @@ export async function handleDeepLink(
   const parsed = parseDeepLink(url);
 
   if (parsed.type === "session" && parsed.id) {
-    router.push(`/(app)/session/join?sessionId=${parsed.id}`);
+    // The router already opened the entry screen for it (app/+native-intent.tsx);
+    // pushing it here too would stack a second one.
     if (parsed.ref) onReferral?.(parsed.ref);
   } else if (parsed.type === "referral" && parsed.ref) {
     onReferral?.(parsed.ref);

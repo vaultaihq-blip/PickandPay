@@ -7,11 +7,9 @@ export function useAuth() {
     profile,
     session,
     isLoading,
-    isGuest,
     initialized,
     isAuthenticated: isAuthenticatedStore,
     initialize,
-    setGuest,
     signOut,
     loadProfile,
     setProfile,
@@ -23,7 +21,7 @@ export function useAuth() {
     }
   }, [initialized, initialize]);
 
-  const isAuthenticated = isAuthenticatedStore || !!user || isGuest;
+  const isAuthenticated = isAuthenticatedStore || !!user;
   const hasProfile = !!profile;
 
   return {
@@ -31,11 +29,9 @@ export function useAuth() {
     profile,
     session,
     isLoading,
-    isGuest,
     initialized,
     isAuthenticated,
     hasProfile,
-    setGuest,
     signOut,
     loadProfile,
     setProfile,

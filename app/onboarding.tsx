@@ -4,107 +4,358 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  useColorScheme,
   FlatList,
   Dimensions,
   Animated,
-  Pressable,
+  Image,
+  ImageSourcePropType,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Colors } from "@/constants/colors";
 import { ONBOARDING_KEY } from "./_layout";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const { width: W } = Dimensions.get("window");
+const BG = "#000000";
+const PRIMARY = "#6366F1";
+const CARD_BG = "#111118";
+const BORDER = "#1E2028";
+const MUTED = "#8B8FA3";
+const GREEN = "#22C55E";
 
-interface Slide {
-  id: string;
-  isCta?: boolean;
-  // standard slide fields
-  icon?: string;
-  iconBg?: string;
-  title?: string;
-  subtitle?: string;
-  bullets?: string[];
+const SLIDE_IDS = ["1", "2", "3", "4", "cta"] as const;
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+function ReceiptRow({
+  label,
+  price,
+  checked,
+}: {
+  label: string;
+  price: string;
+  checked?: boolean;
+}) {
+  const isChecked = checked === true;
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 4, gap: 8 }}>
+      {checked !== undefined && (
+        <View
+          style={{
+            width: 16, height: 16, borderRadius: 3,
+            backgroundColor: isChecked ? PRIMARY : "transparent",
+            borderWidth: 1.5, borderColor: isChecked ? PRIMARY : "#3A3D4A",
+            alignItems: "center", justifyContent: "center",
+          }}
+        >
+          {isChecked && <Ionicons name="checkmark" size={10} color="#fff" />}
+        </View>
+      )}
+      <Text style={{ flex: 1, color: isChecked ? "#fff" : MUTED, fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: isChecked ? "#fff" : MUTED, fontSize: 12, fontWeight: "600" }}>{price}</Text>
+    </View>
+  );
 }
 
-const SLIDES: Slide[] = [
-  {
-    id: "1",
-    icon: "people-outline",
-    iconBg: "#6366F1",
-    title: "Welcome to Pick&Pay",
-    subtitle: "The smartest way to split restaurant bills fairly — every time.",
-  },
-  {
-    id: "2",
-    icon: "qr-code-outline",
-    iconBg: "#F59E0B",
-    title: "Create Your Session",
-    subtitle:
-      "Share your QR code. Friends join on their phone before you even scan the bill.",
-    bullets: [
-      "Everyone joins the session first",
-      "Real-time updates as people join",
-      "No manual name entry needed",
-    ],
-  },
-  {
-    id: "3",
-    icon: "scan-outline",
-    iconBg: "#3B82F6",
-    title: "Scan Any Receipt",
-    subtitle:
-      "Point your camera at the bill. AI reads every item in seconds — even messy handwriting.",
-    bullets: [
-      "Works with any restaurant receipt",
-      "AI extracts all items & prices automatically",
-      "Full image sent — no cropping needed",
-    ],
-  },
-  {
-    id: "4",
-    icon: "checkmark-done-outline",
-    iconBg: "#10B981",
-    title: "Review & Accept",
-    subtitle:
-      "Everyone reviews the bill, picks a tip, and accepts before moving on.",
-    bullets: [
-      "Choose tip: No tip / 10% / 15% / 20%",
-      "All acceptances visible in real-time",
-      "No one gets surprised at the end",
-    ],
-  },
-  {
-    id: "5",
-    icon: "list-outline",
-    iconBg: "#A855F7",
-    title: "Pick What You Had",
-    subtitle:
-      "Each person taps their own items. Shared dishes split automatically between whoever ordered them.",
-    bullets: [
-      "Individual & shared item support",
-      "See who's done in real-time",
-      "Fair to the last cent",
-    ],
-  },
-  {
-    id: "6",
-    isCta: true,
-  },
+const FACE_IMAGES: ImageSourcePropType[] = [
+  require("@/assets/images/face1.png"),
+  require("@/assets/images/face2.png"),
+  require("@/assets/images/face3.png"),
+  require("@/assets/images/face4.png"),
+  require("@/assets/images/face5.png"),
 ];
 
+function AvatarCircle({ faceIndex, size = 34 }: { faceIndex: number; size?: number }) {
+  return (
+    <View
+      style={{
+        width: size, height: size, borderRadius: size / 2,
+        overflow: "hidden",
+        borderWidth: 2, borderColor: CARD_BG,
+      }}
+    >
+      <Image
+        source={FACE_IMAGES[faceIndex % FACE_IMAGES.length]}
+        style={{ width: size, height: size }}
+        resizeMode="cover"
+      />
+    </View>
+  );
+}
+
+// ─── Slide visuals ────────────────────────────────────────────────────────────
+
+const SCALLOP_D = 14;
+const SCALLOP_N = Math.floor((W - 56) / SCALLOP_D); // card width = W - 2×28 padding
+
+function ScallopedBottom() {
+  return (
+    <View
+      style={{
+        backgroundColor: CARD_BG,
+        flexDirection: "row",
+        height: SCALLOP_D / 2,
+        overflow: "hidden",
+        borderLeftWidth: 1,
+        borderRightWidth: 1,
+        borderBottomWidth: 1,
+        borderColor: BORDER,
+        borderBottomLeftRadius: 8,
+        borderBottomRightRadius: 8,
+      }}
+    >
+      {Array.from({ length: SCALLOP_N + 1 }).map((_, i) => (
+        <View
+          key={i}
+          style={{
+            flex: 1,
+            height: SCALLOP_D,
+            borderTopLeftRadius: SCALLOP_D / 2,
+            borderTopRightRadius: SCALLOP_D / 2,
+            backgroundColor: BG,
+            alignSelf: "flex-end",
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+function Visual1() {
+  const AVT = 57;
+  return (
+    <View style={{ position: "relative", marginTop: AVT / 2 }}>
+      {/* Top-left avatar — straddles top-left corner of card */}
+      <View style={{ position: "absolute", top: -(AVT / 2), left: 12, zIndex: 2 }}>
+        <AvatarCircle faceIndex={1} size={AVT} />
+      </View>
+      {/* Top-right avatar — straddles top-right corner of card */}
+      <View style={{ position: "absolute", top: -(AVT / 2), right: 12, zIndex: 2 }}>
+        <AvatarCircle faceIndex={0} size={AVT} />
+      </View>
+
+      {/* Receipt body — no bottom radius, no bottom border (scallop adds it) */}
+      <View style={[styles.card, {
+        borderBottomLeftRadius: 0, borderBottomRightRadius: 0,
+        borderBottomWidth: 0, paddingTop: 36,
+      }]}>
+        <Text style={styles.cardRestaurant}>THE ROOFTOP</Text>
+        <ReceiptRow label="2x Cocktails" price="24.00€" />
+        <ReceiptRow label="1x Burger" price="18.00€" />
+        <ReceiptRow label="1x Pasta" price="16.00€" />
+        <ReceiptRow label="1x Water" price="4.00€" />
+        <ReceiptRow label="1x Dessert" price="8.00€" />
+        <View style={styles.totalRow}>
+          <Text style={{ color: "#fff", fontWeight: "700" }}>Total</Text>
+          <Text style={{ color: "#fff", fontWeight: "700" }}>70.00€</Text>
+        </View>
+        <View style={styles.warningBox}>
+          <Text style={{ fontSize: 18 }}>😢</Text>
+          <Text style={{ color: "#EF4444", fontSize: 12, flex: 1 }}>
+            You pay more than you should.
+          </Text>
+        </View>
+      </View>
+
+      <ScallopedBottom />
+    </View>
+  );
+}
+
+function Visual2() {
+  return (
+    <View style={{ position: "relative", marginTop: 30 }}>
+      {/* Top-left avatar — indicates this is the user's personal bill */}
+      <View style={{ position: "absolute", top: -30, left: 8, zIndex: 2 }}>
+        <AvatarCircle faceIndex={0} size={60} />
+      </View>
+      <View style={[styles.card, { paddingTop: 28 }]}>
+      <Text style={styles.cardTitle}>Casa Verde</Text>
+      <Text style={styles.cardSubtitle}>Lisbon, Portugal</Text>
+      <ReceiptRow label="2x Cocktails" price="24.00€" checked={false} />
+      <ReceiptRow label="1x Burger" price="18.00€" checked={true} />
+      <ReceiptRow label="1x Pasta" price="16.00€" checked={false} />
+      <ReceiptRow label="1x Water" price="4.00€" checked={true} />
+      <ReceiptRow label="1x Dessert" price="8.00€" checked={false} />
+      <View style={[styles.totalRow, { marginBottom: 10 }]}>
+        <Text style={{ color: MUTED, fontSize: 12 }}>Total</Text>
+        <Text style={{ color: MUTED, fontSize: 12 }}>70.00€</Text>
+      </View>
+      <View style={styles.fairTotalBox}>
+        <Ionicons name="receipt-outline" size={20} color={PRIMARY} />
+        <View>
+          <Text style={{ color: MUTED, fontSize: 11 }}>Your fair total</Text>
+          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 20 }}>22.00€</Text>
+        </View>
+      </View>
+    </View>
+    </View>
+  );
+}
+
+function Visual3() {
+  return (
+    <View style={styles.card}>
+      {/* Live badge */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 10 }}>
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: GREEN }} />
+        <Text style={{ color: GREEN, fontSize: 12, fontWeight: "700" }}>Live session · 4 people</Text>
+      </View>
+
+      {/* Avatars + QR layout */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 8 }}>
+        <AvatarCircle faceIndex={2} size={72} />
+
+        <View style={styles.qrBox}>
+          <Ionicons name="qr-code" size={76} color="#000" />
+        </View>
+
+        <AvatarCircle faceIndex={3} size={72} />
+      </View>
+
+      {/* Bottom avatar centered */}
+      <View style={{ alignItems: "center", marginBottom: 8 }}>
+        <AvatarCircle faceIndex={4} size={72} />
+      </View>
+
+      <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", marginBottom: 10 }}>
+        Scan to join
+      </Text>
+
+      <View style={styles.liveEvent}>
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: GREEN }} />
+        <Text style={{ color: GREEN, fontSize: 12, flex: 1 }}>Joana selected 2 items</Text>
+        <Text style={{ color: MUTED, fontSize: 11 }}>2s ago</Text>
+      </View>
+    </View>
+  );
+}
+
+function Visual4() {
+  return (
+    <View style={{ gap: 10 }}>
+      <View style={styles.card}>
+        <Text style={{ color: MUTED, fontSize: 11 }}>Your last trip</Text>
+        <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15, marginBottom: 4 }}>Casa Verde</Text>
+        <Text style={{ color: MUTED, fontSize: 11 }}>Everyone paid (equal split)</Text>
+        <Text style={{ color: "#fff", fontWeight: "800", fontSize: 22 }}>28.00€</Text>
+      </View>
+      <View style={[styles.card, { borderColor: GREEN + "33" }]}>
+        <Text style={{ color: MUTED, fontSize: 11 }}>Your fair total</Text>
+        <Text style={{ color: GREEN, fontWeight: "800", fontSize: 22, marginBottom: 4 }}>16.40€</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ color: GREEN, fontSize: 13, fontWeight: "600" }}>You saved</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={{ color: GREEN, fontWeight: "800", fontSize: 16 }}>11.60€</Text>
+            <View style={{ backgroundColor: GREEN, borderRadius: 10, padding: 3 }}>
+              <Ionicons name="arrow-up" size={12} color="#fff" />
+            </View>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Content slide ────────────────────────────────────────────────────────────
+
+const SLIDE_TEXT = {
+  "1": {
+    before: "Stop paying for\n",
+    accent: "other people's orders.",
+    after: "",
+    subtitle: "Restaurant bills are rarely split fairly.",
+  },
+  "2": {
+    before: "Pay only for what you ",
+    accent: "actually",
+    after: " ordered.",
+    subtitle: "Scan the receipt, pick your items, and we do the rest.",
+  },
+  "3": {
+    before: "Split in ",
+    accent: "real time",
+    after: "\nwith your friends.",
+    subtitle: "Everyone selects together. Everyone sees everything.",
+  },
+  "4": {
+    before: "Fair splitting\n",
+    accent: "saves you money.",
+    after: "",
+    subtitle: "Thousands of users are already saving.",
+  },
+} as const;
+
+const VISUALS: Record<string, React.ReactNode> = {
+  "1": <Visual1 />,
+  "2": <Visual2 />,
+  "3": <Visual3 />,
+  "4": <Visual4 />,
+};
+
+function ContentSlide({ id }: { id: string }) {
+  const txt = SLIDE_TEXT[id as keyof typeof SLIDE_TEXT];
+  return (
+    <View style={[styles.slide, { width: W }]}>
+      <Text style={styles.title}>
+        {txt.before}
+        <Text style={{ color: PRIMARY }}>{txt.accent}</Text>
+        {txt.after}
+      </Text>
+      <Text style={styles.subtitle}>{txt.subtitle}</Text>
+      <View style={{ marginTop: 8, alignSelf: "stretch" }}>{VISUALS[id]}</View>
+    </View>
+  );
+}
+
+// ─── CTA slide ────────────────────────────────────────────────────────────────
+
+const FEATURES = [
+  { icon: "shield-checkmark-outline", label: "100% Fair" },
+  { icon: "flash-outline", label: "Real-time" },
+  { icon: "lock-closed-outline", label: "Secure" },
+  { icon: "happy-outline", label: "Easy to use" },
+] as const;
+
+function CtaSlide({ onStart }: { onStart: () => void }) {
+  return (
+    <View style={[styles.slide, styles.ctaSlide, { width: W }]}>
+      <Image
+        source={require("@/assets/images/icon.png")}
+        style={styles.appIcon}
+      />
+      <Text style={styles.ctaTitle}>
+        Time to split{"\n"}
+        <Text style={{ color: PRIMARY }}>smarter.</Text>
+      </Text>
+      <Text style={styles.ctaSubtitle}>
+        Join Pick&Pay and never overpay again.
+      </Text>
+      <View style={styles.featureRow}>
+        {FEATURES.map((f) => (
+          <View key={f.label} style={styles.featureBadge}>
+            <Ionicons name={f.icon as any} size={13} color={PRIMARY} />
+            <Text style={styles.featureLabel}>{f.label}</Text>
+          </View>
+        ))}
+      </View>
+      <TouchableOpacity style={styles.ctaBtn} onPress={onStart} activeOpacity={0.85}>
+        <Text style={styles.ctaBtnText}>Get Started</Text>
+        <Ionicons name="arrow-forward" size={20} color="#fff" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
 export default function OnboardingScreen() {
-  const isDark = useColorScheme() === "dark";
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const scrollX = useRef(new Animated.Value(0)).current;
-
-  const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
-  const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
-  const bgColor = isDark ? Colors.bgDark : Colors.bgLight;
+  const isLast = currentIndex === SLIDE_IDS.length - 1;
 
   const handleDone = async () => {
     await AsyncStorage.setItem(ONBOARDING_KEY, "true");
@@ -112,40 +363,27 @@ export default function OnboardingScreen() {
   };
 
   const handleNext = () => {
-    if (currentIndex < SLIDES.length - 1) {
+    if (currentIndex < SLIDE_IDS.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
     } else {
       handleDone();
     }
   };
 
-  const handleSkip = async () => {
-    await AsyncStorage.setItem(ONBOARDING_KEY, "true");
-    router.replace("/(app)");
-  };
-
-  const isLastSlide = currentIndex === SLIDES.length - 1;
-
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-      {/* Skip button */}
-      <View style={styles.topRow}>
-        <View style={{ flex: 1 }} />
-        {!isLastSlide && (
-          <TouchableOpacity
-            onPress={handleSkip}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={[styles.skipText, { color: mutedColor }]}>Skip</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+    <SafeAreaView style={styles.safe}>
+      <StatusBar style="light" backgroundColor={BG} translucent={false} />
 
-      {/* Slides */}
+      {!isLast && (
+        <TouchableOpacity style={styles.skipBtn} onPress={handleDone}>
+          <Text style={styles.skipText}>Skip</Text>
+        </TouchableOpacity>
+      )}
+
       <Animated.FlatList
         ref={flatListRef}
-        data={SLIDES}
-        keyExtractor={(item) => item.id}
+        data={SLIDE_IDS}
+        keyExtractor={(id) => id}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -155,328 +393,136 @@ export default function OnboardingScreen() {
           { useNativeDriver: false }
         )}
         onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-          setCurrentIndex(idx);
+          setCurrentIndex(Math.round(e.nativeEvent.contentOffset.x / W));
         }}
         renderItem={({ item }) =>
-          item.isCta ? (
-            <CtaSlide
-              textColor={textColor}
-              mutedColor={mutedColor}
-              onGetStarted={handleDone}
-            />
+          item === "cta" ? (
+            <CtaSlide onStart={handleDone} />
           ) : (
-            <SlideItem slide={item} textColor={textColor} mutedColor={mutedColor} />
+            <ContentSlide id={item} />
           )
         }
       />
 
-      {/* Dots */}
       <View style={styles.dotsRow}>
-        {SLIDES.map((_, idx) => {
-          const inputRange = [
-            (idx - 1) * SCREEN_WIDTH,
-            idx * SCREEN_WIDTH,
-            (idx + 1) * SCREEN_WIDTH,
-          ];
-          const dotWidth = scrollX.interpolate({
-            inputRange,
-            outputRange: [8, 24, 8],
-            extrapolate: "clamp",
-          });
-          const opacity = scrollX.interpolate({
-            inputRange,
-            outputRange: [0.4, 1, 0.4],
-            extrapolate: "clamp",
-          });
+        {SLIDE_IDS.map((_, i) => {
+          const inputRange = [(i - 1) * W, i * W, (i + 1) * W];
+          const dotWidth = scrollX.interpolate({ inputRange, outputRange: [8, 24, 8], extrapolate: "clamp" });
+          const opacity = scrollX.interpolate({ inputRange, outputRange: [0.4, 1, 0.4], extrapolate: "clamp" });
           return (
             <Animated.View
-              key={idx}
-              style={[
-                styles.dot,
-                { width: dotWidth, opacity, backgroundColor: Colors.primary },
-              ]}
+              key={i}
+              style={[styles.dot, { width: dotWidth, opacity, backgroundColor: PRIMARY }]}
             />
           );
         })}
       </View>
 
-      {/* Next / Get Started footer (hidden on CTA slide — CTA has its own buttons) */}
-      {!isLastSlide && (
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.nextBtn} onPress={handleNext} activeOpacity={0.85}>
-            <Text style={styles.nextBtnText}>Next</Text>
-            <Ionicons name="arrow-forward" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
+      {!isLast && (
+        <TouchableOpacity style={styles.nextBtn} onPress={handleNext} activeOpacity={0.85}>
+          <Text style={styles.nextBtnText}>Next</Text>
+          <Ionicons name="arrow-forward" size={20} color="#fff" />
+        </TouchableOpacity>
       )}
     </SafeAreaView>
   );
 }
 
-// ── Standard slide ────────────────────────────────────────────────────────────
-
-function SlideItem({
-  slide,
-  textColor,
-  mutedColor,
-}: {
-  slide: Slide;
-  textColor: string;
-  mutedColor: string;
-}) {
-  const hasBullets = slide.bullets && slide.bullets.length > 0;
-  return (
-    <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-      <View style={[styles.slideIcon, { backgroundColor: (slide.iconBg ?? "#6366F1") + "22" }]}>
-        <View style={[styles.slideIconInner, { backgroundColor: slide.iconBg ?? "#6366F1" }]}>
-          <Ionicons name={(slide.icon ?? "star-outline") as any} size={44} color="#fff" />
-        </View>
-      </View>
-      <Text style={[styles.slideTitle, hasBullets && styles.slideTitleSm, { color: textColor }]}>
-        {slide.title}
-      </Text>
-      <Text
-        style={[styles.slideSubtitle, hasBullets && styles.slideSubtitleSm, { color: mutedColor }]}
-      >
-        {slide.subtitle}
-      </Text>
-      {hasBullets && (
-        <View style={styles.bulletList}>
-          {slide.bullets!.map((b, i) => (
-            <View key={i} style={styles.bulletRow}>
-              <Text style={[styles.bulletDot, { color: slide.iconBg ?? Colors.primary }]}>•</Text>
-              <Text style={[styles.bulletText, { color: mutedColor }]}>{b}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-// ── CTA slide (slide 6) ───────────────────────────────────────────────────────
-
-function CtaSlide({
-  textColor,
-  mutedColor,
-  onGetStarted,
-}: {
-  textColor: string;
-  mutedColor: string;
-  onGetStarted: () => void;
-}) {
-  return (
-    <View style={[styles.slide, styles.ctaSlide, { width: SCREEN_WIDTH }]}>
-      <Text style={[styles.ctaTitle, { color: textColor }]}>Ready to Split Smart?</Text>
-
-      <Text style={styles.heroText}>Start your first 3 splits for FREE!</Text>
-
-      {/* Pricing box */}
-      <View style={styles.pricingBox}>
-        <Text style={[styles.priceTitle, { color: textColor }]}>Then unlock unlimited scans:</Text>
-        <Text style={styles.price}>Just €0.10 per bill</Text>
-        <Text style={[styles.priceDetail, { color: mutedColor }]}>(20 bills = €1.99)</Text>
-      </View>
-
-      {/* Comparison */}
-      <View style={styles.comparison}>
-        <Text style={[styles.comparisonTitle, { color: textColor }]}>Think about it:</Text>
-
-        <View style={styles.comparisonRow}>
-          <Text style={styles.withoutLabel}>Without Pick&Pay:</Text>
-          <Text style={[styles.comparisonDetail, { color: mutedColor }]}>
-            Awkward conversations, wrong calculations, someone always overpays €5–10...
-          </Text>
-        </View>
-
-        <View style={[styles.comparisonRow, styles.comparisonRowLast]}>
-          <Text style={styles.withLabel}>With Pick&Pay:</Text>
-          <Text style={[styles.comparisonDetail, { color: mutedColor }]}>
-            Fair splits in 30 seconds for €0.10
-          </Text>
-        </View>
-      </View>
-
-      <Text style={[styles.question, { color: mutedColor }]}>
-        Is avoiding the awkwardness worth less than €0.10?
-      </Text>
-
-      {/* Secondary link — above primary CTA */}
-      <Pressable onPress={onGetStarted} hitSlop={{ top: 8, bottom: 8, left: 16, right: 16 }}>
-        <Text style={styles.plansLink}>See All Plans →</Text>
-      </Pressable>
-
-      {/* Primary CTA */}
-      <TouchableOpacity style={styles.primaryBtn} onPress={onGetStarted} activeOpacity={0.85}>
-        <Text style={styles.primaryBtnText}>Get Started Free</Text>
-        <Ionicons name="arrow-forward" size={20} color="#fff" />
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  topRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  skipText: { fontSize: 15, fontWeight: "600" },
+  safe: { flex: 1, backgroundColor: BG },
 
-  // Standard slide
+  skipBtn: { position: "absolute", top: 60, right: 24, zIndex: 10 },
+  skipText: { color: MUTED, fontSize: 15, fontWeight: "600" },
+
   slide: {
     flex: 1,
-    alignItems: "center",
+    paddingHorizontal: 28,
+    paddingTop: 48,
+    paddingBottom: 8,
     justifyContent: "center",
-    paddingHorizontal: 36,
-    gap: 20,
+    gap: 14,
   },
-  slideIcon: {
-    width: 140,
-    height: 140,
-    borderRadius: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  slideIconInner: {
-    width: 100,
-    height: 100,
-    borderRadius: 30,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  slideTitle: {
-    fontSize: 28,
+  title: {
+    fontSize: 30,
     fontWeight: "800",
+    color: "#fff",
     letterSpacing: -0.5,
-    textAlign: "center",
+    lineHeight: 36,
   },
-  slideTitleSm: { fontSize: 24 },
-  slideSubtitle: {
-    fontSize: 16,
-    lineHeight: 24,
-    textAlign: "center",
-  },
-  slideSubtitleSm: { fontSize: 14, lineHeight: 20 },
-  bulletList: { alignSelf: "stretch", gap: 10, marginTop: 4 },
-  bulletRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
-  bulletDot: { fontSize: 16, lineHeight: 20, fontWeight: "700" },
-  bulletText: { fontSize: 13, lineHeight: 20, flex: 1 },
+  subtitle: { fontSize: 15, color: MUTED, lineHeight: 22 },
 
-  // Dots
+  card: {
+    backgroundColor: CARD_BG,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  cardRestaurant: {
+    color: "#fff", fontWeight: "700", textAlign: "center",
+    marginBottom: 8, letterSpacing: 1, fontSize: 11,
+  },
+  cardTitle: { color: "#fff", fontWeight: "700", textAlign: "center", marginBottom: 2, fontSize: 13 },
+  cardSubtitle: { color: MUTED, fontSize: 11, textAlign: "center", marginBottom: 8 },
+  totalRow: {
+    borderTopWidth: 1, borderColor: BORDER,
+    marginTop: 6, paddingTop: 6,
+    flexDirection: "row", justifyContent: "space-between",
+  },
+  warningBox: {
+    marginTop: 10, flexDirection: "row", alignItems: "center",
+    gap: 8, backgroundColor: "#1A0A0A", borderRadius: 8, padding: 8,
+  },
+  fairTotalBox: {
+    backgroundColor: PRIMARY + "18", borderRadius: 8, padding: 10,
+    flexDirection: "row", alignItems: "center", gap: 10,
+  },
+  qrBox: {
+    alignSelf: "center", width: 100, height: 100,
+    backgroundColor: "#fff", borderRadius: 8,
+    alignItems: "center", justifyContent: "center", marginBottom: 8,
+  },
+  liveEvent: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "#0D1A12", borderRadius: 8, padding: 8,
+  },
+
   dotsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 20,
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "center", gap: 6, paddingVertical: 14,
   },
   dot: { height: 8, borderRadius: 4 },
 
-  // Footer (non-CTA slides)
-  footer: { paddingHorizontal: 24, paddingBottom: 32 },
   nextBtn: {
-    backgroundColor: Colors.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    paddingVertical: 16,
-    borderRadius: 16,
+    marginHorizontal: 24, marginBottom: 28,
+    backgroundColor: PRIMARY, borderRadius: 16,
+    paddingVertical: 16, flexDirection: "row",
+    alignItems: "center", justifyContent: "center", gap: 10,
   },
   nextBtnText: { color: "#fff", fontSize: 17, fontWeight: "700" },
 
-  // CTA slide
-  ctaSlide: {
-    justifyContent: "center",
-    paddingHorizontal: 28,
-    gap: 16,
-  },
+  ctaSlide: { alignItems: "center", justifyContent: "center", paddingTop: 0 },
+  appIcon: { width: 96, height: 96, borderRadius: 22 },
   ctaTitle: {
-    fontSize: 26,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-    textAlign: "center",
+    fontSize: 32, fontWeight: "800", color: "#fff",
+    textAlign: "center", letterSpacing: -0.5, lineHeight: 40,
   },
-  heroText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: Colors.primary,
-    textAlign: "center",
+  ctaSubtitle: { fontSize: 15, color: MUTED, textAlign: "center", lineHeight: 22 },
+  featureRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "center" },
+  featureBadge: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: CARD_BG, borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderWidth: 1, borderColor: BORDER,
   },
-  pricingBox: {
-    backgroundColor: Colors.primary + "18",
-    borderWidth: 1,
-    borderColor: Colors.primary + "55",
-    borderRadius: 14,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    alignItems: "center",
-    gap: 4,
-    alignSelf: "stretch",
+  featureLabel: { color: "#C4C7D4", fontSize: 12, fontWeight: "600" },
+  ctaBtn: {
+    backgroundColor: PRIMARY, borderRadius: 16,
+    paddingVertical: 16, alignSelf: "stretch",
+    alignItems: "center", flexDirection: "row",
+    justifyContent: "center", gap: 8, marginTop: 6,
   },
-  priceTitle: { fontSize: 13, fontWeight: "600" },
-  price: { fontSize: 22, fontWeight: "800", color: Colors.primary },
-  priceDetail: { fontSize: 12 },
-  comparison: {
-    alignSelf: "stretch",
-    gap: 10,
-  },
-  comparisonTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  comparisonRow: {
-    backgroundColor: "#EF444415",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 4,
-  },
-  comparisonRowLast: {
-    backgroundColor: "#22C55E15",
-  },
-  withoutLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#EF4444",
-  },
-  withLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#22C55E",
-  },
-  comparisonDetail: { fontSize: 12, lineHeight: 17 },
-  question: {
-    fontSize: 13,
-    textAlign: "center",
-    fontStyle: "italic",
-    lineHeight: 19,
-  },
-  primaryBtn: {
-    backgroundColor: Colors.primary,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignSelf: "stretch",
-    marginTop: 4,
-  },
-  primaryBtnText: { color: "#fff", fontSize: 17, fontWeight: "700" },
-  plansLink: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: Colors.primary,
-    textAlign: "center",
-  },
+  ctaBtnText: { color: "#fff", fontSize: 17, fontWeight: "700" },
 });

@@ -7,6 +7,7 @@ const CURRENCY_SYMBOLS: Record<Currency, string> = {
   USD: "$",
   CAD: "C$",
   GBP: "£",
+  CNY: "¥",
 };
 
 export function getCurrencySymbol(currency: Currency): string {
@@ -18,7 +19,7 @@ export function formatCurrency(amount: number, currency: Currency): string {
   const formatted = amount.toFixed(2);
   // USD and CAD: symbol before ($61.40 / C$61.40)
   // EUR and GBP: symbol after (61.40€ / 61.40£)
-  return currency === "USD" || currency === "CAD"
+  return currency === "USD" || currency === "CAD" || currency === "CNY"
     ? `${symbol}${formatted}`
     : `${formatted}${symbol}`;
 }
@@ -155,7 +156,9 @@ export function generateShareSummary(
   lines.push("Sent via Pick&Pay 📱");
   lines.push("");
   lines.push("Download our app:");
-  lines.push("🍎 iOS: https://apps.apple.com/app/pickandpay/id123456789");
-  lines.push("🤖 Android: https://play.google.com/store/apps/details?id=com.pickandpay");
+  if (process.env.EXPO_PUBLIC_APP_STORE_ID) {
+    lines.push(`🍎 iOS: https://apps.apple.com/app/pickandpay/id${process.env.EXPO_PUBLIC_APP_STORE_ID}`);
+  }
+  lines.push("🤖 Android: https://play.google.com/store/apps/details?id=com.pickandpay.app");
   return lines.join("\n");
 }

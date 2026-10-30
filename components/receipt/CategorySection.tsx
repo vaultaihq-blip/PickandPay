@@ -1,19 +1,47 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, useColorScheme } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ReceiptItem as ReceiptItemType, ItemCategory } from "@/types";
 import { ReceiptItemRow } from "./ReceiptItem";
 import { Colors } from "@/constants/colors";
+import { useI18nStore } from "@/store/i18nStore";
+import { TranslationKey } from "@/constants/translations";
+import { formatCurrency } from "@/utils/formatter";
 
 const CATEGORY_CONFIG: Record<
   ItemCategory,
-  { label: string; icon: string; color: string }
+  { labelKey: TranslationKey; emoji: string; icon: string; color: string }
 > = {
-  starters: { label: "Starters", icon: "leaf-outline", color: Colors.starters },
-  mains: { label: "Mains", icon: "restaurant-outline", color: Colors.mains },
-  drinks: { label: "Drinks", icon: "wine-outline", color: Colors.drinks },
-  desserts: { label: "Desserts", icon: "ice-cream-outline", color: Colors.desserts },
-  others: { label: "Others", icon: "ellipsis-horizontal-circle-outline", color: Colors.others },
+  starters: {
+    labelKey: "lobby_cat_starters",
+    emoji: "🥗",
+    icon: "leaf-outline",
+    color: Colors.starters,
+  },
+  mains: {
+    labelKey: "lobby_cat_mains",
+    emoji: "🍔",
+    icon: "restaurant-outline",
+    color: Colors.mains,
+  },
+  drinks: {
+    labelKey: "lobby_cat_drinks",
+    emoji: "🍺",
+    icon: "wine-outline",
+    color: Colors.drinks,
+  },
+  desserts: {
+    labelKey: "lobby_cat_desserts",
+    emoji: "🍰",
+    icon: "ice-cream-outline",
+    color: Colors.desserts,
+  },
+  others: {
+    labelKey: "lobby_cat_others",
+    emoji: "📋",
+    icon: "ellipsis-horizontal-circle-outline",
+    color: Colors.others,
+  },
 };
 
 interface CategorySectionProps {
@@ -30,6 +58,8 @@ interface CategorySectionProps {
   onGroupingToggle?: (itemId: string) => void;
   showEditIcon?: boolean;
   mathErrorItemIds?: Set<string>;
+  /** FIX 44 — reviewed-mark toggle, forwarded to each row. */
+  onToggleReviewed?: (itemId: string) => void;
 }
 
 export function CategorySection({
@@ -46,42 +76,60 @@ export function CategorySection({
   onGroupingToggle,
   showEditIcon = false,
   mathErrorItemIds,
+  onToggleReviewed,
 }: CategorySectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const isDark = useColorScheme() === "dark";
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
   const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
-  const { label, icon, color } = CATEGORY_CONFIG[category];
+  const cardBorder = isDark ? Colors.cardBorderDark : Colors.cardBorderLight;
+  const { t, language } = useI18nStore();
+  void language;
+
+  const { labelKey, emoji, icon, color } = CATEGORY_CONFIG[category];
+  const label = t(labelKey);
 
   if (items.length === 0) return null;
 
   const categoryTotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
+  const curr = currency as "EUR" | "USD" | "CAD" | "GBP";
 
   return (
     <View style={styles.section}>
+      {/* Category header — tappable to expand/collapse */}
       <TouchableOpacity
-        style={styles.header}
+        style={[styles.header, { borderBottomColor: cardBorder }]}
         onPress={() => setExpanded(!expanded)}
         activeOpacity={0.7}
       >
-        <View style={[styles.iconBg, { backgroundColor: color + "22" }]}>
-          <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={16} color={color} />
+        {/* Emoji + icon pill */}
+        <View style={[styles.iconPill, { backgroundColor: color + "20" }]}>
+          <Text style={styles.emoji}>{emoji}</Text>
         </View>
-        <Text style={[styles.categoryLabel, { color: textColor }]}>
-          {label}
-        </Text>
-        <View style={styles.countBadge}>
-          <Text style={[styles.countText, { color: mutedColor }]}>
-            {items.length}
+
+        {/* Label + item count */}
+        <View style={styles.labelBlock}>
+          <Text style={[styles.categoryLabel, { color }]}>{label}</Text>
+          <Text style={[styles.itemCount, { color: mutedColor }]}>
+            {items.length} {items.length === 1 ? "item" : "items"}
           </Text>
         </View>
+
+        {/* Category subtotal */}
+        <Text style={[styles.categoryTotal, { color }]}>
+          {formatCurrency(categoryTotal, curr)}
+        </Text>
+
+        {/* Expand chevron */}
         <Ionicons
           name={expanded ? "chevron-up" : "chevron-down"}
           size={16}
           color={mutedColor}
+          style={{ marginLeft: 2 }}
         />
       </TouchableOpacity>
 
+      {/* Items list */}
       {expanded && (
         <View style={styles.items}>
           {items.map((item, index) => (
@@ -98,16 +146,13 @@ export function CategorySection({
                 onGroupingToggle={() => onGroupingToggle?.(item.id)}
                 showEditIcon={showEditIcon}
                 hasMathError={mathErrorItemIds?.has(item.id) ?? false}
+                onToggleReviewed={onToggleReviewed ? () => onToggleReviewed(item.id) : undefined}
               />
               {index < items.length - 1 && (
                 <View
                   style={[
                     styles.divider,
-                    {
-                      backgroundColor: isDark
-                        ? Colors.cardBorderDark
-                        : Colors.cardBorderLight,
-                    },
+                    { backgroundColor: cardBorder },
                   ]}
                 />
               )}
@@ -121,38 +166,44 @@ export function CategorySection({
 
 const styles = StyleSheet.create({
   section: {
-    marginBottom: 8,
+    marginBottom: 4,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 10,
-    gap: 8,
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  iconBg: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+  iconPill: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
-  categoryLabel: {
+  emoji: {
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  labelBlock: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
+    gap: 1,
+  },
+  categoryLabel: {
+    fontSize: 13,
+    fontWeight: "700",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
-  countBadge: {
-    backgroundColor: "#27272A",
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  countText: {
+  itemCount: {
     fontSize: 11,
-    fontWeight: "600",
+    fontWeight: "500",
+  },
+  categoryTotal: {
+    fontSize: 14,
+    fontWeight: "700",
   },
   items: {},
   divider: {

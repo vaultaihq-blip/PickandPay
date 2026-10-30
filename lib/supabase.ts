@@ -4,8 +4,6 @@ import * as Linking from "expo-linking";
 import { AuthError, Provider, Session, createClient } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-WebBrowser.maybeCompleteAuthSession();
-
 // URL polyfill is only needed on native — browsers already have URL natively,
 // and importing it on web during SSR crashes because `window` doesn't exist yet.
 if (Platform.OS !== "web") {
@@ -133,13 +131,18 @@ export async function completeAuthSessionFromUrl(url: string) {
 
   const tokenHash = params.get("token_hash");
   const type = params.get("type");
-  if (tokenHash && type === "recovery") {
-    const { data, error } = await supabase.auth.verifyOtp({
-      token_hash: tokenHash,
-      type: "recovery",
-    });
-    if (error) throw error;
-    return data.session;
+  if (tokenHash && type) {
+    const otpType = type === "recovery" ? "recovery"
+      : type === "email" || type === "signup" ? "email"
+      : null;
+    if (otpType) {
+      const { data, error } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: otpType as any,
+      });
+      if (error) throw error;
+      return data.session;
+    }
   }
 
   return null;
@@ -164,9 +167,9 @@ export async function signInWithSocialProvider(
   if (error) return { data: null, error };
 
   if (Platform.OS !== "web" && data.url) {
-    console.log("[auth] Opening OAuth session:", { provider, redirectTo });
+    if (__DEV__) console.log("[auth] Opening OAuth session:", { provider, redirectTo });
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-    console.log("[auth] OAuth browser result:", result.type);
+    if (__DEV__) console.log("[auth] OAuth browser result:", result.type);
 
     if (result.type === "success") {
       const session = await completeAuthSessionFromUrl(result.url);
@@ -202,7 +205,11 @@ export async function signInWithEmail(email: string, password: string) {
 }
 
 export async function signUpWithEmail(email: string, password: string) {
-  return supabase.auth.signUp({ email, password });
+  return supabase.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: getAuthRedirectUrl() },
+  });
 }
 
 export async function signOut() {
@@ -222,15 +229,18 @@ export async function getProfile(userId: string) {
   return supabase.from("profiles").select("*").eq("id", userId).single();
 }
 
+// bill_credits is intentionally excluded — only server-side RPCs may modify it.
+// Passing bill_credits here would be silently reverted by the protect_bill_credits trigger.
 export async function upsertProfile(profile: {
   id: string;
   name: string;
   email?: string;
   phone?: string;
-  avatar_url?: string;
-  avatar_icon?: string;
+  avatar_url?: string | null;
+  avatar_icon?: string | null;
   color: string;
-  provider?: string;
+  // No `provider`: profiles has no such column in production, and PostgREST
+  // rejects the whole upsert (PGRST204) when the payload carries it.
 }) {
   return supabase.from("profiles").upsert(profile);
 }
@@ -243,7 +253,7 @@ export async function createSession(hostId: string, receiptData: object) {
     .insert({
       host_id: hostId,
       receipt_data: receiptData,
-      status: "waiting_participants",
+      status: "draft",
     })
     .select()
     .single();
@@ -303,9 +313,136 @@ export async function markParticipantPaid(
 
 // ─── Receipt Parsing via Edge Function ────────────────────────────────────────
 
-export async function parseReceiptImage(base64Image: string) {
-  const { data, error } = await supabase.functions.invoke("parse-receipt", {
-    body: { image: base64Image },
+async function uriToBase64(image: string): Promise<string> {
+  if (image.startsWith("data:")) return image.split(",")[1] ?? "";
+  // file:// or http(s):// URI — fetch and read as base64
+  const response = await fetch(image);
+  const blob = await response.blob();
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
+    reader.onerror = () => reject(new Error("Failed to convert image to base64"));
+    reader.readAsDataURL(blob);
   });
-  return { data, error };
+}
+
+export async function deleteAccount() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const { error } = await supabase.functions.invoke("delete-account", {
+    headers: session?.access_token
+      ? { Authorization: `Bearer ${session.access_token}` }
+      : undefined,
+  });
+  return { error };
+}
+
+async function uploadReceiptImageToStorage(
+  localUri: string,
+  userId: string
+): Promise<string | null> {
+  try {
+    const filename = `${userId}/${Date.now()}.jpg`;
+    const response = await fetch(localUri);
+    const blob = await response.blob();
+    const { data, error } = await supabase.storage
+      .from("ocr-receipt-images")
+      .upload(filename, blob, { contentType: "image/jpeg", upsert: false });
+    if (error) return null;
+    return data.path;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveOCRCorrection(params: {
+  sessionId: string | null;
+  userId: string;
+  receiptImagePath: string | null;
+  originalOcrJson: unknown;
+  userCorrectedJson: unknown;
+  correctedItems: Array<{ item_id: string; field: string; before: unknown; after: unknown }>;
+  correctionType: string[];
+  ocrPasses: number;
+}): Promise<void> {
+  let storagePath = params.receiptImagePath;
+  // Upload local device URI to Storage so it's available for fine-tuning export
+  if (
+    storagePath &&
+    !storagePath.startsWith("http") &&
+    !storagePath.startsWith("ocr-receipt-images/")
+  ) {
+    storagePath = await uploadReceiptImageToStorage(storagePath, params.userId);
+  }
+
+  await supabase.from("ocr_corrections").insert({
+    session_id: params.sessionId,
+    user_id: params.userId,
+    receipt_image_path: storagePath,
+    original_ocr_json: params.originalOcrJson,
+    user_corrected_json: params.userCorrectedJson,
+    corrected_items: params.correctedItems,
+    correction_type: params.correctionType,
+    ocr_passes: params.ocrPasses,
+  });
+}
+
+export async function initializeUserCredits(): Promise<{
+  freeCredits: number;
+  alreadyGranted: boolean;
+  isEstablished: boolean;
+  balance: number;
+} | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) return null;
+
+  const { data, error } = await supabase.functions.invoke("initialize-user-credits", {
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  if (error) {
+    console.warn("[initializeUserCredits] Edge function error:", error);
+    return null;
+  }
+  return data as { freeCredits: number; alreadyGranted: boolean; isEstablished: boolean; balance: number };
+}
+
+export async function parseReceiptImage(image: string, sessionId?: string) {
+  const base64 = await uriToBase64(image);
+
+  // Explicitly pass the current session token so the edge function can verify the JWT.
+  // supabase.functions.invoke() also injects it automatically, but being explicit
+  // prevents silent failures when the session is refreshed mid-flight.
+  const { data: { session } } = await supabase.auth.getSession();
+  const authHeaders = session?.access_token
+    ? { Authorization: `Bearer ${session.access_token}` }
+    : undefined;
+
+  const call = async () => {
+    const { data, error } = await supabase.functions.invoke("parse-receipt", {
+      // C.3 — sessionId: the scan's credit pays this session when the scanner hosts it.
+      body: { imageBase64: base64, ...(sessionId && /^[0-9a-f-]{36}$/i.test(sessionId) ? { sessionId } : {}) },
+      headers: authHeaders,
+    });
+    // A non-2xx answer arrives as FunctionsHttpError; its body carries the
+    // function's error code (NO_CREDITS, RATE_LIMITED, IMAGE_TOO_LARGE, …).
+    let code: string | undefined;
+    const context = (error as { context?: { status?: number; json?: () => Promise<unknown> } } | null)?.context;
+    if (context && typeof context.json === "function") {
+      const body = (await context.json().catch(() => null)) as { error?: unknown } | null;
+      if (typeof body?.error === "string") code = body.error;
+    }
+    return { data, error, code, status: context?.status };
+  };
+
+  const first = await call();
+  // One automatic retry for a 503 that is not a paid failure: the platform's
+  // own 503 (no function error code — seen right after a deploy) or
+  // SCAN_UNAVAILABLE (the gate refused before any Vision / GPT call). Never
+  // for PROVIDER_ERROR / timeouts, which may already have been paid for.
+  if (first.status === 503 && (first.code === undefined || first.code === "SCAN_UNAVAILABLE")) {
+    console.log(`[parse-receipt] 503 (${first.code ?? "no code"}) — retrying once`);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const second = await call();
+    return { data: second.data, error: second.error, code: second.code };
+  }
+  return { data: first.data, error: first.error, code: first.code };
 }

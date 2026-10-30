@@ -31,6 +31,7 @@ import {
 } from "./model";
 import { recomputeTotals } from "./normalizer";
 import { chargeConsistencyDelta, reconcileReceipt } from "./reconciler";
+import { checkPriceEvidence } from "./evidence";
 
 // ─── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -664,7 +665,7 @@ export function diagnoseReceipt(receipt: CanonicalReceipt): DiagnosisResult {
  * Reconcile and diagnose in one pass, writing both onto the receipt.
  * This is the function the app should call after every parse and every edit.
  */
-export function analyzeReceipt(receipt: CanonicalReceipt): CanonicalReceipt {
+export function evaluateReceipt(receipt: CanonicalReceipt): CanonicalReceipt {
   // Derived amounts are recomputed first: callers hand us receipts whose items
   // have just been edited, and reconciling against stale line totals would
   // report success on a receipt that no longer adds up.
@@ -675,6 +676,13 @@ export function analyzeReceipt(receipt: CanonicalReceipt): CanonicalReceipt {
       ? { issues: [] as ReceiptIssue[] }
       : diagnoseReceipt(fresh);
 
+  // Runs unconditionally, independent of reconciliation.status: an invented
+  // value can, by coincidence, still let the subtotal reconcile (e.g. two
+  // errors cancelling out), so this must not be gated behind reconciliation
+  // success/failure like the checks inside diagnoseReceipt are. Placed first
+  // so an objective text/value contradiction outranks a speculative guess.
+  const evidenceIssues = checkPriceEvidence(fresh);
+
   return {
     ...fresh,
     validation: {
@@ -683,7 +691,7 @@ export function analyzeReceipt(receipt: CanonicalReceipt): CanonicalReceipt {
       totalDelta: reconciliation.totalDelta,
       missingPrintedSubtotal: reconciliation.missingPrintedSubtotal,
       missingPrintedTotal: reconciliation.missingPrintedTotal,
-      issues: diagnosis.issues,
+      issues: [...evidenceIssues, ...diagnosis.issues],
     },
   };
 }

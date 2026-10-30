@@ -1,6 +1,6 @@
 // ─── Core Enums / Unions ──────────────────────────────────────────────────────
 
-export type Currency = "EUR" | "USD" | "CAD" | "GBP";
+export type Currency = "EUR" | "USD" | "CAD" | "GBP" | "CNY";
 
 export type ItemCategory =
   | "starters"
@@ -35,6 +35,7 @@ export type SessionStatus =
 
 export type TipStatus = "accepted" | "removed" | "modified" | "pending";
 export type TipMode = "equal" | "individual";
+export type TaxMode = "inclusive" | "exclusive";
 
 // ─── Receipt Types ─────────────────────────────────────────────────────────────
 
@@ -52,6 +53,9 @@ export interface ReceiptItem {
   participants?: string[];
   confidence?: number;
   warnings?: string[];
+  /** User has confirmed this item is correct — set automatically on any edit,
+   *  or toggled by hand with no edit at all. FIX 44. */
+  reviewed?: boolean;
 }
 
 export interface GlobalCost {
@@ -78,6 +82,9 @@ export interface ParsedReceipt {
   restaurant: string;
   date?: string;
   currency: Currency;
+  tax_mode?: TaxMode;
+  printed_total?: number;
+  ocr_passes?: number;
   peopleCountDetected?: number;
   categories: {
     starters: ReceiptItem[];
@@ -113,6 +120,8 @@ export interface UserProfile {
   avatarUrl?: string;
   avatarIcon?: string;
   color: string;
+  // R4b — in a session, the right half of a two-colour circle (color is the left).
+  color2?: string;
   provider?: "google" | "apple" | "email" | "microsoft" | "facebook";
   billCredits: number;
   referredBy?: string;
@@ -138,6 +147,9 @@ export interface SessionParticipant {
   paid: boolean;
   confirmedByCreator: boolean;
   tipContribution?: number;
+  coveredByUserId?: string;
+  /** session_participants.created_at — R4 list order (set by the session store). */
+  joinedAt?: string;
 }
 
 export interface CentAdjustment {
@@ -156,7 +168,10 @@ export interface PaymentReminder {
 
 export interface Session {
   id: string;
+  // Who is host now (sessions.host_id) — R6 can move it after finalize.
   creatorId: string;
+  // Who created the session (sessions.original_host_id): keeps green (R4).
+  originalHostId?: string;
   receiptId: string;
   receipt?: ParsedReceipt;
   participants: SessionParticipant[];
@@ -164,6 +179,9 @@ export interface Session {
   createdAt: string;
   closedAt?: string;
   centAdjustment?: CentAdjustment;
+  // Frozen by the server (finalize_session) when the split moves to
+  // awaiting_payment: exactly the people the bill is divided between (R1).
+  splitUserIds?: string[];
   reminders?: PaymentReminder[];
   confirmedBy?: string[];
 }

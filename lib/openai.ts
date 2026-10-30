@@ -1,19 +1,21 @@
+// DEPRECATED: OCR now runs server-side via parse-receipt edge function.
+// This file is kept for reference only and will be removed in a future cleanup.
+
 import OpenAI from "openai";
 import { ParsedReceipt, ReceiptItem, ItemCategory, GlobalCost, Currency, MenuGroup } from "@/types";
 
 // ─── Client ────────────────────────────────────────────────────────────────────
 
 function getClient(): OpenAI {
-  const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  if (!apiKey || apiKey === "your_openai_key_here") {
-    throw new Error("MISSING_KEY");
-  }
-  return new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
+  throw new Error("Client-side OCR disabled. Use edge function instead.");
 }
 
 // ─── Base64 Conversion (RN-compatible, no expo-file-system) ───────────────────
 
 async function imageToBase64(uri: string): Promise<string> {
+  if (uri.startsWith("data:")) {
+    return uri.split(",")[1] ?? "";
+  }
   const response = await fetch(uri);
   const blob = await response.blob();
   return new Promise<string>((resolve, reject) => {
@@ -72,6 +74,9 @@ interface OcrResult {
   date?: string;
   currency?: string;
   items: OcrItem[];
+  subtotal?: number;       // sum of items only (before service + tax)
+  serviceCharge?: number;  // large party / service fee / mandatory gratuity
+  taxAmount?: number;      // explicit tax line (NOT Portuguese IVA, which is embedded in prices)
   itemsSubtotal?: number;
   receiptTotal?: number;
   item_count?: number;
@@ -83,6 +88,20 @@ interface OcrResult {
     difference?: number;
     status?: string;
   };
+}
+
+// Client-side hard override: these words ALWAYS mean "drinks" regardless of GPT output
+const DRINK_WORDS = /\b(beer|lager|ale|ipa|stout|porter|cider|draft|draught|pint|cerveja|cerveza|biere|birra|wine|vinho|vino|vin|prosecco|champagne|sparkling|ros[eé]|rioja|merlot|shiraz|cabernet|chardonnay|sauvignon|spirits?|vodka|gin|rum|tequila|whiskey|whisky|bourbon|brandy|cognac|liqueur|baileys|aperol|campari|mojito|margarita|marg|daiquiri|cosmo|cosmopolitan|negroni|martini|mule|sangria|cocktail|spritz|mimosa|bloody|bellini|pimms?|smirnoff|absolut|gordons|hendricks?|jagermeister|tia maria|kahlua|drambuie|amaretto|cointreau|sambuca|limoncello|schnapps|soda|cola|pepsi|sprite|fanta|lemonade|ginger ale|ginger beer|water|agua|água|eau|acqua|juice|sumo|smoothie|milkshake|frappe|iced tea|latte|cappuccino|espresso|macchiato|americano|mocha|flat white|hot choc|coffee|caf[eé]|galão|abatanado|cimbalino|imperial|caneca|fino|tea|ch[aá]|infus|tisane|coke|7up|dr pepper|redbull|red bull|energy drink|kombucha|kefir|burdock|organic lager|mill st|molson|heineken|carlsberg|corona|modelo|peroni|stella|becks|budweiser|guinness|fosters|coors|kronenbourg|san miguel|asahi|sapporo|kirin|tsingtao|chang|singha|tiger|leffe|hoegaarden|erdinger|paulaner|weiss|weizen|hefeweizen|radler|shandy|desperados|refrigerante|bebida)\b/i;
+const MAIN_WORDS = /\b(burger|hamburger|cheeseburger|chicken|frango|pollo|poulet|poulet|pork|porc|puerco|beef|boeuf|carne|res|steak|bistec|bitoque|plumas|lamb|cordero|agneau|duck|canard|pato|fish|peixe|poisson|pez|salmon|salmao|salmone|saumon|tuna|thon|atun|cod|bacalhau|morue|sole|sea bass|robalo|seabream|dorade|shrimp|prawn|camarao|crevette|gambas|crab|caranguejo|crabe|lobster|lagosta|homard|squid|lula|calamari|octopus|polvo|mussels|mexilhao|moules|clams|amijoa|palourde|oyster|ostra|huître|pizza|pasta|spaghetti|fettuccine|penne|rigatoni|linguine|tagliatelle|lasagna|lasagne|ravioli|gnocchi|risotto|paella|ramen|noodle|tagliatelle|fettuccine|pad thai|curry|tikka|masala|korma|biryani|dal|dhal|paneer|tofu|bowl|wrap|burrito|tacos?|fajita|quesadilla|enchilada|nachos grande|schnitzel|wiener|bratwurst|wurst|sausage|chorizo|salsicha|linguica|hot dog|sandwich|sandes|bocadillo|sub|panini|club|blt|kebab|shawarma|gyro|falafel|hummus|pita|naan|chapati|roti|dosa|idli|samosa|spring roll|dumpling|dim sum|siu mai|gyoza|bao|bulgogi|bibimbap|katsu|tempura|teriyaki|sushi|sashimi|maki|nigiri|roll|wonton|fried rice|chow mein|lo mein|general tso|kung pao|sweet sour|orange chicken|pho|laksa|rendang|satay|nasi|mie|ayam|daging|ikan|seafood|mixed grill|platter|combo|special|main course|entree|principal|prato|dish)\b/i;
+const STARTER_WORDS = /\b(starter|starters?|appetizer|entrada|entree|antipasto|antipasti|bruschetta|crostini|breadsticks|bread|pao|baguette|focaccia|garlic bread|butter|manteiga|beurre|olive|azeitona|olives|cheese|queijo|fromage|formaggio|charcuterie|pate|pâté|terrine|rillette|prosciutto|iberico|serrano|carpaccio|tartare|ceviche|tostada|nachos|guacamole|salsa|soup|soupe|sopa|zuppa|bisque|chowder|gazpacho|minestrone|consomme|vichyssoise|cream of|puree|potage|borsch|salad|salade|salada|caesar|nicoise|caprese|greek|waldorf|coleslaw|slaw|wings|buffalo|calamari|squid ring|fritto|misto|tempura|gyoza|edamame|miso|tom yum|pad see)\b/i;
+const DESSERT_WORDS = /\b(dessert|sobremesa|dessert|dolce|postre|cake|gateau|torta|tarte|tart|pie|pastry|pastel|eclair|profiterole|beignet|donut|doughnut|churro|waffle|gaufre|crepe|cr[eê]pe|pancake|blini|brownie|cookie|biscuit|muffin|cupcake|macaron|macaroon|meringue|pavlova|mousse|pudding|budino|custard|creme|crème|flan|pannacotta|panna cotta|tiramisu|baklava|lokum|halva|cannoli|gelato|ice cream|sorbet|sherbet|frozen|sundae|parfait|banana split|cheesecake|cheesecake|lemon tart|fruit tart|apple pie|chocolate|fondant|lava|sticky toffee|bread pudding|rice pudding|creme brulee|cr[eè]me br[uû]l[eé]e|creme caramel|affogato|zabaglione|semifreddo)\b/i;
+
+function categorizeByKeyword(name: string): ItemCategory | null {
+  if (DRINK_WORDS.test(name)) return "drinks";
+  if (MAIN_WORDS.test(name)) return "mains";
+  if (STARTER_WORDS.test(name)) return "starters";
+  if (DESSERT_WORDS.test(name)) return "desserts";
+  return null;
 }
 
 function convertToAppFormat(ocr: OcrResult): ParsedReceipt {
@@ -97,9 +116,17 @@ function convertToAppFormat(ocr: OcrResult): ParsedReceipt {
   const zeroPriceItems: ReceiptItem[] = [];
 
   (ocr.items ?? []).forEach((item, index) => {
-    const cat: ItemCategory = VALID_CATEGORIES.has(item.category as ItemCategory)
+    let cat: ItemCategory = VALID_CATEGORIES.has(item.category as ItemCategory)
       ? (item.category as ItemCategory)
       : "others";
+    // DRINK_WORDS is a hard override — any beverage keyword always wins
+    if (DRINK_WORDS.test(item.name)) {
+      cat = "drinks";
+    } else if (cat === "others") {
+      // Softer override: only re-classify when GPT returned "others" incorrectly
+      const override = categorizeByKeyword(item.name);
+      if (override) cat = override;
+    }
 
     // Build component list from GPT-provided components
     const components: ReceiptItem[] | undefined = item.components?.map((c, ci) => ({
@@ -132,17 +159,15 @@ function convertToAppFormat(ocr: OcrResult): ParsedReceipt {
     }
   });
 
-  // Merge qty:1 items with same name + same unit price (GPT sometimes outputs duplicate lines).
-  // Items with qty > 1 are left as-is: they represent a single receipt line with that qty
-  // and merging them with a separate qty:1 entry would double-count.
+  // Merge same item + same unit price, even when one receipt line has qty > 1.
+  // Example: "Mill St Organic Lager LG" qty 2 plus qty 1 becomes qty 3.
   for (const cat of Object.keys(categories) as ItemCategory[]) {
     const merged: ReceiptItem[] = [];
-    const keyToIndex = new Map<string, number>(); // only qty:1 entries register here
+    const keyToIndex = new Map<string, number>();
 
     for (const item of categories[cat]) {
       const isComplex = item.type === "combo" || (item.components && item.components.length > 0);
-      if (isComplex || item.quantity !== 1) {
-        // qty > 1 or complex: keep as-is, never merge
+      if (isComplex) {
         merged.push(item);
         continue;
       }
@@ -152,12 +177,13 @@ function convertToAppFormat(ocr: OcrResult): ParsedReceipt {
         const idx = keyToIndex.get(key)!;
         merged[idx] = {
           ...merged[idx],
-          quantity: merged[idx].quantity + 1,
-          totalPrice: Math.round((merged[idx].totalPrice + item.unitPrice) * 100) / 100,
+          quantity: merged[idx].quantity + item.quantity,
+          totalPrice: Math.round((merged[idx].totalPrice + item.totalPrice) * 100) / 100,
+          type: merged[idx].quantity + item.quantity > 1 ? "quantity" : merged[idx].type,
         };
       } else {
         keyToIndex.set(key, merged.length);
-        merged.push({ ...item });
+        merged.push({ ...item, type: item.quantity > 1 ? "quantity" : item.type });
       }
     }
 
@@ -176,14 +202,35 @@ function convertToAppFormat(ocr: OcrResult): ParsedReceipt {
       )
     : [];
 
-  // IVA is already embedded in Portuguese receipt item prices — not a separate charge
+  // Add explicitly-extracted taxes and service charges as shared global costs.
+  // Portuguese IVA is embedded in prices → GPT returns taxAmount:0 for PT receipts.
+  // Canadian HST, US sales tax, service charges are extracted and distributed equally.
   const globalCosts: GlobalCost[] = [];
+  if ((ocr.taxAmount ?? 0) > 0.005) {
+    globalCosts.push({
+      id: "ocr-tax",
+      name: "Tax",
+      amount: Math.round((ocr.taxAmount!) * 100) / 100,
+      type: "tax",
+      splitByAll: true,
+      editable: true,
+    });
+  }
+  if ((ocr.serviceCharge ?? 0) > 0.005) {
+    globalCosts.push({
+      id: "ocr-service",
+      name: "Service Charge",
+      amount: Math.round((ocr.serviceCharge!) * 100) / 100,
+      type: "service_charge",
+      splitByAll: true,
+      editable: true,
+    });
+  }
 
   // Use detected currency, fall back to EUR
   const VALID_CURRENCIES = new Set(["EUR", "USD", "GBP", "CAD"]);
   const currency = (VALID_CURRENCIES.has(ocr.currency ?? "") ? ocr.currency : "EUR") as Currency;
 
-  // itemsTotal = sum of Valor column = the actual total charged (tax-inclusive)
   const itemsTotal = (ocr.items ?? []).reduce((s, i) => s + i.totalPrice, 0);
   const receiptTotal = ocr.validation?.receiptTotal ?? ocr.receiptTotal ?? itemsTotal;
   const difference = receiptTotal - itemsTotal;
@@ -223,6 +270,58 @@ const USER_PROMPT = `You are an EXPERT receipt OCR system. Accuracy is CRITICAL 
 1. Scan the entire receipt from top to bottom
 2. Count the total number of item lines in the receipt
 3. You MUST extract that exact number of items
+
+═══════════════════════════════════════════════════════
+💲 CURRENCY DETECTION — SET CORRECTLY BASED ON LOCATION/SYMBOLS:
+- Symbols: C$, CAD, "Canadian" → "CAD"
+- Symbols: $, USD, US locations (New York, Los Angeles, etc.) → "USD"
+- Symbols: £, GBP, UK locations → "GBP"
+- Symbols: €, EUR, European locations → "EUR"
+- Location clues: Toronto, Ontario, Vancouver, BC, Canada → "CAD"
+- If both $ symbol and Canadian city are visible → "CAD", NOT "USD"
+- When uncertain between USD and CAD, check for Canadian city names or "CN" country code
+
+═══════════════════════════════════════════════════════
+🔌 ADD-ON / VARIANT GROUPING — COMBINE WITH PARENT ITEM:
+Many North American receipts show items where the price is on a variant/add-on line, NOT on the main item line.
+NEVER output modifiers or add-ons as separate items[] entries — always combine them into the parent.
+
+PATTERN A — Main item has NO price on its line, variant line HAS the price:
+  "1  Pad Gra Prow"           (no price)
+  "   PGP Chicken   $23.00"   (has price)
+  → ONE item: { name: "Pad Gra Prow (PGP Chicken)", quantity: 1, unitPrice: 23.00, totalPrice: 23.00 }
+
+PATTERN B — Main item HAS a price, add-on line also HAS a price → SUM them into one item:
+  "1  Green Curry    $25.00"
+  "   Add Shrimp     $6.00"
+  → ONE item: { name: "Green Curry (Add Shrimp)", quantity: 1, unitPrice: 31.00, totalPrice: 31.00 }
+
+PATTERN C — Multiple priced add-ons on the same parent → SUM all into one item:
+  "1  Pad Thai       $18.00"
+  "   PT Shrimp      $2.00"
+  "   Extra Sauce    $1.00"
+  → ONE item: { name: "Pad Thai (PT Shrimp, Extra Sauce)", quantity: 1, unitPrice: 21.00, totalPrice: 21.00 }
+
+IGNORE lines with NO price (free modifiers / preparation notes):
+  "  Medium"  "  Jasmine"  "  KS Spice"  "  Do Not Make Spicy"  "  Mild"  → IGNORE
+
+CRITICAL: combined item's unitPrice = sum of all prices in the group. Always verify: quantity × unitPrice = totalPrice.
+
+═══════════════════════════════════════════════════════
+⚠️ PRICED ORPHAN LINES — NEVER IGNORE A LINE WITH A PRICE:
+Any line before Subtotal/Tax/Total that carries a price MUST appear in your output.
+Do NOT discard it because the label is short, numeric, single-word, or unfamiliar.
+
+RULE: If it appears directly below a named item → combine it using Pattern A or B above.
+RULE: If you cannot identify the parent → add it as a separate item in items[].
+
+EXAMPLE — numeric label that MUST be combined:
+  "1  Thai Chicken Wings    $13.50"
+  "   10                   $10.50"   ← short/numeric, but HAS A PRICE → must not be ignored
+  → { name: "Thai Chicken Wings (10)", quantity: 1, unitPrice: 24.00, totalPrice: 24.00 }
+
+MORE EXAMPLES that must be kept:
+  "10   $10.50"  "Extra   $1.50"  "Add-on   $3.00"  "No Name   $5.00"  → ALL must appear in items[]
 
 ═══════════════════════════════════════════════════════
 🍔 MENU & COMBO DETECTION:
@@ -299,21 +398,75 @@ RULE 5 — If you cannot read a value clearly, set confidence: "low" and add a w
 ALWAYS verify: quantity × unitPrice = totalPrice for EVERY item before outputting.
 
 ═══════════════════════════════════════════════════════
-🧾 PORTUGUESE TAX SYSTEM (IVA) — CRITICAL:
-Item prices in the Valor column ALREADY INCLUDE IVA (VAT). The IVA breakdown at the bottom is INFORMATIONAL ONLY — it is NOT a separate charge.
-- Sum of all item Valor amounts = receiptTotal
-- Do NOT add IVA as extra charges
-- Do NOT include taxes in the output at all
+🧾 TAX & SERVICE CHARGES — CRITICAL:
+Different receipts handle these differently:
+
+PORTUGUESE RECEIPTS (IVA system):
+- Item prices ALREADY INCLUDE IVA — the IVA breakdown table at the bottom is informational only
+- Set taxAmount: 0 and serviceCharge: 0 for Portuguese receipts
+- subtotal = receiptTotal = sum of all item Valor amounts
+
+US / UK / INTERNATIONAL RECEIPTS:
+- Explicit "Sales Tax", "Tax" line → extract as taxAmount
+- "Service Charge", "Large Party Fee", "Mandatory Gratuity", "Service Fee" → extract as serviceCharge
+- subtotal = sum of item prices only (before service + tax)
+- receiptTotal = subtotal + serviceCharge + taxAmount
+
+IMPORTANT: Service charges, tax, and gratuity lines MUST NOT appear in items[]. They go in serviceCharge or taxAmount only.
 
 ═══════════════════════════════════════════════════════
 🧮 POST-EXTRACTION QUALITY CHECKS — do ALL before returning:
 1. COUNT: Did I extract the same number of lines as on the receipt?
 2. NAMES: Are all names EXACTLY as printed (no translation, no normalisation)?
 3. MATH: Does each item's quantity × unitPrice = totalPrice (within 0.01€)?
-4. TOTAL: Does sum of all item totalPrice values = receiptTotal (within 0.01€)?
+4. TOTAL: Does sum of all item totalPrice values = subtotal? Does subtotal + serviceCharge + taxAmount = receiptTotal?
 5. CONFIDENCE: Can I clearly read every item? If anything is unclear, set "confidence": "low"
 
 If checks 3 or 4 fail → you made an error → look at the image again and fix it BEFORE returning.
+
+═══════════════════════════════════════════════════════
+🔍 MANDATORY SUBTOTAL SELF-CHECK — DO THIS LAST:
+  computed_sum = sum of every item's totalPrice in your items[]
+  printed_subtotal = the "Subtotal" line on the receipt (before tax/service charges)
+
+If |computed_sum − printed_subtotal| > 0.50:
+  → You missed a priced line OR extracted the same line twice
+  → Scan top-to-bottom again and find the discrepancy
+  → Remove any item that appears more than once in your output
+  → Only return when computed_sum ≈ printed_subtotal (within 0.10)
+
+═══════════════════════════════════════════════════════
+🏷️ CATEGORY RULES — MANDATORY FOR EVERY ITEM:
+You MUST assign each item one of exactly these 5 categories (lowercase, no other values):
+  "starters" | "mains" | "drinks" | "desserts" | "others"
+
+DRINKS (use "drinks" for ALL of these):
+  - ANY beer, lager, ale, IPA, stout, draft, pint — e.g. "Mill St Organic Lager LG", "Burdock Duck", "Heineken", "Cerveja", "Corona"
+  - ANY wine, prosecco, champagne, cider, spirits
+  - ANY cocktail, vodka, gin, rum, whiskey, tequila, Smirnoff, Moscow Mule, mojito, martini
+  - ANY soda, cola, juice, water, smoothie, milkshake, lemonade, sparkling water
+  - Tea, coffee, espresso, latte, cappuccino
+
+MAINS (use "mains" for ALL of these):
+  - Burgers, tacos, pizza, pasta, chicken, steak, fish, seafood
+  - Sandwiches, wraps, burritos, quesadillas
+  - Rice dishes, curries, bowls, platters
+  - ANY main course, entree, principal dish
+
+STARTERS (use "starters" for):
+  - Appetizers, soups, salads, bread, olives, bruschetta
+  - Wings, calamari, nachos, dips
+
+DESSERTS (use "desserts" for):
+  - Cakes, ice cream, mousse, pudding, cheesecake, brownie, tart
+
+OTHERS (use "others" ONLY for):
+  - Service charges, taxes, gratuity, cover charges
+  - Items that are clearly none of the above
+
+RULE: When in doubt between "others" and a food/drink category → CHOOSE the food/drink category.
+NEVER use "others" for any alcoholic or non-alcoholic beverage.
+NEVER use "others" for any food item.
 
 ═══════════════════════════════════════════════════════
 Return this exact JSON structure (no markdown, no explanation):
@@ -358,6 +511,9 @@ Return this exact JSON structure (no markdown, no explanation):
       "category": "drinks"
     }
   ],
+  "subtotal": 61.40,
+  "serviceCharge": 0,
+  "taxAmount": 0,
   "itemsSubtotal": 61.40,
   "receiptTotal": 61.40,
   "item_count": 4,
@@ -372,15 +528,112 @@ Return this exact JSON structure (no markdown, no explanation):
 }
 
 Categories:
-- starters: pão, azeitonas, manteiga, queijo, paté, entrada
-- mains: bitoque, plumas, carne, peixe, arroz, massa, frango, hamburguer
-- drinks: refrigerante, água, cerveja, vinho, sumo, bebida
-- desserts: mousse, doce, pudim, gelado, tarte, sobremesa
-- others: café, taxa, serviço
+- starters: pão, azeitonas, manteiga, queijo, paté, entrada, bread, olives, butter, cheese, soup, appetizer, bruschetta, nachos, wings, calamari, spring roll
+- mains: bitoque, plumas, carne, peixe, arroz, massa, frango, hamburguer, burger, taco, tacos, pizza, pasta, chicken, steak, fish, sandwich, wrap, burrito, quesadilla, risotto, salmon, beef, pork, lamb, duck, schnitzel, noodles, curry, bowl
+- drinks: refrigerante, água, cerveja, vinho, sumo, bebida, café, coffee, espresso, latte, cappuccino, americano, macchiato, flat white, tea, hot chocolate, beer, lager, ale, ipa, stout, porter, wine, cocktail, spirit, vodka, whiskey, whisky, rum, gin, tequila, smirnoff, baileys, prosecco, champagne, cider, mule, mojito, margarita, cosmopolitan, espresso martini, soda, juice, water, sparkling, cola, lemonade, smoothie, milkshake
+- desserts: mousse, doce, pudim, gelado, tarte, sobremesa, cake, ice cream, cheesecake, brownie, tiramisu, profiteroles, churros, waffle, crepe, sundae, sorbet, panna cotta, creme brulee
+- others: taxa, serviço, service charge, cover charge, tax, gratuity, tip, fee — ONLY surcharges, NEVER food or beverages
 
 FINAL RULE: Before returning, verify all 4 quality checks above.
 If any check fails → you made an error → look at the image again and fix it.
 NEVER return data you are not confident about. Set confidence "low" and list warnings instead.`;
+
+const STABLE_USER_PROMPT = `You are an expert receipt OCR system. Your output is used to split a restaurant bill between people — accuracy and correct categorization are critical.
+
+STEP 1 — EXTRACT every paid item line from this receipt:
+- Preserve item names EXACTLY as printed (no translation, no normalization)
+- Each physical line = one item (unless the receipt's own Qty column shows > 1)
+- quantity × unitPrice MUST equal totalPrice — verify before outputting
+- Do NOT include tax lines, service charges, or subtotals as items[] entries (they go in taxAmount/serviceCharge)
+- Portuguese IVA is already embedded in item prices (do not add as separate cost)
+
+STEP 2 — CATEGORIZE each item using EXACTLY one of these 5 categories:
+
+"drinks" — ANY beverage whatsoever:
+  beer, lager, ale, IPA, stout, pint, draft, draught, cerveja, bière
+  wine, vinho, prosecco, champagne, cider, espumante
+  spirits: vodka, gin, rum, whiskey, tequila, baileys, aperol, smirnoff
+  cocktails: mojito, margarita, negroni, cosmopolitan, spritz, mule, moscow mule
+  brewery names as beer: Burdock, Mill Street, Molson, Heineken, Corona, Stella, Guinness, etc.
+  soft drinks: cola, soda, juice, lemonade, water, água, sparkling, pepsi, sprite
+  hot drinks: coffee, café, espresso, latte, cappuccino, americano, tea, chá, hot chocolate
+  smoothies, milkshakes, kombucha — ANYTHING drinkable
+
+"starters" — appetizers and first courses:
+  bread, pão, olives, azeitonas, butter, manteiga, soup, sopa
+  salad, salada, bruschetta, nachos, wings, calamari, garlic bread
+  pâté, queijo, cheese board, spring rolls, dumplings, appetizer, entrada
+
+"mains" — main dishes:
+  burger, hamburguer, chicken, frango, pollo, steak, beef, carne, fish, peixe, salmon
+  pasta, pizza, risotto, curry, bowl, sandwich, wrap, burrito, taco, tacos
+  bitoque, plumas, bacalhau, arroz, massa, schnitzel, noodles, quesadilla, enchilada
+
+"desserts" — sweet endings:
+  cake, cheesecake, ice cream, gelado, mousse, brownie, tart, tarte
+  tiramisu, profiteroles, churros, waffle, crepe, pudding, creme brulee
+
+"others" — ONLY surcharges/fees (NOT food or drinks):
+  service charge, taxa de serviço, cover charge, couvert
+  Do NOT use "others" for any food or beverage item.
+
+STEP 2.5 — DETECT CURRENCY and TAXES:
+
+Currency — detect from symbols, city, and tax labels on the receipt:
+  "CAD": C$, HST, GST, PST, or Canadian city (Toronto, Vancouver, Montreal, Calgary, Ottawa, etc.)
+  "USD": $ with US city (New York, LA, Chicago, Miami, Houston, etc.) or no location clue
+  "GBP": £ or UK city (London, Manchester, Edinburgh, etc.)
+  "EUR": € or European country (France, Spain, Portugal, Italy, Germany, etc.)
+  RULE: If receipt shows $ AND HST/GST → "CAD", not "USD"
+  RULE: If only $ with no location → "USD"
+
+Taxes (taxAmount) — ONLY extract explicitly shown tax lines:
+  Canadian HST / GST / PST shown as a separate line → taxAmount = that amount
+  US Sales Tax shown as a separate line → taxAmount = that amount
+  Portuguese IVA (always embedded in item prices) → taxAmount: 0
+  European VAT already included in menu prices → taxAmount: 0
+
+Service charges (serviceCharge) — mandatory fees added by the restaurant:
+  "Service Charge", "Auto Gratuity", "Large Party Fee", "Mandatory Gratuity" → serviceCharge = that amount
+  Optional customer tip → do NOT include (not a service charge)
+
+STEP 3 — OUTPUT this exact JSON (no markdown, no extra text):
+{
+  "restaurant": "exact name from top of receipt",
+  "date": "YYYY-MM-DD",
+  "currency": "CAD",
+  "confidence": "high",
+  "warnings": [],
+  "items": [
+    {
+      "name": "Mill St Organic Lager LG",
+      "quantity": 2,
+      "unitPrice": 12.75,
+      "totalPrice": 25.50,
+      "category": "drinks"
+    },
+    {
+      "name": "Pollo Tacos",
+      "quantity": 1,
+      "unitPrice": 20.75,
+      "totalPrice": 20.75,
+      "category": "mains"
+    }
+  ],
+  "taxAmount": 22.20,
+  "serviceCharge": 0,
+  "itemsSubtotal": 170.75,
+  "receiptTotal": 192.95,
+  "item_count": 9,
+  "validation": {
+    "computedTotal": 170.75,
+    "receiptTotal": 192.95,
+    "difference": 22.20,
+    "status": "ok"
+  }
+}
+
+IMPORTANT: Replace ALL values above with the ACTUAL values from the receipt. The example shows a Canadian receipt — for a Portuguese receipt, currency would be "EUR" and taxAmount would be 0.`;
 
 export async function analyzeReceiptImage(imageUri: string): Promise<ParsedReceipt> {
   console.log("📸 [openai] Analyzing receipt with GPT-4o Vision");
@@ -398,7 +651,7 @@ export async function analyzeReceiptImage(imageUri: string): Promise<ParsedRecei
       {
         role: "user",
         content: [
-          { type: "text", text: USER_PROMPT },
+          { type: "text", text: STABLE_USER_PROMPT },
           {
             type: "image_url",
             image_url: { url: `data:image/jpeg;base64,${base64}`, detail: "high" },
@@ -417,20 +670,19 @@ export async function analyzeReceiptImage(imageUri: string): Promise<ParsedRecei
 
   // Debug validation log
   const itemsSum = (ocr.items ?? []).reduce((s, i) => s + i.totalPrice, 0);
-  const receiptTotalLogged = ocr.validation?.receiptTotal ?? ocr.receiptTotal ?? itemsSum;
+  const subtotalLogged = ocr.subtotal ?? ocr.itemsSubtotal ?? itemsSum;
+  const receiptTotalLogged = ocr.validation?.receiptTotal ?? ocr.receiptTotal ?? subtotalLogged;
   console.log("=== VALIDATION ===");
   console.log("Items extracted:", (ocr.items ?? []).length, "| GPT item_count claim:", ocr.item_count ?? "(not provided)");
-  console.log("Items sum (computed):", itemsSum.toFixed(2));
-  console.log("GPT itemsSubtotal:", ocr.itemsSubtotal ?? "(not provided)");
-  console.log("Receipt total:", receiptTotalLogged);
-  console.log("Difference:", (receiptTotalLogged - itemsSum).toFixed(4));
+  console.log("Items sum (computed):", itemsSum.toFixed(2), "| Subtotal:", subtotalLogged.toFixed(2));
+  if (Math.abs(itemsSum - subtotalLogged) > 0.50) {
+    console.warn(`[OCR] ⚠️ Mismatch: items=$${itemsSum.toFixed(2)} vs subtotal=$${subtotalLogged.toFixed(2)} — diff=$${(subtotalLogged - itemsSum).toFixed(2)}`);
+  }
+  console.log("Service charge:", (ocr.serviceCharge ?? 0).toFixed(2), "| Tax:", (ocr.taxAmount ?? 0).toFixed(2));
+  console.log("Receipt total:", receiptTotalLogged, "| Items vs subtotal diff:", (itemsSum - subtotalLogged).toFixed(4));
   console.log("Confidence:", ocr.confidence ?? "(not provided)");
   if (ocr.warnings?.length) console.log("GPT warnings:", ocr.warnings);
   console.log("Status:", ocr.validation?.status ?? "(not provided)");
-  console.log(
-    "Items:",
-    (ocr.items ?? []).map((i) => `${i.name} × ${i.quantity} @ ${i.unitPrice} = ${i.totalPrice}`)
-  );
   console.log("==================");
 
   return convertToAppFormat(ocr);

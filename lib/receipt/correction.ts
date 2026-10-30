@@ -17,7 +17,7 @@ import {
   type ReceiptModifier,
   nextEntityId,
 } from "./model";
-import { analyzeReceipt } from "./diagnostics";
+import { evaluateReceipt } from "./diagnostics";
 import { computeLineTotal } from "./normalizer";
 
 // ─── Edit primitives ──────────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ export function applyEdits(
 ): CanonicalReceipt {
   let next = receipt;
   for (const edit of edits) next = applyEdit(next, edit);
-  return analyzeReceipt(next);
+  return evaluateReceipt(next);
 }
 
 // ─── Proposals ────────────────────────────────────────────────────────────────

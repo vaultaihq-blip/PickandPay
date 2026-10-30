@@ -6,9 +6,10 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   useColorScheme,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,8 +19,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { Colors, USER_COLORS, getColorForIndex } from "@/constants/colors";
 import { AVATAR_OPTIONS } from "@/constants/avatars";
 import { useAuthStore } from "@/store/authStore";
-import { upsertProfile } from "@/lib/supabase";
+import { upsertProfile, initializeUserCredits } from "@/lib/supabase";
+import { uploadAvatarToStorage } from "@/lib/avatarStorage";
 import { UserProfile } from "@/types";
+import { showDialog } from "@/lib/dialog";
 
 export default function ProfileSetupScreen() {
   const isDark = useColorScheme() === "dark";
@@ -69,7 +72,7 @@ export default function ProfileSetupScreen() {
   const takePhoto = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert("Permission needed", "Camera access required.");
+      showDialog("Permission needed", "Camera access required.");
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -85,25 +88,33 @@ export default function ProfileSetupScreen() {
 
   const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert("Name required", "Please enter your display name.");
+      showDialog("Name required", "Please enter your display name.");
       return;
     }
 
     setSaving(true);
     try {
+      const uploadedAvatarUrl =
+        avatarUri && user ? await uploadAvatarToStorage(avatarUri, user.id) : avatarUri;
       const profile = {
         id: user?.id ?? `guest_${Date.now()}`,
         name: name.trim(),
         email: user?.email,
-        avatar_url: avatarUri ?? undefined,
-        avatar_icon: selectedIcon ?? "star",
+        avatar_url: uploadedAvatarUrl ?? undefined,
+        avatar_icon: uploadedAvatarUrl ? undefined : selectedIcon ?? "star",
         color: userColor,
-        provider: user?.app_metadata?.provider,
       };
+      const provider = user?.app_metadata?.provider as string | undefined;
 
       if (user) {
-        await upsertProfile(profile);
+        const { error: upsertError } = await upsertProfile(profile);
+        if (upsertError) throw upsertError;
       }
+
+      // Sign-up credits are granted once, server-side (initialize-user-credits).
+      // Show the balance the server returned; never assume an amount.
+      const creditResult = user ? await initializeUserCredits() : null;
+      const billCredits = creditResult?.balance ?? 0;
 
       setProfile({
         id: profile.id,
@@ -112,15 +123,28 @@ export default function ProfileSetupScreen() {
         avatarUrl: profile.avatar_url,
         avatarIcon: profile.avatar_icon,
         color: profile.color,
-        provider: mapProvider(profile.provider),
-        billCredits: 3,
+        provider: mapProvider(provider),
+        billCredits,
         referralCount: 0,
         isPro: false,
       });
 
+      const granted = creditResult?.freeCredits ?? 0;
+      if (granted > 0) {
+        showDialog(
+          "Welcome!",
+          `You received ${granted} free scan${granted === 1 ? "" : "s"} to try Pick&Pay.`
+        );
+      } else if (!creditResult) {
+        console.error("[profile-setup] initialize-user-credits failed; balance shown is what the server has");
+        showDialog("Welcome!", "We couldn't add your free scans right now. Please contact support if your balance stays at 0.");
+      }
+
       router.replace("/(app)");
     } catch (err) {
-      Alert.alert("Error", "Failed to save profile. Please try again.");
+      console.error("[profile-setup] Failed to save profile:", err);
+      const message = err instanceof Error ? err.message : "Please try again.";
+      showDialog("Error", `Failed to save profile. ${message}`);
     } finally {
       setSaving(false);
     }
@@ -142,7 +166,8 @@ export default function ProfileSetupScreen() {
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.title, { color: textColor }]}>Set up your profile</Text>
@@ -258,6 +283,7 @@ export default function ProfileSetupScreen() {
           )}
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

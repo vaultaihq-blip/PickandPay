@@ -143,7 +143,8 @@ export type ReceiptIssueType =
   | "tax_error"
   | "service_error"
   | "total_error"
-  | "unclassified";
+  | "unclassified"
+  | "unverifiable_value";
 
 /**
  * A concrete, user-applicable correction proposed by the diagnostics engine.
