@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImageManipulator from "expo-image-manipulator";
+import { clearScanMark, markScanStep, SCAN_JPEG_QUALITY } from "@/lib/scanImage";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
 import { useAuthStore } from "@/store/authStore";
@@ -43,6 +44,9 @@ export default function ReceiptPreviewScreen() {
   const cancelledRef = useRef(false);
   // A second tap on "Scan receipt" while one is on its way does nothing.
   const analyzingRef = useRef(false);
+  useEffect(() => {
+    void clearScanMark();
+  }, []);
 
   const handleRotate = useCallback(async (degrees: number) => {
     if (isRotating || !currentUri) return;
@@ -51,7 +55,7 @@ export default function ReceiptPreviewScreen() {
       const result = await ImageManipulator.manipulateAsync(
         currentUri,
         [{ rotate: degrees }],
-        { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        { compress: SCAN_JPEG_QUALITY, format: ImageManipulator.SaveFormat.JPEG, base64: true }
       );
       setCurrentUri(result.uri);
       setCurrentBase64(`data:image/jpeg;base64,${result.base64}`);
@@ -84,6 +88,9 @@ export default function ReceiptPreviewScreen() {
       setTimeout(() => reject(new Error("TIMEOUT")), 90_000)
     );
 
+    const sentAt = Date.now();
+    console.log(`[scan] sending ${Math.round(currentBase64.length / 1024)} KB of base64`);
+    await markScanStep("sending");
     try {
       const { receipt: parsed } = await Promise.race([
         // The session Start split created: the scan's credit pays it (C.3).
@@ -91,6 +98,7 @@ export default function ReceiptPreviewScreen() {
         timeoutPromise,
       ]);
 
+      console.log(`[scan] response ok in ${Math.round((Date.now() - sentAt) / 1000)} s`);
       if (cancelledRef.current) return;
 
       const itemCount = Object.values(parsed.categories).flat().length;
@@ -118,11 +126,12 @@ export default function ReceiptPreviewScreen() {
       );
       router.push(target);
     } catch (err) {
+      const code = (err as { code?: string }).code;
+      console.log(`[scan] response error in ${Math.round((Date.now() - sentAt) / 1000)} s: ${code ?? (err instanceof Error ? err.message : String(err))}`);
       if (cancelledRef.current) return;
       setIsAnalyzing(false);
       const msg = err instanceof Error ? err.message : "";
 
-      const code = (err as { code?: string }).code;
       if (code === "NO_CREDITS") {
         showNoCreditsDialog(t);
         return;
@@ -154,6 +163,7 @@ export default function ReceiptPreviewScreen() {
       ]);
     } finally {
       analyzingRef.current = false;
+      void clearScanMark();
       // C.3 — a scan spends the credit on the server (refunded if it failed
       // on our side): show the real balance.
       if (profile) void fetchFreshCredits(profile.id);
