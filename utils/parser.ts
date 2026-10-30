@@ -1,11 +1,4 @@
 import { ParsedReceipt, ReceiptItem, ItemCategory, TaxMode } from "@/types";
-import {
-  type RawReceiptPayload,
-  evaluateReceipt,
-  moneyToMajorNumber,
-  normalizeRawReceipt,
-} from "@/lib/receipt";
-import { toParsedReceipt } from "@/lib/receipt/adapter";
 import { useCanonicalReceiptStore } from "@/store/canonicalReceiptStore";
 
 // ─── Receipt Parser Utilities ──────────────────────────────────────────────────
@@ -70,68 +63,9 @@ export function createBlankReceipt(): ParsedReceipt {
   };
 }
 
-// ─── Receipt Analyzer ────────────────────────────────────────────────────────
-
-interface ParseReceiptResponse {
-  schemaVersion?: number;
-  receipt?: RawReceiptPayload;
-}
-
-export async function analyzeReceipt(
-  imageUri: string,
-  // C.3 — the session this scan is for: the scan's credit pays it (host).
-  sessionId?: string
-): Promise<{ receipt: ParsedReceipt; rawText: string }> {
-  // A new scan means a new receipt identity — any canonical receipt/issues
-  // left over from a previous scan must not survive into this one, even if
-  // this particular call ends up on the legacy (non-v2) branch below and
-  // never repopulates the store itself.
-  useCanonicalReceiptStore.getState().clear();
-
-  console.log("📸 [parser] Starting edge function OCR:", imageUri.substring(0, 40));
-  // Dynamic import: lib/supabase.ts pulls in React Native / Expo modules at
-  // load time, which would make this file (and its pure normalizeReceipt
-  // bridge below) unloadable from a plain Node test environment.
-  const { parseReceiptImage } = await import("@/lib/supabase");
-  const { data, error, code } = await parseReceiptImage(imageUri, sessionId);
-  if (error) {
-    throw Object.assign(
-      new Error(`OCR edge function failed: ${(error as { message?: string }).message ?? "Unknown error"}`),
-      { code }
-    );
-  }
-  if (!data) {
-    throw new Error("OCR edge function returned no data");
-  }
-
-  const response = data as ParseReceiptResponse;
-
-  let receipt: ParsedReceipt;
-  if (response.schemaVersion === 2 && response.receipt !== undefined) {
-    // Structural v2 envelope: run it through the canonical pipeline (exact
-    // money, reconciliation, diagnostics), then bridge to the legacy shape so
-    // normalizeReceipt's tax-mode reconciliation below still applies.
-    const canonical = evaluateReceipt(normalizeRawReceipt(response.receipt));
-    const legacy = toParsedReceipt(canonical);
-
-    useCanonicalReceiptStore.getState().setReceipt(canonical);
-
-    receipt = normalizeReceipt({
-      ...legacy,
-      printed_total:
-        canonical.printedTotal !== undefined
-          ? moneyToMajorNumber(canonical.printedTotal)
-          : undefined,
-    });
-  } else {
-    // Legacy category-based payload — kept so an older deployed function
-    // keeps working while the new one rolls out.
-    receipt = normalizeReceipt(data as Partial<ParsedReceipt>);
-  }
-
-  console.log("✅ [parser] OCR complete:", receipt.restaurant);
-  return { receipt, rawText: "" };
-}
+// analyzeReceipt (the call to the parse-receipt edge function) lives in
+// utils/analyzeReceipt.ts: it needs lib/supabase, and this file must stay
+// loadable from a plain Node test environment.
 
 // ─── Tax Mode Detection ────────────────────────────────────────────────────────
 
