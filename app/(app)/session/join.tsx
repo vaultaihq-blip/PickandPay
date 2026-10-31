@@ -247,16 +247,23 @@ export default function JoinSessionScreen() {
     try {
       const sessionId = preview.id;
 
-      // Confirma participante: pending → joined
-      await expectRows(
-        "join: pending → joined",
-        supabase
-          .from("session_participants")
-          .update({ status: "joined" })
-          .eq("session_id", sessionId)
-          .eq("user_id", profile.id)
-          .select("id")
-      );
+      // Confirma participante: pending → joined. A1 — someone who is still
+      // in it (joined, selecting, items_picked) keeps the status they had:
+      // a rejoin never takes back items already picked.
+      const stillIn = preview.myStatus === "joined" || preview.myStatus === "selecting" || preview.myStatus === "items_picked";
+      if (stillIn) {
+        console.log(`[join] Rejoin: status kept (${preview.myStatus})`);
+      } else {
+        await expectRows(
+          `join: ${preview.myStatus ?? "pending"} → joined`,
+          supabase
+            .from("session_participants")
+            .update({ status: "joined" })
+            .eq("session_id", sessionId)
+            .eq("user_id", profile.id)
+            .select("id")
+        );
+      }
 
       // Carrega sessão + participantes completos
       const { data: sessionData, error } = await supabase

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { showDialog } from "@/lib/dialog";
 import { endSession, showEndSessionError } from "@/lib/endSession";
+import { leaveSession } from "@/lib/leaveSession";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams, Stack } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -232,15 +233,7 @@ export default function SelectionScreen() {
       if (isCreator && !isOfflineSession) {
         await endSession("selection: host ends session", session.id);
       } else if (!isCreator && !isOfflineSession && profile?.id) {
-        await expectRows(
-          "selection: participant leaves (left)",
-          supabase
-            .from("session_participants")
-            .update({ status: "left" })
-            .eq("session_id", session.id)
-            .eq("user_id", profile.id)
-            .select("id")
-        );
+        await leaveSession("selection: participant leaves", session.id);
       }
       leave();
     } catch (err) {
