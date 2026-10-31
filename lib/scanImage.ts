@@ -8,8 +8,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // so the pixels must be upright). The full-size original is never held as
 // base64: a 50–200 MP photo did that several times over and the OS killed
 // the app on "Scan receipt".
-export const SCAN_MAX_SIDE = 2400;
-export const SCAN_JPEG_QUALITY = 0.7;
+// 3200 px at 0.8 chosen on 2026-10-31 from 21 corpus reads: same results as
+// the original photo; 2400 at 0.7 lost Ramires on all three reads.
+export const SCAN_MAX_SIDE = 3200;
+export const SCAN_JPEG_QUALITY = 0.8;
 
 const kb = (bytes: number | null | undefined) => (bytes ? Math.round(bytes / 1024) : 0);
 
