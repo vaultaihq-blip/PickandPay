@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { showDialog } from "@/lib/dialog";
 import { endSession, showEndSessionError } from "@/lib/endSession";
+import { leaveSession } from "@/lib/leaveSession";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
@@ -1138,11 +1139,18 @@ ${tr("host_now_you_all_picked")}`, [
       }
       setSelectionDone(new Set(done));
       setGoingToSelection(new Set(selecting));
-      if (left.length > 0) {
-        setLeftParticipantIds((prev) => new Set([...prev, ...left]));
-      }
+      // A1 — the server's list replaces ours: someone who came back since is
+      // no longer shown as "left" (a missed realtime event used to keep them
+      // there for good).
+      setLeftParticipantIds(new Set(left));
+      console.log(`[session-lobby] reread: ${data.length} people, ${left.length} left`);
     };
     fetchDoneStatus();
+    // A1 — back in the foreground, read again: events sent while this phone
+    // was away never arrive.
+    const appStateSub = AppState.addEventListener("change", (next) => {
+      if (next === "active") void fetchDoneStatus();
+    });
 
     // "X is joining": a new pending row (INSERT), or a cancelled row reused
     // by a second scan (UPDATE → pending).
@@ -1205,6 +1213,15 @@ ${tr("host_now_you_all_picked")}`, [
             });
           }
           return;
+        }
+        // A1 — back in the session in any way: no longer "left" here.
+        if (status === "joined" || status === "selecting" || status === "items_picked") {
+          setLeftParticipantIds((prev) => {
+            if (!prev.has(uid)) return prev;
+            const next = new Set(prev);
+            next.delete(uid);
+            return next;
+          });
         }
         if (status === "selecting") {
           setSelectionDone((prev) => {
@@ -1337,7 +1354,10 @@ ${tr("host_now_you_all_picked")}`, [
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(pgCh); };
+    return () => {
+      appStateSub.remove();
+      supabase.removeChannel(pgCh);
+    };
   }, [id, myId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-sync selectionDone from Zustand whenever the lobby regains focus.
@@ -1431,15 +1451,7 @@ ${tr("host_now_you_all_picked")}`, [
       if (isCreator && !isOfflineSession) {
         await endSession("lobby: host ends session", session.id);
       } else if (!isCreator && !isOfflineSession && myId) {
-        await expectRows(
-          "lobby: participant leaves (left)",
-          supabase
-            .from("session_participants")
-            .update({ status: "left" })
-            .eq("session_id", session.id)
-            .eq("user_id", myId)
-            .select("id")
-        );
+        await leaveSession("lobby: participant leaves", session.id);
       }
       leave();
     } catch (err) {
@@ -1966,15 +1978,7 @@ ${tr("host_now_you_all_picked")}`, [
                           };
                           if (id && myId) {
                             try {
-                              await expectRows(
-                                "lobby: leave button (left)",
-                                supabase
-                                  .from("session_participants")
-                                  .update({ status: "left" })
-                                  .eq("session_id", id)
-                                  .eq("user_id", myId)
-                                  .select("id")
-                              );
+                              await leaveSession("lobby: leave button", String(id));
                             } catch (err) {
                               showLeaveWriteError(err, t, leave);
                               return;

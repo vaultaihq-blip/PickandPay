@@ -103,6 +103,7 @@ export default function HomeScreen() {
     id: string;
     restaurant: string | null;
     hostName: string;
+    myStatus: string | null;
   } | null>(null);
   const [isRejoining, setIsRejoining] = useState(false);
   const [carouselIdx, setCarouselIdx] = useState(0);
@@ -130,13 +131,14 @@ export default function HomeScreen() {
       try {
         const { data, error } = await supabase.rpc("my_rejoinable_session");
         if (error) console.log(`[home] rejoinable-session lookup failed: ${error.message}`);
-        const row = (data ?? null) as { session_id?: string; host_name?: string | null; restaurant?: string | null } | null;
+        const row = (data ?? null) as { session_id?: string; host_name?: string | null; restaurant?: string | null; my_status?: string | null } | null;
         if (cancelled) return;
         if (!row?.session_id) { setRejoinSession(null); return; }
         setRejoinSession({
           id: row.session_id,
           restaurant: row.restaurant ?? null,
           hostName: row.host_name ?? "Host",
+          myStatus: row.my_status ?? null,
         });
       } catch {
         // Non-critical — just don't show the banner
@@ -150,15 +152,23 @@ export default function HomeScreen() {
     if (!rejoinSession || !profile) return;
     setIsRejoining(true);
     try {
-      await expectRows(
-        "home: rejoin (→ joined)",
-        supabase
-          .from("session_participants")
-          .update({ status: "joined" })
-          .eq("session_id", rejoinSession.id)
-          .eq("user_id", profile.id)
-          .select("id")
-      );
+      // A1 — still in it (joined, selecting, items_picked): the status stays
+      // as it is, so items already picked are not taken back. Only someone
+      // who left (after paying) or was pending is written back to joined.
+      const st = rejoinSession.myStatus;
+      if (st === "joined" || st === "selecting" || st === "items_picked") {
+        console.log(`[home] rejoin: status kept (${st})`);
+      } else {
+        await expectRows(
+          `home: rejoin (${st ?? "?"} → joined)`,
+          supabase
+            .from("session_participants")
+            .update({ status: "joined" })
+            .eq("session_id", rejoinSession.id)
+            .eq("user_id", profile.id)
+            .select("id")
+        );
+      }
 
       const { data: sessionData, error } = await supabase
         .from("sessions")
