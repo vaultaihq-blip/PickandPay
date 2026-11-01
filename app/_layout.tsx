@@ -15,6 +15,8 @@ import { initRevenueCat } from "@/lib/revenuecat";
 import { supabase, isAuthCallbackUrl } from "@/lib/supabase";
 import { DialogHost } from "@/components/ui/DialogHost";
 import { useLiveCredits } from "@/hooks/useLiveCredits";
+import { takeInterruptedScan } from "@/lib/scanImage";
+import { showDialog } from "@/lib/dialog";
 import "../global.css";
 
 export const ONBOARDING_KEY = "@pickandpay:onboardingComplete";
@@ -55,6 +57,15 @@ export default function RootLayout() {
   const pendingRef = useRef<string | null>(null);
   const initialRoute = useRef<string | null>(null);
   useLiveCredits();
+  useEffect(() => {
+    if (!isReady) return;
+    void takeInterruptedScan().then((step) => {
+      if (!step) return;
+      console.log(`[scan] the previous scan did not finish (stopped at: ${step})`);
+      const tr = useI18nStore.getState().t;
+      showDialog(tr("scan_interrupted_title"), tr("scan_interrupted_msg"));
+    });
+  }, [isReady]);
 
   useEffect(() => {
     initApp();

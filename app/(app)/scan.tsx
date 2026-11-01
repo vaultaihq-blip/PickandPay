@@ -13,7 +13,6 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
-import * as ImageManipulator from "expo-image-manipulator";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useReceiptStore } from "@/store/receiptStore";
@@ -22,6 +21,7 @@ import { createBlankReceipt } from "@/utils/parser";
 import { useI18nStore } from "@/store/i18nStore";
 import { showDialog } from "@/lib/dialog";
 import { endSession, showEndSessionError } from "@/lib/endSession";
+import { clearScanMark, markScanStep, prepareScanImage } from "@/lib/scanImage";
 
 type ScanMode = "camera" | "upload" | "manual";
 
@@ -107,23 +107,8 @@ export default function ScanScreen() {
     setProcessing(false);
   }, [setProcessing]);
 
-  // Re-encodes the picked/captured image with no-op operations — this alone
-  // bakes the file's EXIF Orientation tag into the actual pixel buffer and
-  // strips the tag. Without this, a photo taken sideways (a common phone
-  // photo of a receipt lying on a table) displays upright everywhere
-  // because viewers honour the EXIF tag, but the raw base64 sent to the
-  // server keeps the original rotated pixel layout — and Google Vision's
-  // OCR bounding boxes come back in that raw pixel space, not the tag-
-  // corrected one, corrupting line reconstruction downstream. Every image
-  // entry point must go through this before it's used for anything else.
-  const normalizeImageOrientation = async (uri: string) => {
-    const result = await ImageManipulator.manipulateAsync(uri, [], {
-      compress: 0.9,
-      format: ImageManipulator.SaveFormat.JPEG,
-      base64: true,
-    });
-    return { uri: result.uri, base64: result.base64 ? `data:image/jpeg;base64,${result.base64}` : result.uri };
-  };
+  // The photo is reduced (and turned upright) from the file before any base64:
+  // see lib/scanImage.ts. Never base64 of the full-size original.
 
   const handleCapture = async () => {
     if (pickingRef.current || isProcessing) {
@@ -146,17 +131,21 @@ export default function ScanScreen() {
       showDialog(t("avatar_camera_title"), t("avatar_camera_msg"));
       return;
     }
+    await markScanStep("camera");
+    // quality 1 and no base64: the picker hands over the file untouched; the
+    // only re-encode is the reduced one below.
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ["images"],
       allowsEditing: false,
-      quality: 0.9,
-      base64: true,
+      quality: 1,
+      base64: false,
     });
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      const normalized = await normalizeImageOrientation(asset.uri);
-      setPendingImage(normalized.uri, normalized.base64);
+      const prepared = await prepareScanImage(result.assets[0], "camera");
+      setPendingImage(prepared.uri, prepared.base64);
       router.push("/(app)/receipt-preview");
+    } else {
+      await clearScanMark();
     }
   };
 
@@ -176,17 +165,19 @@ export default function ScanScreen() {
   };
 
   const pickFromGallery = async () => {
+    await markScanStep("gallery");
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       allowsEditing: false,
-      quality: 0.9,
-      base64: true,
+      quality: 1,
+      base64: false,
     });
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      const normalized = await normalizeImageOrientation(asset.uri);
-      setPendingImage(normalized.uri, normalized.base64);
+      const prepared = await prepareScanImage(result.assets[0], "gallery");
+      setPendingImage(prepared.uri, prepared.base64);
       router.push("/(app)/receipt-preview");
+    } else {
+      await clearScanMark();
     }
   };
 
