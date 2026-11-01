@@ -128,6 +128,42 @@ describe("R2: the answered gap becomes a proportional charge", () => {
     assert(res.get("h")!.costBreakdown![0].amount < 0, "discount share is negative");
   });
 
+  // R2-2 (01-11-2026): Ric took both Wisky Sours and read "÷2 of 2200".
+  const qtySession = (picks: Record<string, number>) =>
+    ({
+      receipt: {
+        categories: { starters: [], mains: [], desserts: [], others: [], drinks: [{ ...item("w", 2200), quantity: 2, unitPrice: 1100 }] },
+        globalCosts: [],
+        tipMode: "equal",
+        selectedTip: 0,
+      },
+      participants: Object.entries(picks).map(([userId, q]) => ({
+        userId, selections: [{ itemId: "w", quantity: q, isShared: false, sharedWith: [] }],
+      })),
+    }) as any;
+
+  it("one person with every unit reads 2 × 1.100,00, not ÷2", () => {
+    const e = calculateSplit(qtySession({ ric: 2 })).get("ric")!.itemBreakdown[0];
+    assertEqual(e.splitCount, 1);
+    assertEqual(e.units, 2);
+    assertEqual(e.unitPrice, 1100);
+    assertEqual(e.amount, 2200);
+  });
+
+  it("two people with one unit each are not a share", () => {
+    const res = calculateSplit(qtySession({ a: 1, b: 1 }));
+    assertEqual(res.get("a")!.itemBreakdown[0].splitCount, 1);
+    assertEqual(res.get("a")!.itemBreakdown[0].units, 1);
+    assertEqual(res.get("b")!.itemBreakdown[0].amount, 1100);
+  });
+
+  it("more units picked than the item has is a real share (÷ people)", () => {
+    const e = calculateSplit(qtySession({ a: 2, b: 2 })).get("a")!.itemBreakdown[0];
+    assertEqual(e.splitCount, 2);
+    assertEqual(e.units, undefined);
+    assertEqual(e.amount, 1100);
+  });
+
   it("an ordinary charge is still split equally", () => {
     const res = calculateSplit(session([{ id: "svc", name: "Service", amount: 30, type: "service_charge", splitByAll: true, editable: true }]));
     assertEqual(res.get("h")!.globalCostsShare, 10);

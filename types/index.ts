@@ -214,7 +214,11 @@ export interface SplitResult {
     itemName: string;
     amount: number;
     itemTotal: number;
+    /** People sharing the same units ("÷N"); 1 when not shared. */
     splitCount: number;
+    /** Units this person picked of a multi-unit item, when not shared ("2 × 1.100,00"). */
+    units?: number;
+    unitPrice?: number;
   }>;
   globalCostsShare: number;
   /** R2 — this person's part of each charge, by name (a discount is negative). */

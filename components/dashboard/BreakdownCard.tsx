@@ -162,7 +162,9 @@ export function BreakdownCard({
                   </Text>
                   <View style={styles.itemTotalCell}>
                     <Text style={[styles.itemTotalPrice, { color: mutedColor }]}>
-                      {formatCurrency(entry.itemTotal, curr)}
+                      {!isSplit && (entry.units ?? 1) > 1 && entry.unitPrice !== undefined
+                        ? `${entry.units} × ${formatCurrency(entry.unitPrice, curr)}`
+                        : formatCurrency(entry.itemTotal, curr)}
                       {isSplit ? ` (÷${entry.splitCount})` : ""}
                     </Text>
                   </View>

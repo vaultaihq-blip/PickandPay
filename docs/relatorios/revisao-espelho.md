@@ -224,6 +224,37 @@ coincidem" e não fica nenhum encargo.
 **R2-4 — uma fatura que bate certo** (Ramires ou Quebra Mar): não aparece
 cartão vermelho, aparece "Os totais coincidem", e o Continuar está ativo.
 
+### Resultado do teste (2026-11-01) e correções
+
+R2-1, R2-3 e R2-4 passaram. No R2-2 as contas estavam certas (1.208,20 +
+2.416,39 + 3.075,41 = 6.700,00), mas o dashboard tinha três erros:
+
+1. **Na parte de cada pessoa aparecia "Discount +108,20".**
+   - *Causa:* o cartão escolhia o nome por omissão uma só vez, quando aparecia
+     no ecrã. Se aparecia antes de a diferença ser "a menos" (ou quando ainda não
+     havia diferença), ficava com o nome do desconto e gravava-o no encargo.
+   - *Correção:* o nome por omissão segue sempre a diferença atual, até o
+     anfitrião escrever outro.
+   - *Nota:* a sessão já gravada mantém "Discount". Para testar outra vez, é
+     preciso um scan novo, ou "Alterar" na revisão.
+2. **O resumo do topo dizia "Service 600,00".**
+   - *Correção:* passa a mostrar cada encargo pelo nome que tem na fatura.
+   - O texto de partilha e o histórico já usavam o nome do encargo, por isso
+     ficam certos com o ponto 1.
+3. **Com as duas unidades de Wisky Sour, a mesma pessoa via "2200,00 ÷2 of
+   2200,00".**
+   - *Causa:* o "÷N" contava unidades, não pessoas.
+   - *Correção:* cada pessoa vê quantas unidades escolheu ("2 × 1.100,00"). O
+     "÷N" só aparece quando as mesmas unidades são mesmo partilhadas, ou seja,
+     quando foram escolhidas mais unidades do que as que o item tem.
+   - Está corrigido no dashboard, no cartão de cada pessoa e no texto de
+     partilha.
+
+São 3 testes novos. O `test:receipt` passa 86/86.
+
+**Fica para depois:** o ecrã de pagamentos está em inglês e mostra números como
+`6700.00€`. O formato vai no ponto da moeda, e os textos no A6.
+
 ### Fica por fazer
 
 - **No servidor:** a verificação de que as partes somam o total impresso. É o

@@ -85,3 +85,15 @@ no Netlify.
 
 Se algum passo falhar, o registo de estados no servidor mostra exatamente quem
 escreveu o quê. Eu leio-o.
+
+---
+
+## Pedidos juntados a pontos da fila
+
+**C1 (2026-11-01).** Depois de um scan validado, o anfitrião pode voltar atrás
+até ao ecrã de escolher foto, galeria ou manual (botão voltar, gesto do Android
+ou qualquer outro caminho). Antes de lá chegar aparece "Vais fazer o scan de uma
+nova fatura? O crédito usado no scan anterior não é devolvido.", com duas
+opções:
+- **Continuar com esta fatura**;
+- **Fazer novo scan**, que só então volta ao ecrã de escolha.

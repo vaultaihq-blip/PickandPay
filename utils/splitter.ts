@@ -94,14 +94,23 @@ export function calculateSplit(session: Session): Map<string, SplitResult> {
           rem -= 1;
         }
 
+        // R2-2 (01-11-2026): splitCount used to be the units picked, so one
+        // person with both Wisky Sours read "÷2 of 2200". Each person's own
+        // units are kept instead ("2 × 1.100,00"); "÷N" (people) only when
+        // more units were picked than the item has, i.e. really shared.
+        const itemUnits = Math.max(item.quantity ?? 1, 1);
+        const shared = totalSelected > itemUnits;
+        const unitPrice = fromCents(Math.round(itemTotalCents / itemUnits));
         selectors.forEach((participant, idx) => {
           const amt = floors[idx];
+          const sel = participant.selections.find((s) => s.itemId === item.id)!;
           results.get(participant.userId)!.itemBreakdown.push({
             itemId: item.id,
             itemName: item.name,
             amount: fromCents(amt),
             itemTotal: itemTotalFloat,
-            splitCount: totalSelected,
+            splitCount: shared ? selectors.length : 1,
+            ...(shared ? {} : { units: sel.quantity ?? 1, unitPrice }),
           });
           totalCentsMap.set(
             participant.userId,

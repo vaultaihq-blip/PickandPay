@@ -128,7 +128,12 @@ export function generateShareSummary(
 
     if (result && result.itemBreakdown.length > 0) {
       for (const entry of result.itemBreakdown) {
-        const splitNote = entry.splitCount > 1 ? ` (÷${entry.splitCount})` : "";
+        const splitNote =
+          entry.splitCount > 1
+            ? ` (÷${entry.splitCount})`
+            : (entry.units ?? 1) > 1 && entry.unitPrice !== undefined
+              ? ` (${entry.units} × ${formatCurrency(entry.unitPrice, curr)})`
+              : "";
         lines.push(
           `   • ${entry.itemName}${splitNote}: ${formatCurrency(entry.amount, curr)}`
         );

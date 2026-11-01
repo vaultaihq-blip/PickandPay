@@ -594,10 +594,23 @@ ${t("host_now_you_payments")}`
           <Text style={styles.totalCardLabel}>Total bill</Text>
           <Text style={styles.totalCardAmount}>{formatCurrency(displayTotal, receipt.currency)}</Text>
           <View style={styles.totalDivider} />
-          <View style={styles.totalRow}>
-            <Text style={styles.totalRowLabel}>Service</Text>
-            <Text style={[styles.totalRowValue, globalCostsTotal === 0 && { color: MUTED }]}>{formatCurrency(globalCostsTotal, receipt.currency)}</Text>
-          </View>
+          {/* R2 — each charge under its own name (the one the host gave a
+              charge with no line); a discount shows as a minus. */}
+          {receipt.globalCosts.length > 0 ? (
+            receipt.globalCosts.map((cost) => (
+              <View key={cost.id} style={styles.totalRow}>
+                <Text style={styles.totalRowLabel}>{cost.name}</Text>
+                <Text style={styles.totalRowValue}>
+                  {cost.amount < 0 ? "−" : ""}{formatCurrency(Math.abs(cost.amount), receipt.currency)}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalRowLabel}>Service</Text>
+              <Text style={[styles.totalRowValue, { color: MUTED }]}>{formatCurrency(globalCostsTotal, receipt.currency)}</Text>
+            </View>
+          )}
           <View style={styles.totalRow}>
             <Text style={styles.totalRowLabel}>Tip</Text>
             <Text style={[styles.totalRowValue, tipTotal === 0 ? { color: MUTED } : { color: C.success }]}>{formatCurrency(tipTotal, receipt.currency)}</Text>
@@ -931,9 +944,11 @@ ${t("host_now_you_payments")}`
                         <Text style={[styles.itemRowAmount, { color: viewItemsParticipant.profile.color ?? C.primary }]}>
                           {formatCurrency(entry.amount, receipt.currency)}
                         </Text>
-                        {entry.splitCount > 1 && (
+                        {entry.splitCount > 1 ? (
                           <Text style={styles.itemRowSplit}>÷{entry.splitCount} of {formatCurrency(entry.itemTotal, receipt.currency)}</Text>
-                        )}
+                        ) : (entry.units ?? 1) > 1 && entry.unitPrice !== undefined ? (
+                          <Text style={styles.itemRowSplit}>{entry.units} × {formatCurrency(entry.unitPrice, receipt.currency)}</Text>
+                        ) : null}
                       </View>
                     </View>
                   ))

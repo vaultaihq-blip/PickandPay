@@ -36,12 +36,21 @@ export function PrintedTotalGapCard({ gap, answer, suggestion, formatMoney, onAn
   const under = gap.kind === "under";
   const defaultName = t(under ? "gap_charge_default" : "gap_discount_default");
   const [open, setOpen] = useState(suggestion !== null);
-  const [name, setName] = useState(defaultName);
+  // null = the host has not typed a name: the default of the CURRENT gap is
+  // used. Keeping the default in state froze it at mount — the card could
+  // mount while the gap was "over" (or none) and then save "Discount" for a
+  // charge (R2-2, 01-11-2026).
+  const [typedName, setTypedName] = useState<string | null>(null);
+  const name = typedName ?? defaultName;
 
-  // A new gap (the items changed) starts from the suggestion again.
+  // A new gap (the items changed) starts from the suggestion again; a new
+  // kind of gap also drops a name typed for the other kind.
   useEffect(() => {
     setOpen(suggestion !== null);
   }, [gap.kind, gap.amount, suggestion]);
+  useEffect(() => {
+    setTypedName(null);
+  }, [gap.kind]);
 
   if (gap.kind === "none") return null;
   const amount = formatMoney(gap.amount);
@@ -117,7 +126,7 @@ export function PrintedTotalGapCard({ gap, answer, suggestion, formatMoney, onAn
           <Text style={[styles.label, { color: RED.text }]}>{t("gap_name_label")}</Text>
           <TextInput
             value={name}
-            onChangeText={setName}
+            onChangeText={setTypedName}
             placeholder={defaultName}
             placeholderTextColor="#B91C1C99"
             maxLength={40}
