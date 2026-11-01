@@ -53,7 +53,7 @@ export function BreakdownCard({
   const curr = currency as Currency;
 
   const hasItems = (splitResult?.itemBreakdown.length ?? 0) > 0;
-  const hasCosts = (splitResult?.globalCostsShare ?? 0) > 0;
+  const hasCosts = (splitResult?.globalCostsShare ?? 0) !== 0;
   const hasTip = (splitResult?.tipShare ?? 0) > 0;
   const hasBreakdown = hasItems || hasCosts || hasTip;
 
@@ -183,15 +183,27 @@ export function BreakdownCard({
               </View>
             )}
 
-            {hasCosts && (
-              <View style={styles.tableRow}>
-                <Text style={[styles.itemName, { color: mutedColor }]}>Tax & fees share</Text>
-                <Text style={[styles.yourShare, { color: mutedColor }]}>
-                  +{formatCurrency(splitResult!.globalCostsShare, curr)}
-                </Text>
-                <View style={styles.itemTotalCell} />
-              </View>
-            )}
+            {/* R2 — each charge under its own name (the one the host gave a
+                charge with no line); a discount shows as a minus. */}
+            {hasCosts && splitResult!.costBreakdown?.length
+              ? splitResult!.costBreakdown.map((c) => (
+                  <View key={c.costId} style={styles.tableRow}>
+                    <Text style={[styles.itemName, { color: mutedColor }]}>{c.name}</Text>
+                    <Text style={[styles.yourShare, { color: mutedColor }]}>
+                      {c.amount < 0 ? "−" : "+"}{formatCurrency(Math.abs(c.amount), curr)}
+                    </Text>
+                    <View style={styles.itemTotalCell} />
+                  </View>
+                ))
+              : hasCosts && (
+                  <View style={styles.tableRow}>
+                    <Text style={[styles.itemName, { color: mutedColor }]}>Tax & fees share</Text>
+                    <Text style={[styles.yourShare, { color: mutedColor }]}>
+                      +{formatCurrency(splitResult!.globalCostsShare, curr)}
+                    </Text>
+                    <View style={styles.itemTotalCell} />
+                  </View>
+                )}
 
             {hasTip && (
               <View style={styles.tableRow}>

@@ -64,6 +64,9 @@ export interface GlobalCost {
   amount: number;
   type: GlobalCostType;
   splitByAll: true;
+  /** R2 — "proportional" splits by what each person picked (the charge or
+   *  discount with no line of its own); absent means equal, as before. */
+  split?: "equal" | "proportional";
   editable: boolean;
   status?: "included" | "suggested" | "mandatory" | "manual";
 }
@@ -214,5 +217,7 @@ export interface SplitResult {
     splitCount: number;
   }>;
   globalCostsShare: number;
+  /** R2 — this person's part of each charge, by name (a discount is negative). */
+  costBreakdown?: Array<{ costId: string; name: string; amount: number }>;
   tipShare: number;
 }

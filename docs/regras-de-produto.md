@@ -4,7 +4,7 @@ Estas regras são **obrigatórias**. Nenhuma pode ser alterada sem pedido explí
 - O servidor (Supabase) é sempre quem decide e quem garante cada regra. A app só mostra o resultado.
 - Uma app modificada não consegue contornar nenhuma delas.
 
-Estado a 29-10-2026: R1 a R9, com as decisões do D (o D.1 já aplicado). Os relatórios com os pormenores estão em `docs/relatorios/`.
+Estado a 01-11-2026: R1 a R9, com as decisões do D (o D.1 já aplicado) e a R2 alargada ao total impresso. Os relatórios com os pormenores estão em `docs/relatorios/`.
 
 ---
 
@@ -34,6 +34,12 @@ Estado a 29-10-2026: R1 a R9, com as decisões do D (o D.1 já aplicado). Os rel
 | **Itens sem dono:** o servidor não deixa finalizar se houver itens que ninguém escolheu. Mostra quais são. | Se um item fica sem dono, as partes não somam a fatura. |
 | **Itens partilhados:** só paga uma parte de um item partilhado quem também o escolheu. Se alguém é indicado como "partilha" mas não escolheu o item, o servidor recusa e mostra quem é. | **Ninguém paga o que não escolheu.** |
 | **Quem sai de um item partilhado:** a parte de quem saiu da sessão é dividida pelos que ficaram a partilhar esse item. | O item continua a ter de ser pago na totalidade, por quem o escolheu. |
+| **A divisão soma sempre o total impresso na fatura**, não a soma dos itens. "Total do talão" é sempre o total impresso. Não há "Grand total" sem explicação. | O grupo paga a conta que o restaurante cobra. No Oligark (30-10-2026), a divisão usou a soma dos itens (6.100 ₺) em vez do total impresso (6.700 ₺), e o grupo pagou 600 ₺ a menos. |
+| **Itens abaixo do total impresso, sem linha que explique a diferença:** a revisão mostra a diferença a vermelho com a pergunta **"É um encargo ou falta um item?"**. As respostas são "Adicionar item em falta" ou "É um encargo". Continuar fica desligado até o anfitrião responder. | Só pela aritmética, um encargo sem linha e um item que a leitura perdeu são iguais. Repartir um item perdido como encargo daria o total certo e as partes erradas. |
+| **Sugestão pré-escolhida:** quando há pistas, a resposta mais provável vem já escolhida, mas o anfitrião confirma sempre. As pistas são: as categorias de IVA impressas somam o total impresso e não os itens (como no Oligark); ou aparecem palavras como serviço, servis, service ou couvert. | Poupa trabalho quando a fatura dá a resposta, sem decidir pelo anfitrião. |
+| **Um encargo confirmado é repartido na proporção do que cada um escolheu**, e aparece na parte de cada um com o nome que o anfitrião lhe der (por omissão, "Encargo"). | Quem consumiu mais paga mais do encargo, e cada pessoa vê de onde vem o valor. |
+| **Itens acima do total impresso:** a pergunta passa a ser **"É um desconto ou um item a mais?"**, com o Continuar desligado até o anfitrião responder. Um desconto confirmado é repartido da mesma forma. | Pode ser um desconto sem linha ou um erro de leitura. Só o anfitrião, com o papel na mão, sabe qual. |
+| **O estado da fatura vem do parser.** Quando o parser diz que a fatura não bate certo, a app nunca mostra "os totais coincidem". Só o mostra depois de a diferença ter resposta do anfitrião. | A app dizia "os totais coincidem" porque comparava os itens com a soma deles próprios. |
 
 ## R3 + R7 — Sem créditos e entrada numa sessão
 

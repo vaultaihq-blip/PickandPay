@@ -133,14 +133,38 @@ export function calculateSplit(session: Session): Map<string, SplitResult> {
   }
 
   // ── 2. Global costs — equal split, exact remainder distribution ────────────
+  //      R2: a charge (or discount) with no line of its own is split in
+  //      proportion to what each person picked instead, by the same
+  //      largest-remainder method, so the parts still add up to the cent.
   if (totalParticipants > 0) {
+    const itemCents = new Map(totalCentsMap);
+    const pickedCents = participants.reduce((s, p) => s + (itemCents.get(p.userId) ?? 0), 0);
     for (const cost of receipt.globalCosts) {
       const costCents = toCents(cost.amount);
-      const perCents = Math.floor(costCents / totalParticipants);
-      const remainder = costCents - perCents * totalParticipants;
+      let shares: number[];
+      if (cost.split === "proportional" && pickedCents > 0) {
+        const sign = costCents < 0 ? -1 : 1;
+        const abs = Math.abs(costCents);
+        const exact = participants.map((p) => (abs * (itemCents.get(p.userId) ?? 0)) / pickedCents);
+        const floors = exact.map(Math.floor);
+        let rem = abs - floors.reduce((a, b) => a + b, 0);
+        const order = exact
+          .map((e, i) => [i, e - floors[i]] as [number, number])
+          .sort((a, b) => b[1] - a[1]);
+        for (const [idx] of order) {
+          if (rem <= 0) break;
+          floors[idx] += 1;
+          rem -= 1;
+        }
+        shares = floors.map((f) => sign * f);
+      } else {
+        const perCents = Math.floor(costCents / totalParticipants);
+        const remainder = costCents - perCents * totalParticipants;
+        shares = participants.map((_, i) => perCents + (i < remainder ? 1 : 0));
+      }
 
       participants.forEach((p, i) => {
-        const share = perCents + (i < remainder ? 1 : 0);
+        const share = shares[i];
         globalCentsCentsMap.set(
           p.userId,
           (globalCentsCentsMap.get(p.userId) ?? 0) + share
@@ -149,6 +173,10 @@ export function calculateSplit(session: Session): Map<string, SplitResult> {
           p.userId,
           (totalCentsMap.get(p.userId) ?? 0) + share
         );
+        if (share !== 0) {
+          const r = results.get(p.userId)!;
+          (r.costBreakdown ??= []).push({ costId: cost.id, name: cost.name, amount: fromCents(share) });
+        }
       });
     }
 

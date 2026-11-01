@@ -133,9 +133,14 @@ export function generateShareSummary(
           `   • ${entry.itemName}${splitNote}: ${formatCurrency(entry.amount, curr)}`
         );
       }
-      if (result.globalCostsShare > 0 || result.tipShare > 0) {
+      if (result.globalCostsShare !== 0 || result.tipShare > 0) {
         lines.push("   ——");
-        if (result.globalCostsShare > 0) {
+        // R2 — each charge under its own name; a discount shows as a minus.
+        if (result.costBreakdown?.length) {
+          for (const c of result.costBreakdown) {
+            lines.push(`   ${c.name}: ${c.amount < 0 ? "−" : "+"}${formatCurrency(Math.abs(c.amount), curr)}`);
+          }
+        } else if (result.globalCostsShare > 0) {
           lines.push(`   Tax & fees: +${formatCurrency(result.globalCostsShare, curr)}`);
         }
         if (result.tipShare > 0) {

@@ -406,8 +406,15 @@ export default function SelectionScreen() {
 
     if (session && receipt && receipt.globalCosts.length > 0) {
       const n = session.participants.length;
+      // R2 — a charge with no line of its own follows what each person
+      // picked (utils/splitter.ts); the others are split equally.
+      const billItems = allItems.reduce((s, i) => s + i.totalPrice, 0);
       if (n > 0) {
-        for (const cost of receipt.globalCosts) total += cost.amount / n;
+        for (const cost of receipt.globalCosts) {
+          total += cost.split === "proportional"
+            ? (billItems > 0 ? (cost.amount * personalItemsSubtotal) / billItems : cost.amount / n)
+            : cost.amount / n;
+        }
       }
     }
 
@@ -423,7 +430,7 @@ export default function SelectionScreen() {
     }
 
     return Math.round(total * 100) / 100;
-  }, [personalItemsSubtotal, receipt, session, isIndividualTip, tipContribution]);
+  }, [personalItemsSubtotal, allItems, receipt, session, isIndividualTip, tipContribution]);
 
   // ── Save selections to store (without Supabase) ──────────────────────────────
   const saveToStore = useCallback(() => {

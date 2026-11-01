@@ -940,12 +940,23 @@ ${t("host_now_you_payments")}`
                 ) : (
                   <Text style={styles.itemRowEmpty}>No individual items — bill split equally</Text>
                 )}
-                {(viewItemsSplitResult?.globalCostsShare ?? 0) > 0 && (
-                  <View style={styles.itemRow}>
-                    <Text style={styles.itemRowName}>Tax & fees share</Text>
-                    <Text style={[styles.itemRowAmount, { color: MUTED }]}>+{formatCurrency(viewItemsSplitResult!.globalCostsShare, receipt.currency)}</Text>
-                  </View>
-                )}
+                {/* R2 — each charge under its own name; a discount shows as a minus. */}
+                {(viewItemsSplitResult?.globalCostsShare ?? 0) !== 0 &&
+                  (viewItemsSplitResult!.costBreakdown?.length ? (
+                    viewItemsSplitResult!.costBreakdown.map((c) => (
+                      <View key={c.costId} style={styles.itemRow}>
+                        <Text style={styles.itemRowName}>{c.name}</Text>
+                        <Text style={[styles.itemRowAmount, { color: MUTED }]}>
+                          {c.amount < 0 ? "−" : "+"}{formatCurrency(Math.abs(c.amount), receipt.currency)}
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.itemRow}>
+                      <Text style={styles.itemRowName}>Tax & fees share</Text>
+                      <Text style={[styles.itemRowAmount, { color: MUTED }]}>+{formatCurrency(viewItemsSplitResult!.globalCostsShare, receipt.currency)}</Text>
+                    </View>
+                  ))}
                 {(viewItemsSplitResult?.tipShare ?? 0) > 0 && (
                   <View style={styles.itemRow}>
                     <Text style={styles.itemRowName}>Tip share</Text>

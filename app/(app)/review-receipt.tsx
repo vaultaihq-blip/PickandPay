@@ -23,10 +23,19 @@ import { buildReceiptGuidance, type ReceiptGuidance } from "@/lib/receipt-guidan
 import { GuidedTotalStep } from "@/components/receipt/guided/GuidedTotalStep";
 import { GuidedItemStep, type ItemField } from "@/components/receipt/guided/GuidedItemStep";
 import { GuidedClosingStep } from "@/components/receipt/guided/GuidedClosingStep";
+import { PrintedTotalGapCard } from "@/components/receipt/PrintedTotalGapCard";
+import {
+  answerHolds,
+  printedTotalGap,
+  suggestGapAnswer,
+  UNLINED_COST_ID,
+  withGapCost,
+  type GapAnswer,
+} from "@/lib/receipt/printedTotalGap";
+import { moneyToMajorNumber } from "@/lib/receipt/money";
 import { ItemCategory, ParsedReceipt, ReceiptItem } from "@/types";
 import { useSessionStore } from "@/store/sessionStore";
 import { useI18nStore } from "@/store/i18nStore";
-import { TranslationKey } from "@/constants/translations";
 import { formatCurrency } from "@/utils/formatter";
 import { styles } from "@/components/receipt/reviewReceiptStyles";
 import { supabase } from "@/lib/supabase";
@@ -89,7 +98,8 @@ function flattenItems(receipt: ParsedReceipt): EditableRow[] {
 function rebuildReceipt(
   original: ParsedReceipt,
   items: EditableRow[],
-  confirmedTotal: number | null = null
+  confirmedTotal: number | null = null,
+  gapAnswer: GapAnswer | null = null
 ): ParsedReceipt {
   const categories: ParsedReceipt["categories"] = {
     starters: [], mains: [], drinks: [], desserts: [], others: [],
@@ -110,14 +120,18 @@ function rebuildReceipt(
     } as ReceiptItem);
   }
   const userItemsTotal = Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100;
-  // Compare user's items against the subtotal (items only), not grand total (includes service/tax).
-  const subtotalTarget = original.validation.computedTotal ?? original.validation.receiptTotal;
+  // R2 — the receipt is checked against the printed total, items plus every
+  // charge (the answered gap included). It used to be checked against the
+  // items' own sum, which always "matched" (Oligark, 30-10-2026).
+  const globalCosts = withGapCost(original.globalCosts, gapAnswer);
   const receiptTotal = confirmedTotal ?? original.validation.receiptTotal;
-  const difference = Math.round((userItemsTotal - subtotalTarget) * 100) / 100;
+  const costsTotal = globalCosts.reduce((s, c) => s + c.amount, 0);
+  const difference = Math.round((userItemsTotal + costsTotal - receiptTotal) * 100) / 100;
   return {
     ...original,
     printed_total: confirmedTotal ?? original.printed_total,
     categories,
+    globalCosts,
     suggestedTips: [
       { percentage: 10, amount: Math.round(userItemsTotal * 0.1 * 100) / 100 },
       { percentage: 15, amount: Math.round(userItemsTotal * 0.15 * 100) / 100 },
@@ -132,24 +146,6 @@ function rebuildReceipt(
   };
 }
 
-function buildFixSuggestions(diff: number, t: (k: TranslationKey) => string, currency: string): string[] {
-  if (Math.abs(diff) <= STRICT_TOLERANCE) return [];
-  if (diff > 0) {
-    return [
-      `${t("review_fix_prefix")} ${diff.toFixed(2)} ${currency} ${t("review_fix_too_high")}`,
-      t("review_fix_dup"),
-      t("review_fix_qty_hint"),
-      t("review_fix_free_items"),
-    ];
-  }
-  return [
-    `${t("review_fix_prefix")} ${Math.abs(diff).toFixed(2)} ${currency} ${t("review_fix_too_low")}`,
-    t("review_fix_missing_items"),
-    t("review_fix_add_hint"),
-    t("review_fix_qty_hint2"),
-    t("review_fix_retry_scan"),
-  ];
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -193,10 +189,15 @@ export default function ReviewReceiptScreen() {
   const borderColor = isDark ? Colors.cardBorderDark : Colors.cardBorderLight;
   const cardColor = isDark ? Colors.cardDark : Colors.cardLight;
 
-  // subtotalTarget = items-only sum from OCR (before service charge / tax).
-  // Grand total (receiptTotal) is only used for the display row, not for validation.
-  const subtotalTarget = receipt?.validation.computedTotal ?? receipt?.validation.receiptTotal ?? 0;
-  const grandTotal = receipt?.validation.receiptTotal ?? subtotalTarget;
+  // R2 — what the items must reach: the printed total less the charges that
+  // have their own line (a gap answered earlier is not one of them). Never
+  // the items' own sum: that is what made every receipt "match".
+  const linedCosts = (receipt?.globalCosts ?? []).filter((c) => c.id !== UNLINED_COST_ID);
+  const printedParsed = receipt?.validation.receiptTotal ?? 0;
+  const subtotalTarget =
+    printedParsed > 0
+      ? Math.round((printedParsed - linedCosts.reduce((s, c) => s + (c.amount ?? 0), 0)) * 100) / 100
+      : receipt?.validation.computedTotal ?? 0;
   const currency = receipt?.currency ?? "EUR";
 
   const calculatedTotal = useMemo(
@@ -222,10 +223,33 @@ export default function ReviewReceiptScreen() {
     [currency]
   );
 
+  // Charges with their own line only; the answered gap is counted apart.
   const chargesSum = useMemo(
     () =>
-      Math.round((receipt?.globalCosts ?? []).reduce((s, c) => s + (c.amount ?? 0), 0) * 100) / 100,
+      Math.round(
+        (receipt?.globalCosts ?? [])
+          .filter((c) => c.id !== UNLINED_COST_ID)
+          .reduce((s, c) => s + (c.amount ?? 0), 0) * 100
+      ) / 100,
     [receipt]
+  );
+
+  // R2 — the host's answer to the gap. A receipt reviewed again keeps the
+  // answer it was saved with (the charge is already on it).
+  const [gapAnswer, setGapAnswer] = useState<GapAnswer | null>(() => {
+    const saved = receipt?.globalCosts.find((c) => c.id === UNLINED_COST_ID);
+    if (!saved) return null;
+    return { answer: saved.amount >= 0 ? "charge" : "discount", name: saved.name, amount: Math.abs(saved.amount) };
+  });
+
+  // Clues for the suggested answer: the receipt lines no item or charge claimed.
+  const gapClueLines = useMemo(
+    () =>
+      (useCanonicalReceiptStore.getState().receipt?.unresolvedMonetaryLines ?? []).map((l) => ({
+        text: l.text ?? "",
+        amount: moneyToMajorNumber(l.amount),
+      })),
+    []
   );
 
   // FIX 45 — computed ONCE, from the analysis as it arrived. Recomputing it
@@ -239,9 +263,7 @@ export default function ReviewReceiptScreen() {
         items,
         printedTotal: receipt?.validation.receiptTotal ?? null,
         itemsSum: receipt?.validation.computedTotal ?? 0,
-        chargesSum: Math.round(
-          (receipt?.globalCosts ?? []).reduce((s, c) => s + (c.amount ?? 0), 0) * 100
-        ) / 100,
+        chargesSum,
       },
       (value) => formatCurrency(value, (receipt?.currency ?? "EUR") as any)
     )
@@ -296,14 +318,26 @@ export default function ReviewReceiptScreen() {
     return m;
   }, [validation]);
 
-  const totalDiff = calculatedTotal - subtotalTarget;
-  // FIX 44 — editing must never be refused for not reconciling ("a app pode
-  // mostrar que a soma não bate, não pode recusar"). The Continue button is
-  // always enabled (see handleContinue and the JSX below); hasBlockingIssues
-  // only drives the informational banners, unchanged from before.
-  const hasBlockingIssues = !validation.isValid;
-  const isWarning = validation.isWarning;
-  const fixSuggestions = useMemo(() => buildFixSuggestions(totalDiff, t, currency), [totalDiff, t, currency]);
+  // R2 — the gap to the printed total (the one the host confirmed), and
+  // whether the host has answered it. Replaces FIX 44's "Continue is always
+  // enabled": Continue now waits for the answer, which the host can always
+  // give, so nobody is trapped (the owner's rule, 01-11-2026).
+  const gap = printedTotalGap(calculatedTotal, chargesSum, confirmedTotal > 0 ? confirmedTotal : null);
+  const gapAnswered = answerHolds(gap, gapAnswer);
+  const gapOk = gap.kind === "none" || gapAnswered;
+  const noTotal = !(confirmedTotal > 0);
+  const gapSuggestion = useMemo(
+    () =>
+      suggestGapAnswer(gap, {
+        texts: gapClueLines.map((l) => l.text),
+        amounts: gapClueLines.map((l) => l.amount),
+        printedTotal: confirmedTotal,
+        itemsSum: calculatedTotal,
+      }),
+    [gap.kind, gap.amount, gapClueLines, confirmedTotal, calculatedTotal]
+  );
+  const answeredSigned = gapAnswered ? (gapAnswer!.answer === "charge" ? gapAnswer!.amount : -gapAnswer!.amount) : 0;
+  const totalDiff = Math.round((calculatedTotal + chargesSum + answeredSigned - confirmedTotal) * 100) / 100;
 
   // FIX 44 — the three-field rule: quantity x unitPrice = total. Whichever
   // field the user just edited keeps its own raw text exactly as typed; the
@@ -376,10 +410,22 @@ export default function ReviewReceiptScreen() {
 
   const handleContinue = async () => {
     if (savingRef.current) return;
+    if (!gapOk) {
+      console.log(`[review-receipt] Continue refused: R2 gap ${gap.kind} ${gap.amount} not answered`);
+      return;
+    }
     // FIX 45 — the total the user confirmed wins over whatever was parsed.
     // Zero means they left it blank; in that case keep the original rather
     // than writing a total of 0.00 onto the receipt.
-    const rebuilt = rebuildReceipt(receipt, items, confirmedTotal > 0 ? confirmedTotal : null);
+    const rebuilt = rebuildReceipt(
+      receipt,
+      items,
+      confirmedTotal > 0 ? confirmedTotal : null,
+      gapAnswered ? gapAnswer : null
+    );
+    console.log(
+      `[review-receipt] R2: items ${calculatedTotal} + charges ${chargesSum} + gap ${answeredSigned} = printed ${confirmedTotal} (${rebuilt.validation.status})`
+    );
     setReceipt(rebuilt);
 
     const liveId = currentSession?.id;
@@ -527,6 +573,19 @@ export default function ReviewReceiptScreen() {
             confirmedTotal={confirmedTotal}
             difference={closingDifference}
             formatMoney={formatMoney}
+            gapCard={
+              <PrintedTotalGapCard
+                gap={gap}
+                answer={gapAnswer}
+                suggestion={gapSuggestion}
+                formatMoney={formatMoney}
+                onAnswer={setGapAnswer}
+                onAddMissing={() => { addItem(); setShowAllItems(true); }}
+                onReviewItems={() => setShowAllItems(true)}
+              />
+            }
+            gapAnswer={gapAnswered ? gapAnswer : null}
+            canAccept={gapOk}
             onAccept={handleContinue}
             onReviewAgain={reviewAgain}
             onBack={() => (attentionQueue.length > 0 ? goToStep("items") : goToStep("total"))}
@@ -578,51 +637,9 @@ export default function ReviewReceiptScreen() {
             </View>
           </View>
 
-          {/* Warning state — small discrepancy, can continue */}
-          {isWarning && !hasBlockingIssues && (
-            <View style={styles.warningBox}>
-              <View style={styles.warningBoxHeader}>
-                <Ionicons name="warning" size={18} color={Colors.warning} />
-                <Text style={styles.warningBoxTitle}>Small discrepancy</Text>
-              </View>
-              <Text style={styles.warningBoxDesc}>
-                Items sum to{" "}
-                <Text style={styles.warningBoxAmount}>{formatCurrency(calculatedTotal, currency as any)}</Text>
-                {" "}but receipt subtotal is{" "}
-                <Text style={styles.warningBoxAmount}>{formatCurrency(subtotalTarget, currency as any)}</Text>
-                {" "}(diff: {totalDiff > 0 ? "+" : ""}{formatCurrency(Math.abs(totalDiff), currency as any)}).
-              </Text>
-              <Text style={styles.warningBoxHint}>
-                Likely missing add-ons or rounding. You can continue or retry the scan for better accuracy.
-              </Text>
-            </View>
-          )}
-
-          {/* Discrepancy state — informational only, never blocks Continue
-              (FIX 44 — "a app pode mostrar que a soma não bate, não pode
-              recusar"). Same box as before, just no longer a refusal. */}
-          {hasBlockingIssues && (
-            <View style={styles.blockedBox}>
-              <View style={styles.blockedHeader}>
-                <Ionicons name="warning" size={18} color="#DC2626" />
-                <Text style={styles.blockedTitle}>Items don't add up</Text>
-              </View>
-              <Text style={styles.blockedDesc}>
-                Items must add up to exactly{" "}
-                <Text style={styles.blockedAmount}>{formatCurrency(subtotalTarget, currency as any)}</Text>.
-                {" "}Current total: <Text style={styles.blockedAmount}>{formatCurrency(calculatedTotal, currency as any)}</Text>.
-              </Text>
-              {fixSuggestions.length > 0 && (
-                <View style={styles.fixSuggestions}>
-                  {fixSuggestions.map((s, i) => (
-                    <Text key={i} style={[styles.fixSuggestionLine, i === 0 && styles.fixSuggestionHead]}>
-                      {s}
-                    </Text>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
+          {/* R2 — the gap to the printed total is asked in the card next to
+              the totals below; the old "doesn't add up" boxes compared the
+              items with their own sum and are gone. */}
 
           {/* Per-item errors */}
           {errorMap.size > 0 && (
@@ -817,38 +834,58 @@ export default function ReviewReceiptScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Totals — prominent, shows match or mismatch */}
+          {/* R2 — the question about the gap, right above the totals it explains. */}
+          <PrintedTotalGapCard
+            gap={gap}
+            answer={gapAnswer}
+            suggestion={gapSuggestion}
+            formatMoney={formatMoney}
+            onAnswer={setGapAnswer}
+            onAddMissing={addItem}
+            onReviewItems={() => scrollViewRef.current?.scrollTo({ y: 0, animated: true })}
+          />
+
+          {/* Totals — items, charges, the answered gap, and the printed
+              total ("Total do talão" is always the printed one). "Os totais
+              coincidem" only when they really do, gap answered included. */}
           <View style={[
             styles.totalCard,
-            { backgroundColor: hasBlockingIssues ? "#FEF2F2" : cardColor, borderColor: hasBlockingIssues ? "#FCA5A5" : borderColor },
+            { backgroundColor: gapOk ? cardColor : "#FEF2F2", borderColor: gapOk ? borderColor : "#FCA5A5" },
           ]}>
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: mutedColor }]}>{t("review_receipt_items_sum")}</Text>
-              <Text style={[styles.totalValue, { color: hasBlockingIssues ? "#DC2626" : textColor }]}>
+              <Text style={[styles.totalLabel, { color: gapOk ? mutedColor : "#7F1D1D" }]}>{t("review_receipt_items_sum")}</Text>
+              <Text style={[styles.totalValue, { color: gapOk ? textColor : "#DC2626" }]}>
                 {formatCurrency(calculatedTotal, currency as any)}
               </Text>
             </View>
-            <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
-            <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: mutedColor }]}>{t("review_receipt_total_label")}</Text>
-              <Text style={[styles.totalValue, { color: textColor }]}>
-                {formatCurrency(subtotalTarget, currency as any)}
-              </Text>
-            </View>
-            {grandTotal !== subtotalTarget && (
-              <>
-                <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
-                <View style={styles.totalRow}>
-                  <Text style={[styles.totalLabel, { color: mutedColor }]}>Grand total</Text>
-                  <Text style={[styles.totalValue, { color: mutedColor }]}>
-                    {formatCurrency(grandTotal, currency as any)}
-                  </Text>
-                </View>
-              </>
+            {chargesSum !== 0 && (
+              <View style={styles.totalRow}>
+                <Text style={[styles.totalLabel, { color: gapOk ? mutedColor : "#7F1D1D" }]}>{t("gap_lined_charges")}</Text>
+                <Text style={[styles.totalValue, { color: gapOk ? textColor : "#7F1D1D" }]}>
+                  {formatCurrency(chargesSum, currency as any)}
+                </Text>
+              </View>
+            )}
+            {gapAnswered && (
+              <View style={styles.totalRow}>
+                <Text style={[styles.totalLabel, { color: mutedColor }]}>{answeredSigned > 0 ? "+" : "−"} {gapAnswer!.name}</Text>
+                <Text style={[styles.totalValue, { color: textColor }]}>
+                  {formatCurrency(Math.abs(answeredSigned), currency as any)}
+                </Text>
+              </View>
             )}
             <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
             <View style={styles.totalRow}>
-              {!hasBlockingIssues ? (
+              <Text style={[styles.totalLabel, { color: gapOk ? mutedColor : "#7F1D1D", fontWeight: "700" }]}>{t("review_receipt_total_label")}</Text>
+              <Text style={[styles.totalValue, { color: gapOk ? textColor : "#7F1D1D" }]}>
+                {noTotal ? "—" : formatCurrency(confirmedTotal, currency as any)}
+              </Text>
+            </View>
+            <View style={[styles.totalDivider, { backgroundColor: borderColor }]} />
+            <View style={styles.totalRow}>
+              {noTotal ? (
+                <Text style={[styles.totalLabel, { color: mutedColor }]}>{t("gap_no_total")}</Text>
+              ) : gapOk ? (
                 <>
                   <View style={styles.matchRow}>
                     <Ionicons name="checkmark-circle" size={15} color="#10B981" />
@@ -889,18 +926,15 @@ export default function ReviewReceiptScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[
-              styles.continueBtn,
-              (isWarning || hasBlockingIssues) && styles.continueBtnWarning,
-            ]}
+            style={[styles.continueBtn, !gapOk && { opacity: 0.45 }]}
             onPress={handleContinue}
+            disabled={!gapOk}
+            accessibilityState={{ disabled: !gapOk }}
             activeOpacity={0.85}
           >
-            {!isWarning && !hasBlockingIssues ? (
-              <Text style={styles.continueBtnText}>{t("review_receipt_looks_good")}</Text>
-            ) : (
-              <Text style={styles.continueBtnText}>Continue anyway →</Text>
-            )}
+            <Text style={styles.continueBtnText}>
+              {gapOk ? t("review_receipt_looks_good") : t("gap_continue_blocked")}
+            </Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

@@ -56,17 +56,21 @@ export function PrimaryButton({
   label,
   onPress,
   tone = "primary",
+  disabled = false,
 }: {
   label: string;
   onPress: () => void;
   tone?: "primary" | "warning" | "success";
+  disabled?: boolean;
 }) {
   const background =
     tone === "warning" ? Colors.warning : tone === "success" ? Colors.success : Colors.primary;
   return (
     <TouchableOpacity
-      style={[styles.primaryBtn, { backgroundColor: background }]}
+      style={[styles.primaryBtn, { backgroundColor: background }, disabled && { opacity: 0.45 }]}
       onPress={onPress}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
       activeOpacity={0.85}
     >
       <Text style={styles.primaryBtnText}>{label}</Text>
