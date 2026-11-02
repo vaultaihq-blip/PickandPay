@@ -33,7 +33,8 @@ import {
   type GapAnswer,
 } from "@/lib/receipt/printedTotalGap";
 import { moneyToMajorNumber } from "@/lib/receipt/money";
-import { ItemCategory, ParsedReceipt, ReceiptItem } from "@/types";
+import { Currency, ItemCategory, ParsedReceipt, ReceiptItem } from "@/types";
+import { CurrencyCard } from "@/components/receipt/CurrencyCard";
 import { useSessionStore } from "@/store/sessionStore";
 import { useI18nStore } from "@/store/i18nStore";
 import { formatCurrency } from "@/utils/formatter";
@@ -198,7 +199,11 @@ export default function ReviewReceiptScreen() {
     printedParsed > 0
       ? Math.round((printedParsed - linedCosts.reduce((s, c) => s + (c.amount ?? 0), 0)) * 100) / 100
       : receipt?.validation.computedTotal ?? 0;
-  const currency = receipt?.currency ?? "EUR";
+  // Currency point: the host's choice wins; a currency the parser gave and
+  // the app doesn't know (currencyAssumed) must be answered before Continue.
+  const [chosenCurrency, setChosenCurrency] = useState<Currency | null>(null);
+  const currency: Currency = chosenCurrency ?? receipt?.currency ?? "EUR";
+  const currencyOk = !receipt?.currencyAssumed || chosenCurrency !== null;
 
   const calculatedTotal = useMemo(
     () => Math.round(items.reduce((s, i) => s + i.totalPrice, 0) * 100) / 100,
@@ -414,15 +419,22 @@ export default function ReviewReceiptScreen() {
       console.log(`[review-receipt] Continue refused: R2 gap ${gap.kind} ${gap.amount} not answered`);
       return;
     }
+    if (!currencyOk) {
+      console.log("[review-receipt] Continue refused: the currency is not known yet");
+      return;
+    }
     // FIX 45 — the total the user confirmed wins over whatever was parsed.
     // Zero means they left it blank; in that case keep the original rather
     // than writing a total of 0.00 onto the receipt.
-    const rebuilt = rebuildReceipt(
+    const { currencyAssumed: _assumed, ...rebuiltReceipt } = rebuildReceipt(
       receipt,
       items,
       confirmedTotal > 0 ? confirmedTotal : null,
       gapAnswered ? gapAnswer : null
     );
+    // Currency point: the receipt keeps the currency the host saw (and chose).
+    const rebuilt: ParsedReceipt = { ...rebuiltReceipt, currency };
+    console.log(`[review-receipt] currency: ${currency}${chosenCurrency ? " (chosen by the host)" : ""}`);
     console.log(
       `[review-receipt] R2: items ${calculatedTotal} + charges ${chargesSum} + gap ${answeredSigned} = printed ${confirmedTotal} (${rebuilt.validation.status})`
     );
@@ -531,6 +543,18 @@ export default function ReviewReceiptScreen() {
               onChangeTotal={setConfirmedTotalText}
               missingTotal={guidance.missingTotal}
               currencyLabel={currency}
+              currencyCard={
+                <CurrencyCard
+                  currency={currency}
+                  ask={!currencyOk}
+                  onChoose={setChosenCurrency}
+                  textColor={textColor}
+                  mutedColor={mutedColor}
+                  cardColor={cardColor}
+                  borderColor={borderColor}
+                />
+              }
+              confirmDisabled={!currencyOk}
               onConfirm={afterTotal}
               onBack={() => router.back()}
             />
@@ -585,7 +609,7 @@ export default function ReviewReceiptScreen() {
               />
             }
             gapAnswer={gapAnswered ? gapAnswer : null}
-            canAccept={gapOk}
+            canAccept={gapOk && currencyOk}
             onAccept={handleContinue}
             onReviewAgain={reviewAgain}
             onBack={() => (attentionQueue.length > 0 ? goToStep("items") : goToStep("total"))}
@@ -834,6 +858,17 @@ export default function ReviewReceiptScreen() {
             </TouchableOpacity>
           )}
 
+          {/* Currency point — the receipt's currency; a question when it is not known. */}
+          <CurrencyCard
+            currency={currency}
+            ask={!currencyOk}
+            onChoose={setChosenCurrency}
+            textColor={textColor}
+            mutedColor={mutedColor}
+            cardColor={cardColor}
+            borderColor={borderColor}
+          />
+
           {/* R2 — the question about the gap, right above the totals it explains. */}
           <PrintedTotalGapCard
             gap={gap}
@@ -926,14 +961,14 @@ export default function ReviewReceiptScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.continueBtn, !gapOk && { opacity: 0.45 }]}
+            style={[styles.continueBtn, !(gapOk && currencyOk) && { opacity: 0.45 }]}
             onPress={handleContinue}
-            disabled={!gapOk}
-            accessibilityState={{ disabled: !gapOk }}
+            disabled={!(gapOk && currencyOk)}
+            accessibilityState={{ disabled: !(gapOk && currencyOk) }}
             activeOpacity={0.85}
           >
             <Text style={styles.continueBtnText}>
-              {gapOk ? t("review_receipt_looks_good") : t("gap_continue_blocked")}
+              {!currencyOk ? t("currency_continue_blocked") : gapOk ? t("review_receipt_looks_good") : t("gap_continue_blocked")}
             </Text>
           </TouchableOpacity>
         </View>

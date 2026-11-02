@@ -28,7 +28,7 @@ import { SelectableItem, SelectorInfo } from "@/components/selection/SelectableI
 import { SharedItemModal } from "@/components/selection/SharedItemModal";
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
-import { formatCurrency } from "@/utils/formatter";
+import { formatCurrency, getCurrencySymbol } from "@/utils/formatter";
 import { ReceiptItem, ItemSelection } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showLeaveWriteError, showWriteError, withTimeout, WriteError } from "@/lib/checkedWrite";
@@ -890,14 +890,8 @@ export default function SelectionScreen() {
     }
   };
 
-  const currencySymbol =
-    receipt?.currency === "EUR"
-      ? "€"
-      : receipt?.currency === "GBP"
-      ? "£"
-      : receipt?.currency === "CAD"
-      ? "C$"
-      : "$";
+  // The receipt's own symbol (₺ for TRY), not one of four guessed here.
+  const currencySymbol = receipt ? getCurrencySymbol(receipt.currency) : "";
 
   if (!session || !receipt || !activeParticipant) {
     // FIX 46 — "Session not found" collapsed three distinct causes into one

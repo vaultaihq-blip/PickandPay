@@ -1,6 +1,10 @@
+import type { CurrencyCode } from "@/lib/receipt/money";
+
 // ─── Core Enums / Unions ──────────────────────────────────────────────────────
 
-export type Currency = "EUR" | "USD" | "CAD" | "GBP" | "CNY";
+// The receipt's own currency (ISO 4217), any the app knows — never narrowed
+// to a few and replaced by EUR (currency point, 02-11-2026).
+export type Currency = CurrencyCode;
 
 export type ItemCategory =
   | "starters"
@@ -85,6 +89,9 @@ export interface ParsedReceipt {
   restaurant: string;
   date?: string;
   currency: Currency;
+  // The parser gave no currency the app knows: the review asks the host, and
+  // the receipt is not accepted until it is answered. Cleared on answer.
+  currencyAssumed?: boolean;
   tax_mode?: TaxMode;
   printed_total?: number;
   ocr_passes?: number;

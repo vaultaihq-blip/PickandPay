@@ -1091,7 +1091,7 @@ export default function ReviewScreen() {
                 </Text>
                 {group.components.slice(0, 5).map((c, ci) => (
                   <Text key={ci} style={[styles.menuGroupChild, { color: mutedColor }]}>
-                    {ci === group.components.length - 1 || ci === 4 ? "└─" : "├─"} {c.name} ({formatCurrency(c.unitPrice, receipt!.currency)} → €0.00)
+                    {ci === group.components.length - 1 || ci === 4 ? "└─" : "├─"} {c.name} ({formatCurrency(c.unitPrice, receipt!.currency)} → {formatCurrency(0, receipt!.currency)})
                   </Text>
                 ))}
               </View>

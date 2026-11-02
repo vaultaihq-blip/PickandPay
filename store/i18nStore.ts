@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { translations, Language, TranslationKey } from "@/constants/translations";
+import { setMoneyLanguage } from "@/utils/formatter";
 
 const LANG_KEY = "app_language";
 
@@ -20,6 +21,7 @@ export const useI18nStore = create<I18nState>((set, get) => ({
   },
 
   setLanguage: async (lang: Language) => {
+    setMoneyLanguage(lang); // amounts: "6.700,00 ₺" in pt, "₺6,700.00" in en
     set({ language: lang });
     await AsyncStorage.setItem(LANG_KEY, lang);
   },
@@ -27,6 +29,7 @@ export const useI18nStore = create<I18nState>((set, get) => ({
   loadLanguage: async () => {
     const stored = await AsyncStorage.getItem(LANG_KEY);
     if (stored && stored in translations) {
+      setMoneyLanguage(stored);
       set({ language: stored as Language });
     }
   },

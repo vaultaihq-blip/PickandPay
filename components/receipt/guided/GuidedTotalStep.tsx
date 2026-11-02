@@ -24,6 +24,10 @@ interface Props {
   /** True when the receipt printed no total the parser could identify. */
   missingTotal: boolean;
   currencyLabel: string;
+  /** Currency point: the receipt's currency, above the total (CurrencyCard). */
+  currencyCard?: React.ReactNode;
+  /** True while the currency is not known: the total can't be confirmed yet. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onBack: () => void;
 }
@@ -35,6 +39,8 @@ export function GuidedTotalStep({
   onChangeTotal,
   missingTotal,
   currencyLabel,
+  currencyCard,
+  confirmDisabled = false,
   onConfirm,
   onBack,
 }: Props) {
@@ -50,6 +56,7 @@ export function GuidedTotalStep({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {currencyCard}
         <View style={[shell.card, { backgroundColor: cardColor, borderColor }]}>
           <View style={styles.headlineRow}>
             <Ionicons name="alert-circle" size={20} color={Colors.warning} />
@@ -97,7 +104,7 @@ export function GuidedTotalStep({
 
       <View style={[shell.actions, { borderTopColor: borderColor }]}>
         <SecondaryButton label="Atrás" onPress={onBack} />
-        <PrimaryButton label="Confirmar total" onPress={onConfirm} />
+        <PrimaryButton label="Confirmar total" onPress={onConfirm} disabled={confirmDisabled} />
       </View>
     </>
   );

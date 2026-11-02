@@ -1,27 +1,76 @@
 import { Currency, Session, SplitResult } from "@/types";
+import { currencyExponent } from "@/lib/receipt/money";
 
 // ─── Currency Formatting ───────────────────────────────────────────────────────
+//
+// Currency point (02-11-2026): every screen shows the receipt's own currency
+// (₺ for a Turkish receipt, never € by default), with that currency's
+// decimals and the separators of the app's language: "6.700,00 ₺" in
+// Portuguese, "₺6,700.00" in English. The payment screen showed "6700.00€".
 
-const CURRENCY_SYMBOLS: Record<Currency, string> = {
+const CURRENCY_SYMBOLS: Record<string, string> = {
   EUR: "€",
   USD: "$",
   CAD: "C$",
   GBP: "£",
   CNY: "¥",
+  JPY: "¥",
+  AUD: "A$",
+  NZD: "NZ$",
+  HKD: "HK$",
+  SGD: "S$",
+  TWD: "NT$",
+  BRL: "R$",
+  MXN: "MX$",
+  TRY: "₺",
+  INR: "₹",
+  KRW: "₩",
+  THB: "฿",
+  VND: "₫",
+  PHP: "₱",
+  ILS: "₪",
+  UAH: "₴",
+  GEL: "₾",
+  PLN: "zł",
+  CZK: "Kč",
+  HUF: "Ft",
+  SEK: "kr",
+  NOK: "kr",
+  DKK: "kr",
+  ISK: "kr",
+  ZAR: "R",
 };
 
+// The rest show their ISO code ("CHF 12.50", "12,50 CHF").
 export function getCurrencySymbol(currency: Currency): string {
   return CURRENCY_SYMBOLS[currency] ?? currency;
 }
 
-export function formatCurrency(amount: number, currency: Currency): string {
-  const symbol = getCurrencySymbol(currency);
-  const formatted = amount.toFixed(2);
-  // USD and CAD: symbol before ($61.40 / C$61.40)
-  // EUR and GBP: symbol after (61.40€ / 61.40£)
-  return currency === "USD" || currency === "CAD" || currency === "CNY"
-    ? `${symbol}${formatted}`
-    : `${formatted}${symbol}`;
+// The app's language decides the separators; set by the i18n store.
+// A no-break space: "6.700,00 ₺" never wraps between the number and the sign.
+const NBSP = "\u00A0";
+type MoneyStyle = { group: string; decimal: string; symbolFirst: boolean };
+const STYLE_BY_LANGUAGE: Record<string, MoneyStyle> = {
+  en: { group: ",", decimal: ".", symbolFirst: true },
+  zh: { group: ",", decimal: ".", symbolFirst: true },
+  pt: { group: ".", decimal: ",", symbolFirst: false },
+  es: { group: ".", decimal: ",", symbolFirst: false },
+  fr: { group: NBSP, decimal: ",", symbolFirst: false },
+};
+let moneyStyle: MoneyStyle = STYLE_BY_LANGUAGE.en;
+
+export function setMoneyLanguage(language: string): void {
+  moneyStyle = STYLE_BY_LANGUAGE[language] ?? STYLE_BY_LANGUAGE.en;
+}
+
+// Currencies with no minor unit (JPY, KRW, …) show no decimals.
+function decimalsFor(currency: Currency): number {
+  return currencyExponent(currency);
+}
+
+// "6700" → "6.700" with the language's group mark.
+function groupThousands(whole: string, group: string): string {
+  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, group);
 }
 
 export function formatCurrencyParts(
@@ -29,8 +78,17 @@ export function formatCurrencyParts(
   currency: Currency
 ): { symbol: string; whole: string; decimal: string } {
   const symbol = getCurrencySymbol(currency);
-  const [whole, decimal] = amount.toFixed(2).split(".");
-  return { symbol, whole, decimal };
+  const [whole, decimal = ""] = Math.abs(amount).toFixed(decimalsFor(currency)).split(".");
+  return { symbol, whole: (amount < 0 ? "-" : "") + groupThousands(whole, moneyStyle.group), decimal };
+}
+
+export function formatCurrency(amount: number, currency: Currency): string {
+  const { symbol, whole, decimal } = formatCurrencyParts(Math.abs(amount), currency);
+  const number = decimal ? `${whole}${moneyStyle.decimal}${decimal}` : whole;
+  const minus = amount < 0 && Number(whole.replace(/\D/g, "") + decimal) > 0 ? "-" : "";
+  // A code (CHF) needs a space next to the number; a sign ($, €) only after it.
+  if (moneyStyle.symbolFirst) return minus + (/^[A-Z]{3}$/.test(symbol) ? `${symbol} ${number}` : `${symbol}${number}`);
+  return `${minus}${number}${NBSP}${symbol}`;
 }
 
 // ─── Date Formatting ───────────────────────────────────────────────────────────

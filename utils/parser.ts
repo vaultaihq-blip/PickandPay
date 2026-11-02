@@ -100,7 +100,9 @@ export function normalizeReceiptItem(raw: Partial<ReceiptItem>): ReceiptItem {
 }
 
 export function normalizeReceipt(raw: Partial<ParsedReceipt>): ParsedReceipt {
+  // No currency at all: EUR only as a placeholder, flagged so the review asks.
   const currency = raw.currency ?? "EUR";
+  const currencyAssumed = raw.currencyAssumed === true || !raw.currency;
   const taxMode = detectTaxMode(currency, raw);
 
   const categories = raw.categories ?? {
@@ -186,6 +188,7 @@ export function normalizeReceipt(raw: Partial<ParsedReceipt>): ParsedReceipt {
     restaurant: raw.restaurant ?? "Unknown Restaurant",
     date: raw.date,
     currency,
+    ...(currencyAssumed ? { currencyAssumed: true } : {}),
     tax_mode: taxMode,
     printed_total: printedTotal,
     peopleCountDetected: raw.peopleCountDetected,

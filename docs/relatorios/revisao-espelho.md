@@ -266,3 +266,87 @@ São 3 testes novos. O `test:receipt` passa 86/86.
 
 - O total impresso (R2) está feito na app e falta testar no telemóvel.
 - Seguem-se a moeda e os avisos falsos.
+
+---
+
+## Moeda: feito a 2026-11-02
+
+Só mexe na app. Não há nada em produção nem no parser.
+
+### O que mudou
+- **A fatura fica com a moeda dela.**
+  - A app passa a conhecer 46 moedas ISO 4217 (`lib/receipt/money.ts`), em
+    vez de 12, com TRY, INR, CHF, PLN e outras.
+  - Lê também os símbolos ₺ e TL, ₹, ₩, ฿, ₪, zł, Kč e Ft.
+  - A fatura da app deixou de trocar para EUR tudo o que não fosse EUR, USD,
+    CAD ou GBP (`lib/receipt/adapter.ts`).
+- **Quando há dúvida, pergunta ao anfitrião.** Se o parser não der moeda, ou
+  der uma que a app não conhece, a fatura fica marcada (`currencyAssumed`).
+  - A revisão mostra o cartão vermelho "Qual é a moeda desta fatura?".
+  - O cartão tem as moedas mais comuns e o campo "Outra (ex.: CHF)".
+  - "Confirmar total" e "Continuar" ficam desligados até haver resposta:
+    "Escolhe a moeda para continuar".
+- **O anfitrião pode sempre corrigir.**
+  - Numa fatura com moeda conhecida, a revisão mostra "Moeda: TRY (₺) ·
+    Alterar", no passo 1 e na lista completa.
+  - A moeda escolhida é a que fica gravada na sessão.
+  - Log: `[review-receipt] currency chosen by the host: …`.
+- **Um só formato em todos os ecrãs** (`utils/formatter.ts`):
+  - a moeda da fatura, com as casas decimais dela (o JPY não tem);
+  - os separadores da língua da app: "6.700,00 ₺" em português, espanhol e
+    francês, e "₺6,700.00" em inglês e chinês;
+  - o ecrã de pagamentos mostrava "6700.00€";
+  - um valor negativo fica "-5,00 €", e uma moeda sem símbolo fica
+    "12,50 CHF".
+- **Símbolos escolhidos à mão:**
+  - a seleção escolhia entre €, £, C$ e $, e agora usa o símbolo da fatura;
+  - na revisão antiga, "→ €0.00" passa a usar a moeda da fatura.
+
+### Verificação no corpus
+São as mesmas leituras do parser, sem OCR novo: as 11 do FIX 43 e a do Oligark.
+Passaram pelo caminho da app, com o código de antes (commit `6cd3ed2`) e com o
+de agora.
+
+| Fatura | Parser | App antes → agora | Total mostrado antes → agora |
+|---|---|---|---|
+| Augustiner | EUR | EUR → EUR | 96.50€ → 96,50 € |
+| Mad God | EUR | EUR → EUR | 363.55€ → 363,55 € |
+| Quebra Mar | EUR | EUR → EUR | 300.25€ → 300,25 € |
+| Ramires | EUR | EUR → EUR | 76.20€ → 76,20 € |
+| Sulbarreiro | EUR | EUR → EUR | 8.25€ → 8,25 € |
+| Buca di Beppo, Hollywood Cafe, Zoca | USD | USD → USD | $109.28 → 109,28 $ |
+| Mademoiselle, Pai | CAD | CAD → CAD | C$376.97 → 376,97 C$ |
+| VRO Bengaluru | INR | **EUR → INR** | 5226.00€ → 5.226,00 ₹ |
+| Oligark | TRY | **EUR → TRY** | 6700.00€ → 6.700,00 ₺ |
+
+**0 diferenças** em itens, somas, totais e estado, nas 12 faturas.
+
+### Testes automáticos
+`npm run test:receipt` passa 102/102. Os 7 testes novos estão em
+`lib/receipt/__tests__/currency.test.ts`:
+- TRY continua TRY;
+- ₺ e TL são lidos como TRY;
+- uma moeda desconhecida ou em falta fica marcada para o anfitrião;
+- os valores não mudam com a moeda;
+- os formatos em português e em inglês;
+- o JPY sem cêntimos;
+- o sinal negativo.
+
+### Fora do âmbito, não corrigido (é o parser)
+- `parse-receipt/index.ts:614`: quando o modelo não devolve moeda, o parser
+  responde `EUR`. A app não consegue distinguir isso de um EUR verdadeiro.
+- Por isso o "Alterar" está sempre visível na revisão.
+- Para a app perguntar também nesse caso, o parser teria de mandar a moeda
+  vazia. É uma mudança no parser, e só com a tua aprovação.
+
+### Teste no telemóvel (moeda)
+1. **M-1, Oligark:** o anfitrião A lê `corpus/oligark-istanbul.jpg`.
+   - No passo 1 aparece "Moeda TRY (₺) · Alterar", e o total em ₺.
+   - No lobby, na seleção e no dashboard os valores aparecem como
+     "1.100,00 ₺". No ecrã de pagamentos, o total é "6.700,00 ₺".
+2. **M-2, corrigir:** em "Alterar", o anfitrião escolhe EUR.
+   - Todos os ecrãs da sessão passam a €.
+   - Log: `[review-receipt] currency chosen by the host: EUR (was TRY)`.
+3. **M-3, língua:** muda a língua da app para inglês. O mesmo total aparece
+   como "₺6,700.00".
+4. **M-4, Ramires ou Quebra Mar:** continua em €, com "76,20 €".

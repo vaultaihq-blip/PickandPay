@@ -29,22 +29,6 @@ import {
   paidModifiers,
 } from "./model";
 
-const LEGACY_CURRENCIES: ReadonlySet<string> = new Set([
-  "EUR",
-  "USD",
-  "CAD",
-  "GBP",
-]);
-
-/**
- * The legacy `Currency` union is narrower than the canonical one. Currencies
- * outside it are represented as EUR in legacy structures only; canonical
- * amounts keep the true currency.
- */
-function toLegacyCurrency(currency: CurrencyCode): Currency {
-  return (LEGACY_CURRENCIES.has(currency) ? currency : "EUR") as Currency;
-}
-
 const CATEGORY_VALUES: ReadonlySet<string> = new Set([
   "starters",
   "mains",
@@ -169,7 +153,10 @@ export function toParsedReceipt(receipt: CanonicalReceipt): ParsedReceipt {
   return {
     restaurant: receipt.merchantName ?? "Unknown Restaurant",
     date: receipt.date,
-    currency: toLegacyCurrency(receipt.currency),
+    // The receipt's own currency, whatever it is (it used to become EUR
+    // outside EUR/USD/CAD/GBP — currency point, 02-11-2026).
+    currency: receipt.currency,
+    ...(receipt.currencyAssumed ? { currencyAssumed: true } : {}),
     categories: grouped,
     globalCosts: receipt.charges
       .filter((charge) => charge.kind !== "tip")
@@ -261,7 +248,7 @@ export function fromParsedReceipt(legacy: ParsedReceipt): CanonicalReceipt {
     merchantName: legacy.restaurant,
     date: legacy.date,
     currency,
-    currencyAssumed: false,
+    currencyAssumed: legacy.currencyAssumed === true,
     items,
     charges,
     unresolvedMonetaryLines: [],

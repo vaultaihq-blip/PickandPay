@@ -8,7 +8,11 @@
 
 // ─── Currency metadata ────────────────────────────────────────────────────────
 
-/** ISO 4217 codes supported by the app. */
+/**
+ * ISO 4217 codes the app knows (currency point, 02-11-2026: it knew 12, and
+ * a Turkish receipt read as TRY was shown in EUR). A code outside this list
+ * is not trusted: the review asks the host which currency it is.
+ */
 export const SUPPORTED_CURRENCIES = [
   "EUR",
   "USD",
@@ -22,6 +26,40 @@ export const SUPPORTED_CURRENCIES = [
   "CNY",
   "BRL",
   "MXN",
+  "TRY",
+  "INR",
+  "KRW",
+  "THB",
+  "VND",
+  "IDR",
+  "MYR",
+  "PHP",
+  "TWD",
+  "NZD",
+  "ZAR",
+  "AED",
+  "SAR",
+  "QAR",
+  "ILS",
+  "EGP",
+  "MAD",
+  "SEK",
+  "NOK",
+  "DKK",
+  "ISK",
+  "PLN",
+  "CZK",
+  "HUF",
+  "RON",
+  "BGN",
+  "RSD",
+  "UAH",
+  "GEL",
+  "ARS",
+  "CLP",
+  "COP",
+  "PEN",
+  "UYU",
 ] as const;
 
 export type CurrencyCode = (typeof SUPPORTED_CURRENCIES)[number];
@@ -86,6 +124,16 @@ export function normalizeCurrencyCode(
     "HK$": "HKD",
     "S$": "SGD",
     "R$": "BRL",
+    "₺": "TRY",
+    TL: "TRY",
+    YTL: "TRY",
+    "₹": "INR",
+    "₩": "KRW",
+    "฿": "THB",
+    "₪": "ILS",
+    "ZŁ": "PLN",
+    "KČ": "CZK",
+    FT: "HUF",
   };
   return aliases[trimmed] ?? null;
 }
