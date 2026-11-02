@@ -495,3 +495,42 @@ sem resposta, nem uma recusa do servidor.
    - A seleção abre com as escolhas do B marcadas.
    - Em A e C aparece a roda ("a escolher…") enquanto o B está lá.
 5. B faz Done. Fica Done em todos.
+
+### Ponto 5 — a nova regra do "Cancelar" depois do Done (2026-11-02)
+
+**Regra do dono**
+- O "Cancelar" depois do Deixa de manter as escolhas: deita-as fora, depois
+  de uma confirmação.
+- O "Editar" continua a mantê-las, para corrigir.
+- A R12 nas regras de produto está atualizada.
+
+**O que faz agora** (`app/(app)/session-lobby/[id].tsx`)
+1. Pede confirmação: "Cancelar as escolhas? — Vais perder todas as tuas
+   escolhas. Os itens ficam livres para os outros.", com **Cancelar
+   escolhas** e **Voltar**.
+2. Ao confirmar, liberta no servidor todas as unidades dessa pessoa, item a
+   item, com `pick_units(…, 0)`. Cada chamada tem o limite de 10 s, e uma
+   falha mostra a mensagem do servidor até se fechar. Nenhum botão manda
+   `selections: []`.
+3. Grava o estado `selecting`.
+4. A pessoa fica no lobby com a linha a mostrar só **Editar**, sem roda.
+5. Quem partilhava unidades com ela recebe "<nome> deixou de partilhar o
+   <item>. Agora pagas X em vez de Y."
+
+Se uma escrita falhar a meio, não muda mais nada no aparelho. O que o
+servidor já libertou aparece pelo realtime, e a pessoa pode tentar outra vez.
+
+Log: `[session-lobby] cancel ready: released N item(s)`.
+
+**Teste**
+1. B e C partilham o Çerez & Meyva. B tem também 1 Moskow Mule. B faz Done.
+2. B carrega em "Cancelar".
+   - Aparece a confirmação.
+   - "Voltar" não muda nada.
+3. B carrega outra vez em "Cancelar" → "Cancelar escolhas".
+   - Os itens do B ficam livres: o Moskow Mule aparece em "por escolher" no
+     lobby.
+   - A linha do B mostra só "Editar", sem roda.
+   - O C recebe "B deixou de partilhar o Çerez & Meyva. Agora pagas … em vez
+     de …".
+4. B carrega em "Editar". A seleção abre vazia para o B.

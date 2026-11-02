@@ -40,12 +40,13 @@ import { QRGenerator } from "@/components/session/QRGenerator";
 import { buildSessionLink } from "@/lib/deeplink";
 import * as Clipboard from "expo-clipboard";
 import { formatJoinCode } from "@/lib/joinCode";
-import { sessionInitials } from "@/lib/units";
+import { groupItems, sessionInitials } from "@/lib/units";
 import { PersonDot } from "@/components/selection/PersonDot";
 import { useShareNotices, useShareRequests } from "@/hooks/useShareRequests";
 import { ShareRequestsModals, ShareRequestsPanel } from "@/components/session/ShareRequestsPanel";
 import { useShareRequestsStore } from "@/store/shareRequestsStore";
 import { LobbyReceiptItems, receiptProgress } from "@/components/session/LobbyReceiptItems";
+import { pickUnits, showUnitsError } from "@/lib/shareUnits";
 
 const HOME_THEME = {
   background: "#0B0D10",
@@ -1863,8 +1864,54 @@ ${tr("host_now_you_all_picked")}`, [
     router.push(`/(app)/selection/${id}?userId=${fakeUserId}&returnTo=lobby`);
   }, [id]);
 
-  const handleCancelReady = useCallback(async () => {
+  // R12 (owner, 02-11-2026): "Cancelar" after Done throws the picks away.
+  // First a confirmation; then every unit I hold is released on the server
+  // (pick_units → 0 for each item, each with the 10 s limit and a message if
+  // it fails), the status goes back to selecting and I stay in the lobby with
+  // Editar. Whoever shared a unit with me gets "deixou de partilhar".
+  const cancelReadyBusy = useRef(false);
+  const handleCancelReady = useCallback(() => {
     if (!myId) return;
+    showDialog(t("cancel_ready_title"), t("cancel_ready_msg"), [
+      { text: t("cancel_ready_back"), style: "cancel" },
+      { text: t("cancel_ready_confirm"), style: "destructive", onPress: () => void doCancelReady() },
+    ]);
+  }, [myId, t]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const doCancelReady = async () => {
+    if (!myId || cancelReadyBusy.current) return;
+    cancelReadyBusy.current = true;
+    const online = !!id && !(String(id).startsWith("session_") || String(id).startsWith("dev_session_"));
+    try {
+      if (online && receipt) {
+        const mine = useSessionStore.getState().currentSession?.participants.find((p) => p.userId === myId)?.selections ?? [];
+        const held = new Set(mine.map((s) => s.itemId));
+        const groups = ORDERED_CATEGORIES.flatMap((cat) => groupItems(receipt.categories[cat] ?? []))
+          .filter((g) => g.lineIds.some((lid) => held.has(lid)));
+        let last: ItemSelection[] | null = null;
+        for (const g of groups) {
+          const res = await pickUnits(id, g.lineIds[0], 0);
+          last = res.selections ?? [];
+        }
+        if (last) useSessionStore.getState().updateSelections(myId, last);
+        console.log(`[session-lobby] cancel ready: released ${groups.length} item(s)`);
+        await expectRows(
+          "lobby: cancel ready (picks released, selecting)",
+          supabase
+            .from("session_participants")
+            .update({ status: "selecting" })
+            .eq("session_id", id)
+            .eq("user_id", myId)
+            .select("id")
+        );
+      }
+    } catch (err) {
+      // nothing more is changed here; what the server already released shows by realtime
+      showUnitsError(err, t);
+      cancelReadyBusy.current = false;
+      return;
+    }
+    cancelReadyBusy.current = false;
     setSelectionDone((prev) => {
       const next = new Set(prev);
       next.delete(myId);
@@ -1880,24 +1927,12 @@ ${tr("host_now_you_all_picked")}`, [
     });
     setSavedDraftIds((prev) => (prev.has(myId) ? prev : new Set([...prev, myId])));
     trackPresence("waiting");
-    // R12: "Cancelar pronto" only takes the status back to selecting; the units stay.
     channelRef.current?.send({
       type: "broadcast",
       event: "selection_uncomplete",
-      payload: { userId: myId, preserveSelections: true },
+      payload: { userId: myId },
     });
-    if (id && !(String(id).startsWith("session_") || String(id).startsWith("dev_session_"))) {
-      await expectRows(
-        "lobby: cancel ready (selecting, picks kept)",
-        supabase
-          .from("session_participants")
-          .update({ status: "selecting" })
-          .eq("session_id", id)
-          .eq("user_id", myId)
-          .select("id")
-      ).catch((err) => showWriteError(err, t));
-    }
-  }, [myId, id, t]);
+  };
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -2383,13 +2418,16 @@ ${tr("host_now_you_all_picked")}`, [
                 isMe ? <ActivityIndicator size="small" color={HOME_THEME.primary} /> : null
               ) : hasDraft ? (
                 <View style={styles.doneActions}>
-                  <TouchableOpacity
-                    style={styles.cancelReadyBtn}
-                    onPress={handleCancelDraft}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.cancelReadyText}>{t("cancel")}</Text>
-                  </TouchableOpacity>
+                  {/* after "Cancelar escolhas" there is nothing to cancel: Editar only */}
+                  {p.selections.length > 0 && (
+                    <TouchableOpacity
+                      style={styles.cancelReadyBtn}
+                      onPress={handleCancelDraft}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.cancelReadyText}>{t("cancel")}</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     style={styles.editBtn}
                     onPress={handleEditDraft}

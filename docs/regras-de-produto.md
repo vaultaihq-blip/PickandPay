@@ -70,6 +70,8 @@ Pedida pelo dono a 02-11-2026, depois da colisão de 01-11-2026 (dois aparelhos 
 | **O servidor recusa escritas diretas** que ponham duas pessoas na mesma unidade sem partilha. | Protege as apps antigas e o web. |
 | **Sair antes de finalizar liberta os itens** de quem sai; se voltar, escolhe de novo. **Depois de finalizar**, quem sai continua na divisão com a sua parte, e os itens não ficam livres. Fechar a app não é sair (A1). | Antes de finalizar, os outros precisam desses itens; depois, a divisão já está fechada. |
 | **O mesmo item** é a mesma categoria, o mesmo nome (sem contar maiúsculas e espaços) e o mesmo preço unitário. | São as linhas que a seleção mostra juntas. |
+| **Nenhum botão manda `selections: []` ao servidor.** "Editar" mantém as escolhas, para corrigir. Para tirar um item, desmarca-se. | Cada toque já está gravado: não há rascunho para deitar fora. |
+| **"Cancelar" depois do Done** pede primeiro confirmação: "Vais perder todas as tuas escolhas. Os itens ficam livres para os outros.", com **Cancelar escolhas** e **Voltar**. Ao confirmar, todas as unidades dessa pessoa são libertadas no servidor (cada escrita com o limite de 10 s e mensagem se falhar), o estado volta a `selecting`, e a pessoa fica no lobby com a linha a mostrar **Editar**, sem roda. Quem partilhava itens com ela recebe o aviso "deixou de partilhar". | Desistir das escolhas é uma decisão clara, e quem partilhava fica a saber o que passa a pagar. |
 
 **Seleção ao vivo**
 
