@@ -350,3 +350,60 @@ de agora.
 3. **M-3, língua:** muda a língua da app para inglês. O mesmo total aparece
    como "₺6,700.00".
 4. **M-4, Ramires ou Quebra Mar:** continua em €, com "76,20 €".
+
+---
+
+## Avisos falsos: feito a 2026-11-02
+
+Só mexe na app (`lib/receipt/evidence.ts`). Não há nada em produção nem no
+parser.
+
+### O que mudou
+- O preço lido é comparado **pelo valor** com os números da linha citada, lidos
+  com `parseMoneyString`. Antes procurava o texto "1100.00" ou "1100,00", e não
+  encontrava "1.100,00".
+- Aceita o preço unitário ou o preço unitário × quantidade, para as linhas que
+  só imprimem o total da linha.
+- Um espaço só conta como separador de milhares antes de um grupo de 3
+  algarismos: `1 100,00` é 1100, mas `1 1.100,00` fica quantidade 1 e 1100.
+
+### Corpus, antes e depois
+São as mesmas leituras do parser, sem OCR novo: as 11 do FIX 43 e a do Oligark.
+Passaram pela verificação da app com o código de antes (`e3437e9`) e com o de
+agora.
+
+| Fatura | Antes | Agora |
+|---|---|---|
+| Oligark | 5 | 0 |
+| Quebra Mar | 10 | 0 |
+| Ramires | 4 | 0 |
+| Pai | 2 | 0 |
+| Augustiner | 1 | 0 |
+| Buca di Beppo | 1 | 1 |
+| Hollywood Cafe | 2 | 2 |
+| Mad God, Sulbarreiro, Mademoiselle, VRO, Zoca | 0 | 0 |
+| **Total** | **25** | **3** |
+
+**Os 3 que ficam são contradições verdadeiras:** a linha citada não tem o valor
+lido.
+- Buca: lido 100,26, mas a linha diz "Iced Tea 9.99".
+- Hollywood: lido 10,49, mas a linha diz "2.49".
+- Hollywood: lido 1,00, mas a linha diz "SODA 10.49".
+
+### Testes automáticos
+`npm run test:receipt` passa 108/108. Os 6 testes novos estão em
+`lib/receipt/__tests__/evidence.test.ts`:
+- o Oligark com 1.100,00;
+- a linha 3 × 1,75 = 5,25;
+- o ponto e a vírgula;
+- o espaço como separador de milhares;
+- **um erro de leitura verdadeiro (23,57 por 23,75) continua a dar aviso**;
+- um preço que não bate nem com a unidade nem com o total da linha continua a
+  dar aviso.
+
+### Teste no telemóvel (avisos)
+- **AV-1:** o anfitrião lê a fatura do Oligark.
+  - Não aparece nenhum aviso de "valor não corresponde" nos itens.
+  - Fica só a pergunta da diferença de 600 (R2).
+- **AV-2:** o anfitrião lê a fatura do Quebra Mar ou do Ramires. Não aparecem
+  os avisos de preço que apareciam antes.

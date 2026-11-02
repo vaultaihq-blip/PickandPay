@@ -11,23 +11,48 @@
 
 import { paidModifiers, nextEntityId, confidenceFromScore } from "./model";
 import type { CanonicalReceipt, ReceiptIssue } from "./model";
-import { moneyToDecimalString } from "./money";
-import type { Money } from "./money";
+import { moneyToDecimalString, parseMoneyString } from "./money";
+import type { CurrencyCode, Money } from "./money";
 
 // Objective contradiction, not a guess: the model's own numeric field
 // disagrees with the model's own cited text. High confidence is warranted.
 const EVIDENCE_MISMATCH_CONFIDENCE = 0.95;
 
 /**
- * Whether `amount` is recognisable as a substring of `lineText`, tolerant of
- * comma vs dot as the decimal separator — the same ambiguity
- * `parseMoneyString` resolves when parsing a whole string, applied here to
- * the printed side of the comparison since receipts use either convention.
+ * Every amount printed on `lineText`, read by value with `parseMoneyString`
+ * (the same algorithm as the ledger's `parseAmbiguousNumber`), in minor
+ * units. A substring test missed "1.100,00" for 1100 and flagged five
+ * correct Oligark lines (false warnings point, 2026-11-01).
+ *
+ * A space joins two runs only as a thousands mark — a run of 1–3 digits
+ * followed by exactly three digits (and optional decimals): "1 100,00" is
+ * 1100, but "1 1.100,00" stays quantity 1 and 1100.
  */
-function amountAppearsIn(amount: Money, lineText: string): boolean {
-  const dotForm = moneyToDecimalString(amount); // e.g. "23.75"
-  const commaForm = dotForm.replace(".", ","); // e.g. "23,75"
-  return lineText.includes(dotForm) || lineText.includes(commaForm);
+export function amountsOnLine(lineText: string, currency: CurrencyCode): number[] {
+  const tokens = lineText.split(/[\s\u00A0\u202F]+/).filter((tok) => /\d/.test(tok));
+  const candidates = [...tokens];
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    if (/^\d{1,3}$/.test(tokens[i]) && /^\d{3}([.,]\d{1,2})?$/.test(tokens[i + 1])) {
+      candidates.push(tokens[i] + tokens[i + 1]);
+    }
+  }
+  const values: number[] = [];
+  for (const tok of candidates) {
+    const money = parseMoneyString(tok.replace(/[^\d.,()-]/g, ""), currency);
+    if (money !== null) values.push(Math.abs(money.minor));
+  }
+  return values;
+}
+
+/**
+ * Whether `amount` is printed on the line — on its own, or as the line
+ * total of `quantity` units ("3 Uni SAFATA DE PAO 5,25" prints 5,25 for a
+ * unit price of 1,75). Compared by value, so any separator style matches.
+ */
+function amountAppearsIn(amount: Money, lineText: string, quantity = 1): boolean {
+  const printed = amountsOnLine(lineText, amount.currency);
+  const unit = Math.abs(amount.minor);
+  return printed.includes(unit) || (quantity > 1 && printed.includes(unit * quantity));
 }
 
 function evidenceMismatchIssue(
@@ -63,7 +88,7 @@ export function checkPriceEvidence(receipt: CanonicalReceipt): ReceiptIssue[] {
   for (const item of receipt.items) {
     const lineText = item.sourceEvidence?.lineText;
     if (item.unitPrice !== undefined && lineText !== undefined) {
-      if (!amountAppearsIn(item.unitPrice, lineText)) {
+      if (!amountAppearsIn(item.unitPrice, lineText, item.quantity)) {
         issues.push(evidenceMismatchIssue(item.unitPrice, lineText, item.id));
       }
     }
@@ -72,7 +97,7 @@ export function checkPriceEvidence(receipt: CanonicalReceipt): ReceiptIssue[] {
       const modifierLineText = modifier.sourceEvidence?.lineText;
       if (
         modifierLineText !== undefined &&
-        !amountAppearsIn(modifier.price, modifierLineText)
+        !amountAppearsIn(modifier.price, modifierLineText, item.quantity)
       ) {
         issues.push(
           evidenceMismatchIssue(modifier.price, modifierLineText, item.id, modifier.id)
