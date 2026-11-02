@@ -258,6 +258,10 @@ export default function SessionLobbyScreen() {
   // re-tracked as-is after an untrack (background) or a channel rejoin,
   // instead of falling back to "waiting".
   const presenceStatusRef = useRef<"waiting" | "selecting" | "done">("waiting");
+  // What each person last said on presence ("selecting" = on the selection
+  // screen). The spinner on someone else is shown only then, so it cannot
+  // turn forever for someone who is back in the lobby.
+  const [presenceStatusById, setPresenceStatusById] = useState<Map<string, string>>(new Map());
   const trackPresence = (status: "waiting" | "selecting" | "done") => {
     presenceStatusRef.current = status;
     const uid = useAuthStore.getState().profile?.id;
@@ -699,6 +703,9 @@ ${tr("host_now_you_all_picked")}`, [
           const uid = key;
           const presenceStatus = (newPresences[0] as { status?: string } | undefined)?.status;
           console.log(`[session-lobby] presence join: ${uid} status=${presenceStatus ?? "none"}`);
+          if (presenceStatus) {
+            setPresenceStatusById((prev) => (prev.get(uid) === presenceStatus ? prev : new Map(prev).set(uid, presenceStatus)));
+          }
           const hostId = useSessionStore.getState().currentSession?.creatorId;
 
           if (uid === hostId) {
@@ -1247,7 +1254,14 @@ ${tr("host_now_you_all_picked")}`, [
             next.delete(uid);
             return next;
           });
-          setGoingToSelection((prev) => new Set([...prev, uid]));
+          if (uid === myId && !goingToSelectionRef.current.has(uid)) {
+            // "Cancelar pronto" from the lobby: I'm not in the selection, so no
+            // "a escolher…" spinner (it never cleared — 02-11-2026); my picks
+            // stay and I get Cancelar / Editar.
+            setSavedDraftIds((prev) => (prev.has(uid) ? prev : new Set([...prev, uid])));
+          } else {
+            setGoingToSelection((prev) => new Set([...prev, uid]));
+          }
         } else if (status === "joined" || status === "left") {
           setGoingToSelection((prev) => {
             const next = new Set(prev);
@@ -1856,12 +1870,16 @@ ${tr("host_now_you_all_picked")}`, [
       next.delete(myId);
       return next;
     });
-    setSavedDraftIds((prev) => {
+    // Not ready any more, but still in the lobby: Cancelar / Editar, not the
+    // "a escolher…" spinner.
+    setGoingToSelection((prev) => {
       if (!prev.has(myId)) return prev;
       const next = new Set(prev);
       next.delete(myId);
       return next;
     });
+    setSavedDraftIds((prev) => (prev.has(myId) ? prev : new Set([...prev, myId])));
+    trackPresence("waiting");
     // R12: "Cancelar pronto" only takes the status back to selecting; the units stay.
     channelRef.current?.send({
       type: "broadcast",
@@ -2295,13 +2313,16 @@ ${tr("host_now_you_all_picked")}`, [
                     <Text style={[styles.statusText, { color: HOME_THEME.primary }]}>
                       {t("lobby_selecting_mine_dots")}
                     </Text>
-                  ) : (
+                  ) : presenceStatusById.get(p.userId) === "selecting" ? (
                     <View style={styles.doneRow}>
                       <ActivityIndicator size="small" color={HOME_THEME.primary} style={{ marginRight: 2 }} />
                       <Text style={[styles.statusText, { color: HOME_THEME.primary }]}>
                         {t("lobby_selecting_theirs_dots")}
                       </Text>
                     </View>
+                  ) : (
+                    // not on the selection screen (e.g. "Cancelar pronto"): not ready, no spinner
+                    <Text style={styles.statusText}>{t("lobby_selecting_theirs")}</Text>
                   )
                 ) : hasDraft ? (
                   <View style={styles.doneRow}>

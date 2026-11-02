@@ -458,3 +458,40 @@ expandida do lobby)
 3. O A pede ao B para partilhar um item. Junto desse item aparece "à espera
    de B", com o círculo do B esbatido.
 4. Com tudo escolhido, aparece "Todos os itens têm dono ✓" a verde.
+
+### Ponto 4b — "Cancelar pronto" deixava o utilizador preso
+
+**O que ficou à espera:** um estado que nunca mudava. Não foi uma escrita
+sem resposta, nem uma recusa do servidor.
+- O log não tem nenhuma escrita falhada nem fora do tempo. A gravação de
+  `selecting` correu bem (uma escrita bem-sucedida não deixa linha).
+- O lobby lê `selecting` como "esta pessoa está no ecrã de seleção". Quando
+  chegou o eco do servidor, a própria linha passou a "a escolher…", com a roda
+  à direita e sem botões.
+- A pessoa estava no lobby e não na seleção, por isso nada desfazia esse
+  estado. Nos outros aparelhos, a roda também ficava a girar no círculo dela.
+
+**Correção** (`app/(app)/session-lobby/[id].tsx`)
+- **"Cancelar pronto"** grava só `selecting` e mantém as unidades.
+  - No próprio aparelho, a linha mostra "Cancelar" e "Editar", sem roda.
+  - O eco `selecting` que chega para si próprio, sem ter ido à seleção, já não
+    liga a roda.
+- **Nos outros aparelhos**, a roda só aparece em quem está mesmo no ecrã de
+  seleção, pela presença ("selecting"). Quem voltou a "não pronto" no lobby
+  aparece como "a escolher", sem roda. "Cancelar pronto" envia a presença
+  `waiting`.
+- **As escritas:** todas as escritas da sessão no lobby, na seleção e nas
+  funções da R12 têm o limite de 10 s e uma mensagem quando falham. A única
+  exceção é a escrita do utilizador de teste de programador (`fakeUserId`),
+  que não corre com contas reais.
+
+**Teste**
+1. B escolhe itens e faz Done. No lobby do B aparecem "Cancelar" e "Editar".
+2. B carrega em "Cancelar" (o "Cancelar pronto").
+   - A linha do B mostra logo "Cancelar" e "Editar", sem roda.
+   - Os itens continuam com o círculo do B.
+3. Em A e C, o B deixa de estar Done e aparece "a escolher", sem roda.
+4. B carrega em "Editar".
+   - A seleção abre com as escolhas do B marcadas.
+   - Em A e C aparece a roda ("a escolher…") enquanto o B está lá.
+5. B faz Done. Fica Done em todos.
