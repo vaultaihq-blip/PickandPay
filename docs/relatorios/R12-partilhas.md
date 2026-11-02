@@ -375,3 +375,36 @@ ajustar. Sessão 2: 11 OK.
    - B e C não recebem nenhum "deixou de partilhar".
    - Log do A: `[selection] picks from the server: 3 people, N line(s) mine`.
 3. A faz Done e depois "Cancelar pronto". As escolhas ficam.
+
+### Ponto 2 — o pedido quando o convidado já tem o seu (opção B)
+
+**O que o log mostrou**
+- No teste 8 o servidor nunca respondeu `already`.
+- O pedido 11 (Wisky Sour, 2 unidades) foi para o B, que já tinha a outra
+  unidade. Pela R12 isso é um pedido a sério: aceitar põe o B na unidade de
+  quem pediu, e o B passa a pagar mais.
+
+**Decisão do dono:** opção B, com um texto mais claro.
+
+**O que muda**
+- O texto passa a ser "Já tens o teu Wisky Sour. O <nome> diz que também
+  bebeste metade do dele. Se aceitares, pagas mais 550,00."
+- O verbo segue a categoria do item:
+  - bebidas: "bebeste";
+  - entradas, pratos e sobremesas: "comeste";
+  - "outros": "partilhaste".
+- "Metade" quando a unidade passa a ser de dois; "parte" quando já são mais.
+- Nas 5 línguas.
+- Quando o pedido fica confirmado sozinho (o convidado já está nessa
+  unidade, ou o item tem uma só unidade e ele já o escolheu), continua sem
+  aviso nem janela para ninguém. O círculo fica com cor viva.
+- A regra está atualizada na R12.
+
+**Teste**
+1. O B escolhe um Wisky Sour, e o A o outro.
+2. O A carrega em Partilhar → B.
+   - O B vê "Já tens o teu Wisky Sour. O A diz que também bebeste metade do
+     dele. Se aceitares, pagas mais 550,00."
+3. Num item de uma unidade que o B já escolheu, o A carrega em Partilhar → B.
+   - Não aparece nada em nenhum aparelho, e o círculo do B fica vivo.
+   - Log do A: `[units] request …: … already`.

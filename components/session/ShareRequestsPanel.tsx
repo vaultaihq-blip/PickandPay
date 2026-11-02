@@ -62,8 +62,15 @@ function describe(r: ShareRequest, myId: string, t: T): string {
   const keyLines = new Set(lines.filter((l) => itemKey(l) === key).map((l) => l.id));
   const mySels = session.participants.find((p) => p.userId === myId)?.selections ?? [];
   const hasOther = mySels.some((s) => keyLines.has(s.itemId));
+  // Already has their own unit: "Já tens o teu Wisky Sour. O Bruno diz que
+  // também bebeste metade do dele." — drank / ate by category, else neutral;
+  // "metade" when it would be split in two, otherwise "parte".
+  const kind = line.category === "drinks" ? "drink" : line.category === "others" ? "neutral" : "food";
+  const portion = holders === 1 ? "half" : "part";
+  const shared = t(`share_shared_${kind}_${portion}` as TranslationKey);
   const text = hasOther ? t("share_req_msg_other") : t("share_req_msg");
   return text
+    .replace("{shared}", shared)
     .replace("{name}", nameIn(r.from_user))
     .replace("{item}", line.name)
     .replace("{price}", formatCurrency(unitPrice, curr))
