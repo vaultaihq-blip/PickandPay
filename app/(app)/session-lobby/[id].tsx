@@ -1772,6 +1772,8 @@ ${tr("host_now_you_all_picked")}`, [
           split_user_ids?: string[];
           newly_charged?: number;
           refunded?: number;
+          gap?: number;
+          printed_total?: number;
         }>(
           "lobby: host finalizes (finalize_session)",
           supabase.rpc("finalize_session", { p_session_id: id })
@@ -1824,6 +1826,28 @@ ${tr("host_now_you_all_picked")}`, [
           // Each of them also gets the message, with the way to buy credits.
           channelRef.current?.send({ type: "broadcast", event: "finalize_no_credits", payload: { userIds } });
           showDialog(t("scan_no_credits"), `${t("lobby_finalize_no_credits")}\n\n${names.join(", ")}\n\n${t("lobby_finalize_retry_after_buy")}`);
+          return;
+        }
+        // D.6 (R2): the server refuses a receipt whose split does not add up
+        // to the printed total. Nobody was charged; the host fixes the receipt.
+        if (result?.status === "total_mismatch") {
+          console.log(`[session-lobby] finalize refused: total mismatch, gap ${result.gap} of printed ${result.printed_total}`);
+          countdownStarted.current = false;
+          const fmt = (v: number) => (receipt ? formatCurrency(v, receipt.currency) : String(v));
+          showDialog(
+            t("lobby_finalize_total_mismatch_title"),
+            t("lobby_finalize_total_mismatch_msg")
+              .replace("{gap}", fmt(Math.abs(Number(result.gap ?? 0))))
+              .replace("{total}", fmt(Number(result.printed_total ?? 0)))
+          );
+          return;
+        }
+        // Anything but "finalized" is a refusal this app doesn't know yet:
+        // never start the countdown on it.
+        if (result?.status !== "finalized") {
+          console.log(`[session-lobby] finalize: unexpected answer ${JSON.stringify(result)}`);
+          countdownStarted.current = false;
+          showDialog(t("error"), t("write_failed_msg"));
           return;
         }
         console.log(`[session-lobby] finalized: n=${result?.split_user_ids?.length ?? "?"} newly charged=${result?.newly_charged ?? "?"} refunded=${result?.refunded ?? "?"}`);

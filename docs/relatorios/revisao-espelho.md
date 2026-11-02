@@ -407,3 +407,59 @@ lido.
   - Fica só a pergunta da diferença de 600 (R2).
 - **AV-2:** o anfitrião lê a fatura do Quebra Mar ou do Ramires. Não aparecem
   os avisos de preço que apareciam antes.
+
+---
+
+## Verificação no servidor do total impresso (D.6, parte): ensaiada, NÃO aplicada
+
+**Está à espera da tua aprovação.** A migração está em
+`supabase/pending/20261102170000_d6_printed_total_check.sql`, fora de
+`supabase/migrations/`, para nenhum `db push` a aplicar por engano. O
+`db push --dry-run` diz "Remote database is up to date".
+
+### O que faz
+- O `finalize_session` recusa antes de cobrar seja quem for:
+  - quando itens + encargos (com a diferença respondida, R2) não somam o total
+    impresso;
+  - responde `total_mismatch`, com `printed_total` e `gap`.
+- A função nova `receipt_printed_gap(receipt)` calcula a diferença ao cêntimo.
+  Sem total impresso, devolve NULL e não recusa.
+- A divisão reparte esta base ao cêntimo. Se a base soma o total impresso, as
+  partes também somam.
+- Verificar o `total_owed` de cada pessoa precisa de a app o enviar. É o resto
+  do D.6: hoje ninguém escreve `total_owed`.
+
+### Medido em produção, só leitura
+| Faturas gravadas | Somam | Sem total impresso | Não somam | Não somam, em sessões abertas |
+|---|---|---|---|---|
+| 154 | 132 | 3 | 19 (todas fechadas) | **0** |
+
+Entre as 19 estão as sessões do Oligark de 30/10, que dividiram 6.100 de
+6.700, e a de 01/11, com −1.100. São exatamente o caso que isto impede.
+Nenhuma sessão aberta seria recusada.
+
+### Ensaio (BEGIN e ROLLBACK, contra os dados reais)
+- A sessão `75cadfcb` do Oligark, reaberta dentro da transação:
+  - `total_mismatch`, gap −600, com o total impresso de 6.700;
+  - a mesma fatura com o encargo de 600 (o que a app grava agora) já passa
+    esta verificação e segue para a seguinte (`unowned_items`).
+- Sem total impresso, a sessão não é recusada por isto.
+- Uma fatura que soma não é recusada.
+- A reversão repõe o `finalize_session` exatamente e apaga a função nova.
+- **Reversão:**
+  `supabase/rollback/20261102170000_d6_pre_state_and_rollback.sql` (a
+  definição lida de produção antes da mudança).
+
+### A app já está preparada
+- `total_mismatch` mostra o diálogo "A divisão não bate com a fatura", com
+  "Os itens e os encargos diferem do total impresso (6.700,00 ₺) em
+  600,00 ₺. Ninguém foi cobrado. Revê a fatura e finaliza outra vez." Fica até
+  se fechar.
+- **Antes**, qualquer resposta desconhecida do finalizar era tratada como
+  "finalizado" e arrancava a contagem. **Agora** mostra um erro e não arranca.
+
+### Para aplicar, quando aprovares
+1. Mover o ficheiro para `supabase/migrations/`.
+2. Correr `db push --dry-run`, que deve mostrar só este ficheiro.
+3. Correr `db push`.
+4. Correr os mesmos casos em produção e comparar com o ensaio.
