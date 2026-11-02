@@ -4,7 +4,7 @@ Estas regras são **obrigatórias**. Nenhuma pode ser alterada sem pedido explí
 - O servidor (Supabase) é sempre quem decide e quem garante cada regra. A app só mostra o resultado.
 - Uma app modificada não consegue contornar nenhuma delas.
 
-Estado a 01-11-2026: R1 a R9, com as decisões do D (o D.1 já aplicado) e a R2 alargada ao total impresso. Os relatórios com os pormenores estão em `docs/relatorios/`.
+Estado a 02-11-2026: R1 a R9 e R12, com as decisões do D (o D.1 já aplicado) e a R2 alargada ao total impresso. A R12 tem o servidor aplicado; a app ainda está por fazer. Os relatórios com os pormenores estão em `docs/relatorios/`.
 
 ---
 
@@ -31,9 +31,9 @@ Estado a 01-11-2026: R1 a R9, com as decisões do D (o D.1 já aplicado) e a R2 
 |---|---|
 | Os valores são arredondados a **2 casas decimais**, e as partes somam **exatamente** o total da fatura, ao cêntimo, em todos os ecrãs. | Ninguém aceita uma divisão que não bate certo com a fatura. |
 | O cêntimo que sobra (ou falta) com o arredondamento é atribuído pelo anfitrião: ao anfitrião, a quem tem o valor mais alto, ou à roleta. A escolha fica gravada na sessão e todos veem o mesmo. | Um cêntimo tem de ficar com alguém, e todos têm de ver a mesma coisa. |
-| **Itens sem dono:** o servidor não deixa finalizar se houver itens que ninguém escolheu. Mostra quais são. | Se um item fica sem dono, as partes não somam a fatura. |
-| **Itens partilhados:** só paga uma parte de um item partilhado quem também o escolheu. Se alguém é indicado como "partilha" mas não escolheu o item, o servidor recusa e mostra quem é. | **Ninguém paga o que não escolheu.** |
-| **Quem sai de um item partilhado:** a parte de quem saiu da sessão é dividida pelos que ficaram a partilhar esse item. | O item continua a ter de ser pago na totalidade, por quem o escolheu. |
+| **Itens sem dono:** o servidor não deixa finalizar enquanto houver **unidades** que ninguém escolheu, e mostra quantas faltam ("1 de 2 Moskow Mule sem dono"). Conta unidades por item, quer a fatura tenha uma linha com quantidade 2, quer duas linhas de 1 (R12). | Se uma unidade fica sem dono, as partes não somam a fatura. Antes, quem escolhia 1 de 2 pagava as duas. |
+| **Itens partilhados:** só paga uma parte de um item partilhado quem também o escolheu ou aceitou a partilha (R12). | **Ninguém paga o que não escolheu.** |
+| **Quem sai de um item partilhado:** a parte de quem saiu da sessão é dividida pelos que ficaram a partilhar essa unidade. | O item continua a ter de ser pago na totalidade, por quem o escolheu. |
 | **A divisão soma sempre o total impresso na fatura**, não a soma dos itens. "Total do talão" é sempre o total impresso. Não há "Grand total" sem explicação. | O grupo paga a conta que o restaurante cobra. No Oligark (30-10-2026), a divisão usou a soma dos itens (6.100 ₺) em vez do total impresso (6.700 ₺), e o grupo pagou 600 ₺ a menos. |
 | **Itens abaixo do total impresso, sem linha que explique a diferença:** a revisão mostra a diferença a vermelho com a pergunta **"É um encargo ou falta um item?"**. As respostas são "Adicionar item em falta" ou "É um encargo". Continuar fica desligado até o anfitrião responder. | Só pela aritmética, um encargo sem linha e um item que a leitura perdeu são iguais. Repartir um item perdido como encargo daria o total certo e as partes erradas. |
 | **Sugestão pré-escolhida:** quando há pistas, a resposta mais provável vem já escolhida, mas o anfitrião confirma sempre. As pistas são: as categorias de IVA impressas somam o total impresso e não os itens (como no Oligark); ou aparecem palavras como serviço, servis, service ou couvert. | Poupa trabalho quando a fatura dá a resposta, sem decidir pelo anfitrião. |
@@ -55,6 +55,55 @@ Estado a 01-11-2026: R1 a R9, com as decisões do D (o D.1 já aplicado) e a R2 
 | **Privacidade:** antes de entrar, o ecrã só mostra o nome do anfitrião e o número de pessoas. Nada da fatura nem de valores. | Quem não entrou não tem de ver a conta dos outros. |
 | **O QR lido pela câmara do telemóvel** (fora da app), e qualquer link `…/session/<id>`, abre o mesmo ecrã de entrada. | Há um só caminho de entrada, com as mesmas regras. |
 | **O aviso "voltar à sessão"** do ecrã inicial usa a mesma regra do "já faz parte". | É coerente com o QR. |
+
+## R12 — Unidades, seleção ao vivo e partilhas com confirmação
+
+Pedida pelo dono a 02-11-2026, depois da colisão de 01-11-2026 (dois aparelhos ficaram com o mesmo Moskow Mule e o outro ficou sem dono). **Princípio: ninguém paga o que não escolheu. Partilhar é escolher o mesmo item.**
+
+**Unidades**
+
+| Regra | Porquê |
+|---|---|
+| **O servidor decide as unidades.** Cada toque em +/− ou na linha pede ao servidor "N unidades deste item". O servidor bloqueia a sessão e entrega as unidades livres por ordem. Nunca há duas pessoas na mesma unidade, a não ser numa partilha. | Cada aparelho escolhia "a primeira livre" sem saber do outro. |
+| **Cada escolha é gravada logo**, e não só no Done. | Os outros veem-na ao vivo, e o servidor decide com o que está gravado. |
+| **Sem unidades livres**, a resposta é "cheio", com os nomes de quem as tem. | A pessoa sabe com quem falar. |
+| **O servidor recusa escritas diretas** que ponham duas pessoas na mesma unidade sem partilha. | Protege as apps antigas e o web. |
+| **Sair antes de finalizar liberta os itens** de quem sai; se voltar, escolhe de novo. **Depois de finalizar**, quem sai continua na divisão com a sua parte, e os itens não ficam livres. Fechar a app não é sair (A1). | Antes de finalizar, os outros precisam desses itens; depois, a divisão já está fechada. |
+| **O mesmo item** é a mesma categoria, o mesmo nome (sem contar maiúsculas e espaços) e o mesmo preço unitário. | São as linhas que a seleção mostra juntas. |
+
+**Seleção ao vivo**
+
+| Regra | Porquê |
+|---|---|
+| Quando alguém escolhe um item, mesmo antes do Done, o **símbolo dessa pessoa** aparece no extremo direito da linha, em todos os aparelhos, em tempo real. Desmarcar tira-o. | Todos veem quem escolheu o quê enquanto escolhem. |
+| **O símbolo é um círculo com as iniciais na cor da pessoa** (R4; da 9.ª pessoa em diante, o meio círculo da R4b). Não se usam emojis. Iniciais repetidas na sessão passam a duas letras ("RI", "RU"). | Duas pessoas nunca se confundem. |
+| **O próprio** vê "Tu" no seu símbolo, e as linhas que escolheu ficam destacadas. | Vê logo o que é seu. |
+| **Mais de 3 pessoas no mesmo item:** 3 círculos e "+N". Tocar nessa zona abre a lista dos nomes. | A linha não transborda. |
+| **Itens com quantidade maior do que 1** mostram quantas unidades estão livres ("1 de 2 livre"). | Sabe-se se ainda há uma para escolher. |
+| **O lobby** tem a legenda: cada círculo com o nome ao lado. | Liga cada símbolo a uma pessoa. |
+| **Em todas as perguntas, avisos e diálogos** aparecem os nomes, nunca só ícones. | Um ícone sozinho não diz quem é. |
+
+**Partilha automática**
+
+| Regra | Porquê |
+|---|---|
+| **Item com uma unidade:** se várias pessoas o escolhem, fica partilhado por elas, em partes iguais. Ninguém precisa de convidar ninguém. | Escolher o mesmo item é partilhá-lo. |
+| **Item com várias unidades:** tocar dá uma unidade livre. Sem nenhuma livre, aparece "Os 2 Moskow Mule já foram escolhidos, por <nome> e <nome>. Partilhaste algum? Com quem?", com a lista de quem tem unidades. Escolher um nome é partilhar **a unidade dessa pessoa** (por exemplo, o C escolhe o B: A paga 1.100, B paga 550, C paga 550). | Só se divide a unidade que foi mesmo partilhada. |
+| Na parte de cada um aparece "Moskow Mule (partilhado com <nome>) 550,00". | Cada um vê com quem dividiu. |
+| **Deixar de partilhar:** quem larga uma unidade partilhada não precisa de perguntar, e quem fica paga a unidade toda. Essa pessoa recebe o aviso "<nome> deixou de partilhar o <item>. Agora pagas X em vez de Y." | Ninguém fica a pagar mais sem saber. |
+
+**Pedido de partilha** (quando alguém se esqueceu de escolher)
+
+| Regra | Porquê |
+|---|---|
+| **Botão "Partilhar"** em cada linha da seleção. Abre as pessoas do lobby (círculo e nome), sem o próprio, e dá para escolher várias. Quem já está no item aparece marcado: cor viva se confirmado, esbatido se pendente. | Quem se lembra da partilha pode lembrar o outro. |
+| **Estado de cada pessoa na linha do item:** esbatido = pedido à espera; cor viva = confirmado (escolheu ou aceitou); com um X = rejeitou. | Vê-se de relance o que falta. |
+| **Pedido resolvido sozinho**, verificado no servidor ao gravar o pedido: num item com uma unidade, se o convidado já o escolheu, fica logo confirmado, sem pedido nem aviso; se o pedido estiver pendente e o convidado escolher o item por conta própria, fica aceite. Num item com várias unidades, só fica aceite sozinho se o convidado já estiver **na mesma unidade**. Se tiver outra unidade do mesmo item, o pedido vai na mesma, com "Já tens um Moskow Mule. Também partilhaste o do <nome>? Se aceitares, pagas mais 550,00." | Não se pergunta o que já está respondido, e ninguém paga duas unidades sem confirmar. |
+| **Quem recebe o pedido** vê no lobby um ícone no seu cartão e a faixa "Tens N pedidos de partilha"; na seleção, a linha do item também o mostra. Cada pedido mostra o valor: "O <nome> diz que partilhaste o Arroz de Pato (24,00 €). Se aceitares, pagas 8,00 €.", com **Aceitar**, **Rejeitar** e **Aceitar todos** quando há vários. Quem já fez Done responde no lobby, e o Done mantém-se. | A pessoa decide sabendo quanto paga. |
+| **Rejeição:** quem pediu vê o símbolo do convidado com um X nessa linha e o aviso "O <nome> rejeitou partilhar o <item>.". O X desaparece quando quem pediu toca nele ou volta a mexer nesse item. Depois de uma rejeição, só se pode voltar a convidar a mesma pessoa para o mesmo item **uma vez**, seja quem for que pede. | Quem pediu fica a saber, e o convidado não é insistido. |
+| **O finalizar fica bloqueado** enquanto houver pedidos por responder; o servidor recusa com a lista. No lobby todos veem o resumo ("2 partilhas à espera de resposta"). O anfitrião vê a lista ("Arroz de Pato — Bruno; Vinho — Carla"), com **Lembrar** e **Cancelar pedido**. Quem pediu também pode cancelar o seu. | Não se fecha a conta com uma partilha por decidir. |
+| Se o convidado **sair da sessão ou for retirado** (R11), os seus pedidos caem sozinhos. Não há limite de tempo automático. | Quem já não está não pode responder. |
+| **Créditos:** nada muda (R1). | Partilhar não é uma sessão nova. |
 
 ## C.2 — O anfitrião e o estado dos outros
 
