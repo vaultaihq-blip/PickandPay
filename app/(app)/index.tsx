@@ -28,6 +28,7 @@ import { useSessionStore } from "@/store/sessionStore";
 import { Session, SessionParticipant } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showWriteError, withTimeout, WriteError } from "@/lib/checkedWrite";
+import { checkSessionGone } from "@/lib/sessionGone";
 import { ensureCreditsForNewSession, fetchFreshCredits, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
 import { DevPanel } from "@/components/dev/DevPanel";
 import { isDeveloperUser, DEV_PIN } from "@/constants/dev";
@@ -191,7 +192,9 @@ export default function HomeScreen() {
       if ((live as { session_id?: string } | null)?.session_id !== rejoinSession.id) {
         console.log(`[home] rejoin: ${rejoinSession.id} is no longer open — banner removed`);
         setRejoinSession(null);
-        showDialog(t("join_closed_title"), t("join_closed_msg"));
+        // D.7: with the reason when the server has one (host / inactivity).
+        const state = await checkSessionGone("home: rejoin", rejoinSession.id, t);
+        if (!state || state === "open") showDialog(t("join_closed_title"), t("join_closed_msg"));
         return;
       }
       // A1 — still in it (joined, selecting, items_picked): the status stays

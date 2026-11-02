@@ -1,52 +1,57 @@
 import { useEffect } from "react";
-import { showDialog } from "@/lib/dialog";
+import { AppState } from "react-native";
 import { router } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import { checkSessionGone } from "@/lib/sessionGone";
+import { isOfflineSessionId } from "@/constants/dev";
 import { useSessionStore } from "@/store/sessionStore";
-import { useAuthStore } from "@/store/authStore";
+import { useI18nStore } from "@/store/i18nStore";
 
-// Globally monitors the active session for unexpected closure by the host.
-// Participants are force-navigated home with a non-dismissible alert.
-export function useSessionMonitor() {
+// D.7 — watches the session this screen is about. When it has ended (host,
+// expiry, clean-up) or does not exist, the app goes straight home and says
+// why, with OK only (lib/sessionGone.ts). Checked on the realtime close, when
+// the screen opens, and every time the app comes back to the foreground —
+// a phone in the background misses the realtime event, and Android may even
+// restart the app on this screen with nothing in memory (02-11-2026, test 1).
+export function useSessionMonitor(routeSessionId?: string) {
   const currentSession = useSessionStore((s) => s.currentSession);
-  const clearSession = useSessionStore((s) => s.clearSession);
-  const profile = useAuthStore((s) => s.profile);
+  const storeId = currentSession?.id;
+  const sid = storeId ?? routeSessionId;
 
   useEffect(() => {
-    const sid = currentSession?.id;
-    if (!sid || sid.startsWith("session_") || sid.startsWith("dev_session_")) return;
-    const isCreator = currentSession?.creatorId === profile?.id;
-    // Host is the one closing — no need to watch for closure
-    if (isCreator) return;
+    if (!sid || isOfflineSessionId(sid)) return;
+    const t = useI18nStore.getState().t;
+    let alive = true;
 
+    const check = async (why: string) => {
+      const state = await checkSessionGone(`monitor (${why})`, sid, t);
+      // Open, but this phone has nothing of it in memory (app restarted on
+      // this screen): home, where the rejoin notice offers it again.
+      if (alive && state === "open" && !useSessionStore.getState().currentSession) {
+        console.log(`[session-gone] monitor (${why}): ${sid} is open but not in memory — home, to rejoin from there`);
+        router.replace("/(app)");
+      }
+    };
+
+    void check("screen open");
+    const appSub = AppState.addEventListener("change", (s) => {
+      if (s === "active") void check("foreground");
+    });
     const ch = supabase
       .channel(`monitor:${sid}:${Date.now()}`)
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "sessions",
-          filter: `id=eq.${sid}`,
-        },
+        { event: "UPDATE", schema: "public", table: "sessions", filter: `id=eq.${sid}` },
         (payload) => {
-          const newStatus = payload.new?.status as string | undefined;
-          if (newStatus === "closed") {
-            clearSession();
-            router.replace("/(app)");
-            showDialog(
-              "Session Ended",
-              "The host has closed this session.",
-              [{ text: "OK" }],
-              { cancelable: false }
-            );
-          }
+          if ((payload.new?.status as string | undefined) === "closed") void check("realtime close");
         }
       )
       .subscribe();
 
     return () => {
+      alive = false;
+      appSub.remove();
       supabase.removeChannel(ch);
     };
-  }, [currentSession?.id, currentSession?.creatorId, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sid]);
 }

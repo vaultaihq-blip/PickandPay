@@ -23,6 +23,7 @@ import { fetchFreshCredits } from "@/lib/credits";
 import { useAuthStore } from "@/store/authStore";
 import { BarChart } from "@/components/dashboard/BarChart";
 import { BreakdownCard } from "@/components/dashboard/BreakdownCard";
+import { SessionMissing } from "@/components/session/SessionMissing";
 import { SummaryShare } from "@/components/dashboard/SummaryShare";
 import { CentRoulette } from "@/components/roulette/CentRoulette";
 import { Avatar } from "@/components/ui/Avatar";
@@ -562,12 +563,12 @@ ${t("host_now_you_payments")}`
   if (!session || !receipt) {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Session not found.</Text>
-          <TouchableOpacity onPress={() => router.replace("/(app)")}>
-            <Text style={{ color: C.primary, marginTop: 12, fontSize: 16 }}>Go home</Text>
-          </TouchableOpacity>
-        </View>
+        <SessionMissing
+          label="dashboard"
+          sessionId={sessionId ? String(sessionId) : undefined}
+          textColor={MUTED}
+          accentColor={C.primary}
+        />
       </SafeAreaView>
     );
   }

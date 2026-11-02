@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { showDialog } from "@/lib/dialog";
 import { withTimeout, writeErrorMessage } from "@/lib/checkedWrite";
 import type { TranslationKey } from "@/constants/translations";
+import { markEndedHere } from "@/lib/sessionGone";
 
 // D.5 — the host ends a session through the server (end_session, D.1): only
 // the current host may, every close is recorded in session_closures, and the
@@ -9,6 +10,7 @@ import type { TranslationKey } from "@/constants/translations";
 // throws otherwise, so callers clear local state and leave only after that.
 export async function endSession(label: string, sessionId: string): Promise<void> {
   console.log(`[end-session] ${label}: ending ${sessionId}`);
+  markEndedHere(sessionId); // D.7: this phone's own end is no surprise to it
   const { data, error } = await withTimeout(
     label,
     supabase.rpc("end_session", { p_session_id: sessionId })

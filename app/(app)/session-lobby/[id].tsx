@@ -15,6 +15,8 @@ import {
 } from "react-native";
 import { showDialog } from "@/lib/dialog";
 import { endSession, showEndSessionError } from "@/lib/endSession";
+import { checkSessionGone } from "@/lib/sessionGone";
+import { SessionMissing } from "@/components/session/SessionMissing";
 import { leaveSession } from "@/lib/leaveSession";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -273,8 +275,9 @@ export default function SessionLobbyScreen() {
   const [hostReviewing, setHostReviewing] = useState(false);
   const reviewingRef = useRef(false);
 
-  // Force-navigate home if host closes the session while we're in the lobby
-  useSessionMonitor();
+  // D.7: home, with the reason, when the session has ended or does not exist —
+  // also after the app comes back from the background or was restarted here.
+  useSessionMonitor(id ? String(id) : undefined);
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const graceTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -960,6 +963,11 @@ ${tr("host_now_you_all_picked")}`, [
     if (!id || !myId || (String(id).startsWith("session_") || String(id).startsWith("dev_session_"))) return;
 
     const handleSessionStatus = (status?: string) => {
+      // D.7: the poll sees a close the realtime event may have missed.
+      if (status === "closed") {
+        void checkSessionGone("lobby: status read", String(id), useI18nStore.getState().t);
+        return;
+      }
       if (status !== "awaiting_payment" || countdownStarted.current) return;
       countdownStarted.current = true;
       startFinalCountdown();
@@ -1526,6 +1534,11 @@ ${tr("host_now_you_all_picked")}`, [
   }, [clearSession, closeConfirmedSession, myId, session, t]);
 
   const confirmExitSession = useCallback(() => {
+    // Nothing loaded here (D.7): there is nothing to leave — straight home.
+    if (!session) {
+      router.replace("/(app)");
+      return;
+    }
     const othersHere = !!session?.participants.some((p) => p.userId !== myId);
     if (isCreator && othersHere) {
       showDialog(t("lobby_host_exit_title"), t("lobby_host_exit_msg"), [
@@ -1537,8 +1550,9 @@ ${tr("host_now_you_all_picked")}`, [
     }
     showDialog(
       isCreator ? t("lobby_confirm_end_title") : t("lobby_confirm_leave_title"),
+      // C1: the scan-credit warning only for the host, after a validated scan.
       isCreator
-        ? t("lobby_confirm_end_msg")
+        ? (session.receipt ? t("lobby_confirm_end_msg") : t("lobby_confirm_end_noscan_msg"))
         : t("lobby_confirm_leave_msg"),
       [
         { text: t("lobby_stay"), style: "cancel" },
@@ -1549,7 +1563,7 @@ ${tr("host_now_you_all_picked")}`, [
         },
       ]
     );
-  }, [closeConfirmedSession, handOverAndLeave, isCreator, myId, session?.participants, t]);
+  }, [closeConfirmedSession, handOverAndLeave, isCreator, myId, session, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1993,9 +2007,12 @@ ${tr("host_now_you_all_picked")}`, [
     return (
       <SafeAreaView style={styles.safe}>
         <StatusBar style="light" backgroundColor={HOME_THEME.background} translucent={false} />
-        <View style={styles.centered}>
-          <Text style={styles.emptyText}>{t("session_not_found")}</Text>
-        </View>
+        <SessionMissing
+          label="lobby"
+          sessionId={id ? String(id) : undefined}
+          textColor={HOME_THEME.secondary}
+          accentColor={HOME_THEME.primary}
+        />
       </SafeAreaView>
     );
   }

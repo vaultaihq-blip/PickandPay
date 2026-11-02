@@ -182,3 +182,95 @@ app voltou ao início sem dizer nada.
 4. B volta à app.
    - O aviso de rejoin não aparece.
    - Se o B ainda vir o aviso e tocar, aparece "Esta sessão já terminou".
+
+## D.7 para este caso: sessão terminada ou inexistente nunca deixa um ecrã sem saída (2026-11-02)
+
+**O que falhou no teste 1**
+- O B (conta C, `70abb821`) estava no lobby da sessão `511bea98` com a app em
+  segundo plano. O A terminou-a às `[end-session] … closed (verified)`.
+- Enquanto o B estava em segundo plano, o Android/Expo Go reiniciou a app
+  (`[root] User: 70abb821…` com arranque do zero). A app voltou a abrir
+  **no ecrã do lobby**, mas sem nada em memória.
+- O lobby sem sessão mostrava só "Sessão não encontrada.", sem botões.
+- O Voltar abria o diálogo de sair do participante ("A fatura já foi
+  confirmada. Voltar atrás irá sair da sessão."), que parecia o do anfitrião.
+- O "Sair" não fazia nada: a função de sair começava com `if (!session)
+  return`.
+- O `useSessionMonitor` só ouvia o evento de fecho pelo realtime, e um
+  telemóvel em segundo plano perde esse evento.
+
+**Servidor** (`20261102150000_d7_closed_reason.sql`, aplicado em produção)
+- `session_closures` é só do servidor. A resposta `closed` do `join_preview`
+  passa a trazer `closed_reason`:
+  - `host` — o anfitrião terminou (`host_ended`);
+  - `inactive` — expirou (qualquer regra, também a expiração vista na
+    leitura antes do job a fechar) ou foi fechada pela limpeza (`cleanup`);
+  - `ended` — outro fecho.
+- O motivo só vai para quem tem linha na sessão, ou é o anfitrião ou o
+  anfitrião original. Para os outros, a resposta fica igual (R3/R7).
+- Nada mais muda no `join_preview`.
+- **Ensaio** (com BEGIN e ROLLBACK, contra os dados reais): 7 casos.
+  - Participante, anfitrião e estranho numa sessão terminada pelo anfitrião.
+  - Uma sessão `cleanup` e uma `expired_no_receipt`.
+  - Uma sessão aberta e uma inexistente.
+  - Só muda o campo novo, e só para quem estava na sessão. A reversão repõe a
+    definição exatamente.
+- **Depois de aplicar**: os mesmos 7 casos em produção, 0 diferenças.
+- **Reversão**: `supabase/rollback/20261102150000_d7_pre_state_and_rollback.sql`
+  (a definição lida de produção antes da mudança).
+
+**App**
+- `lib/sessionGone.ts`:
+  - pergunta ao servidor o estado da sessão (limite de 10 s);
+  - quando a sessão acabou ou não existe, vai direto para o ecrã inicial e
+    mostra um aviso só com OK:
+    - "Esta sessão foi terminada pelo anfitrião.";
+    - "Esta sessão terminou por inatividade.";
+    - "Esta sessão já terminou." (outro fecho);
+    - "Sessão não encontrada. Confirma com o anfitrião.";
+  - um só aviso por sessão, mesmo que vários ecrãs o vejam ao mesmo tempo;
+  - quem terminou a sessão neste telemóvel não recebe aviso.
+- `hooks/useSessionMonitor.ts` (lobby e seleção) verifica:
+  - quando o ecrã abre;
+  - quando a app volta ao primeiro plano;
+  - no evento de fecho do realtime.
+  O aviso antigo em inglês ("Session Ended") sai.
+- Lobby: a leitura de 2 em 2 s também apanha o `closed`.
+- `components/session/SessionMissing.tsx` substitui o "Session not found" do
+  lobby, da seleção e do dashboard:
+  - pergunta ao servidor e vai para o início com o aviso certo;
+  - se a sessão ainda estiver aberta, mas não carregada (a app foi
+    reiniciada), vai para o início, onde o aviso de rejoin a oferece;
+  - na seleção com a sessão carregada, volta ao lobby;
+  - tem sempre o botão "Ir para o Início";
+  - sem rede, mostra a mensagem de erro, que fica até se fechar, e o botão
+    continua lá.
+- O Voltar num lobby ou numa seleção sem sessão vai direto para o início, sem
+  diálogo.
+- Entrada (`join.tsx`):
+  - QR de uma sessão que não existe → início, com "Sessão não encontrada.
+    Confirma com o anfitrião.";
+  - sessão terminada de que a pessoa fazia parte → início, com o motivo;
+  - quem nunca esteve numa sessão fechada continua a ver o ecrã de entrada com
+    o anfitrião (R7);
+  - se a confirmação falhar porque a sessão acabou entretanto → início, com o
+    motivo;
+  - o botão Voltar vai para o início quando não há para onde voltar.
+- O aviso de rejoin no início também diz o motivo.
+
+**Aviso do crédito do scan (C1)**
+- Só aparece ao anfitrião, quando ele sai de propósito de uma sessão com a
+  fatura validada: "Esta fatura já foi lida e o crédito foi usado. Se saíres
+  agora, a sessão termina e perdes esse crédito."
+- O anfitrião sem fatura vê "A sessão termina para todos."
+- O participante vê só "Vais sair desta sessão.".
+- Igual no lobby e na seleção. A seleção tinha os textos escritos em português
+  no código; agora usa as traduções.
+- Por decidir: o diálogo do anfitrião com mais pessoas ("passar o papel de
+  anfitrião" ou "terminar para todos") ficou igual. Terminar para todos aí
+  também perde o crédito do scan, e o texto não o diz.
+
+**Logs**
+- `[session-gone] monitor (foreground): <id> is closed_host — going home`
+- `[session-gone] lobby: <id> is open but not loaded here — home`
+- `[session-gone] … could not ask the server — …` (sem rede; nada muda)

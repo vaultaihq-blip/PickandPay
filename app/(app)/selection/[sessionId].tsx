@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { showDialog } from "@/lib/dialog";
 import { endSession, showEndSessionError } from "@/lib/endSession";
+import { SessionMissing } from "@/components/session/SessionMissing";
 import { leaveSession } from "@/lib/leaveSession";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams, Stack } from "expo-router";
@@ -128,8 +129,9 @@ export default function SelectionScreen() {
   const [sharedModalItem, setSharedModalItem] = useState<ReceiptItem | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Force-navigate home if host closes the session while we're selecting
-  useSessionMonitor();
+  // D.7: home, with the reason, when the session has ended or does not exist —
+  // also after the app comes back from the background or was restarted here.
+  useSessionMonitor(sessionId ? String(sessionId) : undefined);
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // Prevent re-firing the "selecting" status update when the store changes mid-session
@@ -303,21 +305,27 @@ export default function SelectionScreen() {
   }, [clearSession, isCreator, profile?.id, session, t]);
 
   const confirmExitSession = useCallback(() => {
+    // Nothing loaded here (D.7): there is nothing to leave — straight home.
+    if (!session) {
+      router.replace("/(app)");
+      return;
+    }
     showDialog(
-      isCreator ? "Terminar sessão?" : "Sair da sessão?",
+      isCreator ? t("lobby_confirm_end_title") : t("lobby_confirm_leave_title"),
+      // C1: the scan-credit warning only for the host, after a validated scan.
       isCreator
-        ? "A fatura já foi confirmada. Voltar atrás irá terminar a sessão para todos."
-        : "A fatura já foi confirmada. Voltar atrás irá sair da sessão.",
+        ? (session.receipt ? t("lobby_confirm_end_msg") : t("lobby_confirm_end_noscan_msg"))
+        : t("lobby_confirm_leave_msg"),
       [
-        { text: "Ficar", style: "cancel" },
+        { text: t("lobby_stay"), style: "cancel" },
         {
-          text: isCreator ? "Terminar sessão" : "Sair da sessão",
+          text: isCreator ? t("lobby_end_session") : t("lobby_leave_btn"),
           style: "destructive",
           onPress: closeConfirmedSession,
         },
       ]
     );
-  }, [closeConfirmedSession, isCreator]);
+  }, [closeConfirmedSession, isCreator, session, t]);
 
   const leaveSelectionToLobby = useCallback(() => {
     const sid = sessionId ?? session?.id;
@@ -909,9 +917,15 @@ export default function SelectionScreen() {
     }
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-        <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyText, { color: mutedColor }]}>Session not found.</Text>
-        </View>
+        <SessionMissing
+          label="selection"
+          sessionId={sessionId ? String(sessionId) : undefined}
+          textColor={mutedColor}
+          accentColor={Colors.primary}
+          // Open and loaded, only this screen can't show it (no receipt yet,
+          // not in the list): back to the lobby, not home.
+          onOpen={session ? () => router.replace(`/(app)/session-lobby/${session.id}`) : undefined}
+        />
       </SafeAreaView>
     );
   }

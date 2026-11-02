@@ -30,6 +30,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showWriteError, withTimeout, WriteError } from "@/lib/checkedWrite";
+import { checkSessionGone, leaveGoneSession } from "@/lib/sessionGone";
 import { Session, SessionParticipant, UserProfile } from "@/types";
 import { getColorForIndex } from "@/constants/colors";
 import { getAvatarEmoji } from "@/constants/avatars";
@@ -53,6 +54,7 @@ interface PreviewRow {
   people?: number;
   max_people?: number;
   my_status?: string | null;
+  closed_reason?: "host" | "inactive" | "ended";
 }
 
 const isSessionFullError = (err: any) => err?.code === "PP409" || /SESSION_FULL/.test(String(err?.message ?? ""));
@@ -127,6 +129,18 @@ export default function JoinSessionScreen() {
       const row = await readPreview(sessionId);
       const kind = (row.result ?? "not_found") as EntryKind;
       console.log(`[join] join_preview: ${kind} (my status ${row.my_status ?? "none"}, ${row.people ?? 0} people)`);
+
+      // D.7: no such session, or one this person was in has ended — home,
+      // with the reason and OK only. Someone who was never in a closed
+      // session still sees the entry screen with the host (R7).
+      if (kind === "not_found") {
+        leaveGoneSession("join", sessionId, "not_found", t);
+        return;
+      }
+      if (kind === "closed" && row.closed_reason) {
+        leaveGoneSession("join", sessionId, row.closed_reason === "host" ? "closed_host" : row.closed_reason === "inactive" ? "closed_inactive" : "closed", t);
+        return;
+      }
 
       if (kind === "join") {
         // The host's lobby shows "joining" from this row. (session_id, user_id)
@@ -332,8 +346,11 @@ export default function JoinSessionScreen() {
       router.replace(`/(app)/session-lobby/${sessionId}`);
     } catch (err: any) {
       console.error("[join] confirmJoin error:", err);
-      if (isNoCreditsError(err)) void fetchSessionPreview(preview.id);   // shows the no-credits screen
-      else if (err instanceof WriteError) showWriteError(err, t);
+      if (isNoCreditsError(err)) { void fetchSessionPreview(preview.id); return; }   // shows the no-credits screen
+      // D.7: ended or gone between the preview and the confirm — home, with the reason.
+      const state = await checkSessionGone("join: confirm", preview.id, t);
+      if (state && state !== "open") { setPreview(null); return; }
+      if (err instanceof WriteError) showWriteError(err, t);
       else showDialog(t("error"), t("join_error_join"));
     } finally {
       setLoading(false);
@@ -447,7 +464,11 @@ export default function JoinSessionScreen() {
               <Text style={styles.joinBtnText}>{t("join_scan_another_btn")}</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={[styles.cancelBtn, { borderColor }]} onPress={() => router.back()}>
+          {/* D.7: opened from a link after a restart there is nothing to go back to. */}
+          <TouchableOpacity
+            style={[styles.cancelBtn, { borderColor }]}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(app)"))}
+          >
             <Text style={[styles.cancelBtnText, { color: mutedColor }]}>{preview.kind === "no_credits" ? t("cancel") : t("back")}</Text>
           </TouchableOpacity>
         </View>
