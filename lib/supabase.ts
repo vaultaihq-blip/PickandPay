@@ -279,24 +279,10 @@ export async function joinSession(
   return supabase.from("session_participants").upsert({
     session_id: sessionId,
     user_id: userId,
-    selections: [],
     total_owed: 0,
     paid: false,
     confirmed_by_creator: false,
   });
-}
-
-export async function updateParticipantSelections(
-  sessionId: string,
-  userId: string,
-  selections: object[],
-  totalOwed: number
-) {
-  return supabase
-    .from("session_participants")
-    .update({ selections, total_owed: totalOwed })
-    .eq("session_id", sessionId)
-    .eq("user_id", userId);
 }
 
 export async function markParticipantPaid(

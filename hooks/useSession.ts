@@ -131,7 +131,6 @@ export function useSession(sessionId?: string) {
       await supabase.from("session_participants").upsert({
         session_id: currentSession.id,
         user_id: profile.id,
-        selections: [],
         total_owed: 0,
         paid: false,
         confirmed_by_creator: false,

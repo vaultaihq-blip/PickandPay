@@ -812,10 +812,8 @@ ${tr("host_now_you_all_picked")}`, [
           next.delete(uid);
           return next;
         });
-        // preserveSelections=true when editing (not cancelling) — don't wipe store selections
-        if (!payload.preserveSelections) {
-          useSessionStore.getState().updateSelections(uid, []);
-        }
+        // R12: the picks are the server's units and arrive by realtime; a
+        // status change never wipes them here (preserveSelections is ignored).
       })
       .on("broadcast", { event: "selection_draft" }, ({ payload }) => {
         const uid = payload.userId as string | undefined;
@@ -1579,8 +1577,9 @@ ${tr("host_now_you_all_picked")}`, [
     router.push(`/(app)/selection/${id}?userId=${myId}&returnTo=lobby`);
   };
 
-  // Edit: mark as "not ready" for all users, preserve selections in store but clear DB
-  // Clearing DB ensures the 4s polling on other devices stops marking this user as done
+  // Edit: mark as "not ready" for all users. R12: the picks are units on the
+  // server and stay; only the status goes back to "selecting" (writing
+  // selections: [] released every unit — 02-11-2026, test 4).
   const handleEditMyItems = () => {
     if (!myId) return;
     setSelectionDone((prev) => { const n = new Set(prev); n.delete(myId); return n; });
@@ -1598,10 +1597,10 @@ ${tr("host_now_you_all_picked")}`, [
     });
     if (id && !String(id).startsWith("session_") && !String(id).startsWith("dev_session_")) {
       expectRows(
-        "lobby: edit items (reset selections, selecting)",
+        "lobby: edit items (selecting, picks kept)",
         supabase
           .from("session_participants")
-          .update({ selections: [], status: "selecting" })
+          .update({ status: "selecting" })
           .eq("session_id", id)
           .eq("user_id", myId)
           .select("id")
@@ -1614,16 +1613,17 @@ ${tr("host_now_you_all_picked")}`, [
   editMyItemsRef.current = handleEditMyItems;
 
   // Cancel a saved draft (Back was pressed in selection) — no broadcast needed (no one knows about draft)
+  // R12: every tap is already saved, so there is no draft to throw away; the
+  // picks stay (whoever wants an item gone unticks it). Status only.
   const handleCancelDraft = useCallback(async () => {
     if (!myId) return;
     setSavedDraftIds((prev) => { const n = new Set(prev); n.delete(myId); return n; });
-    useSessionStore.getState().updateSelections(myId, []);
     if (id && !(String(id).startsWith("session_") || String(id).startsWith("dev_session_"))) {
       await expectRows(
-        "lobby: cancel draft (reset selections, joined)",
+        "lobby: cancel draft (joined, picks kept)",
         supabase
           .from("session_participants")
-          .update({ selections: [], status: "joined" })
+          .update({ status: "joined" })
           .eq("session_id", id)
           .eq("user_id", myId)
           .select("id")
@@ -1857,18 +1857,18 @@ ${tr("host_now_you_all_picked")}`, [
       next.delete(myId);
       return next;
     });
+    // R12: "Cancelar pronto" only takes the status back to selecting; the units stay.
     channelRef.current?.send({
       type: "broadcast",
       event: "selection_uncomplete",
-      payload: { userId: myId },
+      payload: { userId: myId, preserveSelections: true },
     });
-    useSessionStore.getState().updateSelections(myId, []);
     if (id && !(String(id).startsWith("session_") || String(id).startsWith("dev_session_"))) {
       await expectRows(
-        "lobby: cancel ready (reset selections, joined)",
+        "lobby: cancel ready (selecting, picks kept)",
         supabase
           .from("session_participants")
-          .update({ selections: [], status: "joined" })
+          .update({ status: "selecting" })
           .eq("session_id", id)
           .eq("user_id", myId)
           .select("id")

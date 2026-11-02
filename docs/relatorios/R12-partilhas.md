@@ -327,3 +327,51 @@ Meyva.
   como "Done" no lobby, porque o lobby trata qualquer pessoa `joined` com
   itens como confirmada. Isto já era assim antes do R12. Está na fila
   (`docs/relatorios/v2-fixes.md`): aceitar só muda os itens, e não o estado.
+
+
+---
+
+## Correções depois dos testes de 02-11-2026
+
+Resultados: sessão 1 com 1, 2, 3, 5, 6, 7, 9 e 10 OK; o 4 com problema; o 8 a
+ajustar. Sessão 2: 11 OK.
+
+### Ponto 1 — as escolhas desapareciam ao voltar à seleção
+
+**Causa**
+- No log: o A abre outra vez a seleção (linha 885). Logo a seguir, B e C
+  recebem "VAULT deixou de partilhar o Çerez & Meyva / Art of Bosphorus"
+  (891–893), e o A volta a escolher b8, b10 e b13 (894–896).
+- O botão "Editar" do lobby ainda gravava `selections: []` antes de abrir a
+  seleção. Vinha de antes da R12, quando o aparelho guardava as escolhas e as
+  voltava a gravar no Done. Com a R12, o servidor lê uma lista vazia como
+  "não quero nada" e liberta todas as unidades.
+- "Cancelar" (rascunho) e "Cancelar pronto" faziam o mesmo.
+
+**Correção** (decisão do dono: nenhum botão pode mandar `selections: []`)
+- **Editar:** grava só `selecting`.
+- **Cancelar:** grava só `joined`.
+- **Cancelar pronto:** volta só a `selecting`.
+- As unidades ficam sempre. Quem quiser tirar um item desmarca-o.
+- **Os outros aparelhos**, ao receber `selection_uncomplete`, já não apagam as
+  escolhas dessa pessoa no ecrã. As escolhas chegam do servidor pelo realtime.
+- **Outros sítios que mandavam `selections`:**
+  - os `joinSession` de `lib/supabase.ts` e `hooks/useSession.ts`: o upsert
+    deixa de levar `selections` (nada os chama, mas um upsert sobre uma linha
+    existente apagava as escolhas);
+  - `updateParticipantSelections` (sem uso): apagada.
+  - Os restantes `selections: []` no código são objetos locais, que não vão
+    ao servidor.
+- **A seleção abre sempre com o que está no servidor:** ao abrir, lê as
+  escolhas de todos (`[selection] picks from the server: N people, M line(s)
+  mine`). Vale ao voltar do lobby, no rejoin e depois de um cancelamento
+  aceite.
+
+**Teste**
+1. A escolhe itens, partilhados com B e C, e faz Done.
+2. A carrega em Editar.
+   - As escolhas continuam marcadas, com os círculos e o "N de M livre"
+     certos.
+   - B e C não recebem nenhum "deixou de partilhar".
+   - Log do A: `[selection] picks from the server: 3 people, N line(s) mine`.
+3. A faz Done e depois "Cancelar pronto". As escolhas ficam.

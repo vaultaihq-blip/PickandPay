@@ -189,6 +189,39 @@ export default function SelectionScreen() {
     if (live && storeMine) setSelections(new Map(storeMine.map((s) => [s.itemId, s])));
   }, [live, storeMine]);
 
+  // R12 — the screen always opens with what the server has (my units, the
+  // others' circles, "N de M livre"), not with what this phone remembered:
+  // coming back from the lobby, after a rejoin, after a cancel was accepted.
+  const liveSessionId = live ? session?.id : undefined;
+  useEffect(() => {
+    if (!liveSessionId) return;
+    let alive = true;
+    supabase
+      .from("session_participants")
+      .select("user_id, selections")
+      .eq("session_id", liveSessionId)
+      .then(({ data, error }) => {
+        if (!alive) return;
+        if (error) {
+          console.log(`[selection] read picks failed: ${error.code ?? "?"}: ${error.message}`);
+          return;
+        }
+        const store = useSessionStore.getState();
+        let mine = 0;
+        for (const row of data ?? []) {
+          const sels = Array.isArray(row.selections) ? (row.selections as ItemSelection[]) : [];
+          if (row.user_id === profile?.id) mine = sels.length;
+          if (store.currentSession?.participants.some((p) => p.userId === row.user_id)) {
+            store.updateSelections(row.user_id as string, sels);
+          }
+        }
+        console.log(`[selection] picks from the server: ${data?.length ?? 0} people, ${mine} line(s) mine`);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [liveSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Supabase broadcast channel — send only (selection_complete broadcasts) ─
   useEffect(() => {
     const sid = sessionId ?? session?.id;
