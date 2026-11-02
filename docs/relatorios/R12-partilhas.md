@@ -430,3 +430,31 @@ itens sem ter feito Done.
    - Em todos os aparelhos, o B **não** aparece como Done.
    - O círculo do B aparece no item.
 3. O B abre a seleção e faz Done. Agora aparece como Done.
+
+### Ponto 3 — no lobby, o que falta escolher
+
+**O que muda** (`components/session/LobbyReceiptItems.tsx`, na fatura
+expandida do lobby)
+- **No topo:** "Faltam N itens por escolher" a vermelho, ou "Todos os itens
+  têm dono ✓" a verde. N conta as unidades sem dono, como o finalizar.
+- **Primeiro, os itens com unidades sem dono**, com o destaque da revisão em
+  espelho (fundo vermelho claro e "!"):
+  - "1 de 2 Wisky Sour por escolher" nos itens de várias unidades;
+  - "Arroz de Pato por escolher" nos de uma unidade.
+- **Depois, os itens completos**, sem destaque, com os círculos de quem os
+  escolheu. Tocar nos círculos mostra os nomes.
+- **Os pedidos pendentes** aparecem junto do item: "à espera de Bruno", e o
+  círculo do convidado esbatido.
+- A contagem no cabeçalho da fatura ("N itens por escolher") passa a usar a
+  mesma conta, e não as linhas.
+- Na app e no web, nas 5 línguas.
+
+**Teste**
+1. Com o Oligark, antes de alguém escolher, o lobby mostra "Faltam N itens
+   por escolher", com todos os itens a vermelho.
+2. O A escolhe 1 Wisky Sour.
+   - Aparece "1 de 2 Wisky Sour por escolher" no topo da lista, com o círculo
+     do A.
+3. O A pede ao B para partilhar um item. Junto desse item aparece "à espera
+   de B", com o círculo do B esbatido.
+4. Com tudo escolhido, aparece "Todos os itens têm dono ✓" a verde.

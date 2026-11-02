@@ -45,6 +45,7 @@ import { PersonDot } from "@/components/selection/PersonDot";
 import { useShareNotices, useShareRequests } from "@/hooks/useShareRequests";
 import { ShareRequestsModals, ShareRequestsPanel } from "@/components/session/ShareRequestsPanel";
 import { useShareRequestsStore } from "@/store/shareRequestsStore";
+import { LobbyReceiptItems, receiptProgress } from "@/components/session/LobbyReceiptItems";
 
 const HOME_THEME = {
   background: "#0B0D10",
@@ -1916,9 +1917,10 @@ ${tr("host_now_you_all_picked")}`, [
     return ids;
   }, [participants, draftSelections]);
 
+  // R12: units nobody holds (the server's units, as the finalize counts them).
   const unassignedCount = useMemo(
-    () => allItems.filter((item) => !assignedItemIds.has(item.id)).length,
-    [allItems, assignedItemIds]
+    () => (receipt ? receiptProgress(receipt, participants).missing : 0),
+    [receipt, participants]
   );
 
   const doneCount = participants.filter((p) => {
@@ -2072,50 +2074,15 @@ ${tr("host_now_you_all_picked")}`, [
 
             {accordionExpanded && (
               <View style={styles.accordionBody}>
-                {ORDERED_CATEGORIES.map((cat) => {
-                  const rawItems = receipt.categories[cat];
-                  if (rawItems.length === 0) return null;
-                  const groups = groupItemsByName(rawItems);
-                  return (
-                    <View key={cat}>
-                      <Text style={styles.catLabel}>
-                        {t(CATEGORY_LABEL_KEYS[cat]).toUpperCase()}
-                      </Text>
-                      {groups.map((entry) => {
-                        const item = entry.item;
-                        const ids = entry.kind === "merged" ? entry.originalIds : [item.id];
-                        const isUnassigned = ids.every((iid) => !assignedItemIds.has(iid));
-                        const claimedCount = ids.filter((iid) => assignedItemIds.has(iid)).length;
-                        const isMergedMulti = entry.kind === "merged" && entry.originalIds.length > 1;
-                        const availableCount = ids.length - claimedCount;
-                        return (
-                          <View
-                            key={entry.kind === "merged" ? `m_${item.id}` : item.id}
-                            style={[styles.itemRow, isUnassigned && styles.itemRowUnassigned]}
-                          >
-                            {isUnassigned && (
-                              <Ionicons name="alert-circle-outline" size={13} color="#FF9500" style={{ marginRight: 2 }} />
-                            )}
-                            <View style={{ flex: 1 }}>
-                              <Text style={[styles.itemName, isUnassigned && { color: "#FF9500" }]} numberOfLines={1}>
-                                {item.quantity > 1 ? `${item.quantity}× ` : ""}
-                                {item.name}
-                              </Text>
-                              {isMergedMulti && (
-                                <Text style={styles.itemAvail}>
-                                  {availableCount} {t("lobby_of")} {ids.length} {t("lobby_available")}
-                                </Text>
-                              )}
-                            </View>
-                            <Text style={styles.itemPrice}>
-                              {formatCurrency(item.unitPrice, receipt.currency)}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  );
-                })}
+                {/* R12 — what is still to pick first, then the complete items */}
+                <LobbyReceiptItems
+                  receipt={receipt}
+                  participants={participants}
+                  myId={myId || undefined}
+                  requests={shareRequests}
+                  initials={initials}
+                  t={t}
+                />
                 {receipt.globalCosts.map((cost) => (
                   <View key={cost.id ?? cost.name} style={styles.itemRow}>
                     <Text style={styles.itemName}>{cost.name}</Text>
