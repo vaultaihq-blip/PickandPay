@@ -47,6 +47,8 @@ interface JoinEntry {
   people: number;
   maxPeople: number;
   myStatus: string | null;
+  // R11: coming back at 0 credits without having paid for this session.
+  needsCredit: boolean;
 }
 interface PreviewRow {
   result?: string;
@@ -55,6 +57,7 @@ interface PreviewRow {
   max_people?: number;
   my_status?: string | null;
   closed_reason?: "host" | "inactive" | "ended";
+  needs_credit?: boolean;
 }
 
 const isSessionFullError = (err: any) => err?.code === "PP409" || /SESSION_FULL/.test(String(err?.message ?? ""));
@@ -66,6 +69,7 @@ const toEntry = (sessionId: string, row: PreviewRow, kind?: EntryKind): JoinEntr
   people: row.people ?? 0,
   maxPeople: row.max_people ?? 26,
   myStatus: row.my_status ?? null,
+  needsCredit: row.needs_credit === true,
 });
 
 async function readPreview(sessionId: string): Promise<PreviewRow> {
@@ -145,7 +149,8 @@ export default function JoinSessionScreen() {
       if (kind === "join") {
         // The host's lobby shows "joining" from this row. (session_id, user_id)
         // is unique: someone who cancelled or left before paying reuses theirs.
-        if (row.my_status === "cancelled" || row.my_status === "left") {
+        // R11: someone removed comes back as an entry (1 credit), on the same row.
+        if (row.my_status === "cancelled" || row.my_status === "left" || row.my_status === "removed") {
           await expectRows(
             `join: ${row.my_status} → pending`,
             supabase
@@ -250,6 +255,20 @@ export default function JoinSessionScreen() {
     });
     return () => sub.remove();
   }, [preview]);
+
+  // R11: back at 0 credits, not having paid for this session — say a credit is
+  // needed before the host finalizes (Comprar créditos / Continuar).
+  const confirmJoinOrWarn = () => {
+    if (preview?.kind === "rejoin" && preview.needsCredit) {
+      console.log("[join] rejoin at 0 credits: notice shown");
+      showDialog(t("rejoin_zero_credits_title"), t("rejoin_zero_credits_msg"), [
+        ...(Platform.OS !== "web" ? [{ text: t("credits_buy_btn"), onPress: handleBuyCredits }] : []),
+        { text: t("rejoin_zero_credits_continue"), onPress: () => void confirmJoin() },
+      ]);
+      return;
+    }
+    void confirmJoin();
+  };
 
   const confirmJoin = async () => {
     if (!preview || !profile) return;
@@ -531,7 +550,7 @@ export default function JoinSessionScreen() {
             </View>
           )}
 
-          <TouchableOpacity style={styles.joinBtn} onPress={confirmJoin} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.joinBtn} onPress={confirmJoinOrWarn} activeOpacity={0.85}>
             <Text style={styles.joinBtnText}>{isRejoin ? t("join_rejoin_btn") : t("join_btn")}</Text>
           </TouchableOpacity>
 

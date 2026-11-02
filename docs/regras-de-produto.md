@@ -4,7 +4,7 @@ Estas regras são **obrigatórias**. Nenhuma pode ser alterada sem pedido explí
 - O servidor (Supabase) é sempre quem decide e quem garante cada regra. A app só mostra o resultado.
 - Uma app modificada não consegue contornar nenhuma delas.
 
-Estado a 02-11-2026: R1 a R9, R11 e R12, com as decisões do D (o D.1 já aplicado). A R2 alargada ao total impresso já está na app. A R12 está feita no servidor e na app. A R11 ainda está por implementar. Os relatórios com os pormenores estão em `docs/relatorios/`.
+Estado a 02-11-2026: R1 a R9, R11 e R12, com as decisões do D (o D.1 já aplicado). A R2 alargada ao total impresso já está na app. A R11 e a R12 estão feitas no servidor e na app. Os relatórios com os pormenores estão em `docs/relatorios/`.
 
 ---
 

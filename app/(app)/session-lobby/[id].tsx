@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { showDialog } from "@/lib/dialog";
 import { endSession, showEndSessionError } from "@/lib/endSession";
-import { checkSessionGone } from "@/lib/sessionGone";
+import { checkSessionGone, leaveGoneSession } from "@/lib/sessionGone";
 import { SessionMissing } from "@/components/session/SessionMissing";
 import { leaveSession } from "@/lib/leaveSession";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -1148,7 +1148,7 @@ ${tr("host_now_you_all_picked")}`, [
         // the lobby gives items, not Done).
         const confirmed = status === "items_picked";
         const draft = status === "selecting";
-        if (status === "left") {
+        if (status === "left" || status === "removed") { // R11: removed shows as gone
           left.push(uid);
           useSessionStore.getState().updateSelections(uid, sels);
           continue;
@@ -1232,6 +1232,11 @@ ${tr("host_now_you_all_picked")}`, [
         const sels = payload.new?.selections;
         const status = payload.new?.status as string | undefined;
         if (!uid) return;
+        // R11: the host removed me from the split — home, with the reason.
+        if (status === "removed" && uid === myId) {
+          leaveGoneSession("lobby: removed by the host", String(id), "removed", useI18nStore.getState().t);
+          return;
+        }
         if (status === "pending" || status === "cancelled") {
           if (uid === myId) return;
           if (status === "pending") {
@@ -1271,7 +1276,7 @@ ${tr("host_now_you_all_picked")}`, [
           } else {
             setGoingToSelection((prev) => new Set([...prev, uid]));
           }
-        } else if (status === "joined" || status === "left") {
+        } else if (status === "joined" || status === "left" || status === "removed") {
           setGoingToSelection((prev) => {
             const next = new Set(prev);
             next.delete(uid);
@@ -1282,7 +1287,7 @@ ${tr("host_now_you_all_picked")}`, [
             next.delete(uid);
             return next;
           });
-          if (status === "left") {
+          if (status === "left" || status === "removed") {
             const hostId = useSessionStore.getState().currentSession?.creatorId;
             if (uid !== hostId) {
               setLeftParticipantIds((prev) => new Set([...prev, uid]));
@@ -1837,7 +1842,40 @@ ${tr("host_now_you_all_picked")}`, [
           countdownStarted.current = false;
           // Each of them also gets the message, with the way to buy credits.
           channelRef.current?.send({ type: "broadcast", event: "finalize_no_credits", payload: { userIds } });
-          showDialog(t("scan_no_credits"), `${t("lobby_finalize_no_credits")}\n\n${names.join(", ")}\n\n${t("lobby_finalize_retry_after_buy")}`);
+          // R11: the current host can take each of them out of the split.
+          const removeFromSplit = async (uid: string, name: string) => {
+            try {
+              const [res] = await expectRows<{ result?: string; status?: string }>(
+                `lobby: remove ${uid} from the split`,
+                supabase.rpc("remove_participant", { p_session_id: id, p_user_id: uid })
+              );
+              if (res?.result !== "removed" || res.status !== "removed") {
+                throw new Error(`remove_participant: ${res?.result} (${res?.status})`);
+              }
+              console.log(`[session-lobby] removed ${uid} (${name}) from the split`);
+              setLeftParticipantIds((prev) => new Set([...prev, uid]));
+              showDialog(t("lobby_remove_done_title"), t("lobby_remove_done_msg").replace(/\{name\}/g, name));
+            } catch (err) {
+              showWriteError(err, t);
+            }
+          };
+          const confirmRemove = (uid: string, name: string) =>
+            showDialog(t("lobby_remove_title"), t("lobby_remove_msg").replace(/\{name\}/g, name), [
+              { text: t("cancel_ready_back"), style: "cancel" },
+              { text: t("lobby_remove_btn"), style: "destructive", onPress: () => void removeFromSplit(uid, name) },
+            ]);
+          showDialog(
+            t("scan_no_credits"),
+            `${t("lobby_finalize_no_credits")}\n\n${names.join(", ")}\n\n${t("lobby_finalize_retry_after_buy")}`,
+            [
+              ...userIds.map((uid, i) => ({
+                text: `${t("lobby_remove_btn")}: ${names[i]}`,
+                style: "destructive" as const,
+                onPress: () => confirmRemove(uid, names[i]),
+              })),
+              { text: t("ok"), style: "cancel" as const },
+            ]
+          );
           return;
         }
         // D.6 (R2): the server refuses a receipt whose split does not add up

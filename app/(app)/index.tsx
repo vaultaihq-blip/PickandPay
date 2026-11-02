@@ -197,6 +197,25 @@ export default function HomeScreen() {
         if (!state || state === "open") showDialog(t("join_closed_title"), t("join_closed_msg"));
         return;
       }
+      // R11: back at 0 credits, not having paid for this session — the same
+      // notice as the QR (Comprar créditos / Continuar).
+      const { data: pv, error: pvErr } = await withTimeout(
+        "home: rejoin preview",
+        supabase.rpc("join_preview", { p_session_id: rejoinSession.id })
+      );
+      if (pvErr) throw pvErr;
+      if ((pv as { needs_credit?: boolean } | null)?.needs_credit) {
+        console.log("[home] rejoin at 0 credits: notice shown");
+        const go = await new Promise<boolean>((resolve) =>
+          showDialog(t("rejoin_zero_credits_title"), t("rejoin_zero_credits_msg"), [
+            ...(Platform.OS !== "web"
+              ? [{ text: t("credits_buy_btn"), onPress: () => { router.push("/(app)/pricing"); resolve(false); } }]
+              : []),
+            { text: t("rejoin_zero_credits_continue"), onPress: () => resolve(true) },
+          ], { cancelable: false })
+        );
+        if (!go) return;
+      }
       // A1 — still in it (joined, selecting, items_picked): the status stays
       // as it is, so items already picked are not taken back. Only someone
       // who left (after paying) or was pending is written back to joined.
