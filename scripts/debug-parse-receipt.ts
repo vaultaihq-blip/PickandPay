@@ -449,6 +449,7 @@ async function main() {
     merchant: string | null;
     date: string | null;
     currency: string;
+    currencyRead: string | null;
     blocks: StructureBlock[];
     ms: number;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
@@ -475,15 +476,18 @@ async function main() {
       const parsedStructure = JSON.parse(pass.content);
       const merchant: string | null = typeof parsedStructure?.merchant === "string" ? parsedStructure.merchant : null;
       const date: string | null = typeof parsedStructure?.date === "string" ? parsedStructure.date : null;
-      const currency: string =
+      // Mirrors parse-receipt (currency point, 02-11-2026): none read → the
+      // answer says unknown (null); EUR only reads the values, unchanged.
+      const currencyRead: string | null =
         typeof parsedStructure?.currency === "string" && parsedStructure.currency.trim().length > 0
           ? parsedStructure.currency.trim().toUpperCase()
-          : "EUR";
+          : null;
+      const currency: string = currencyRead ?? "EUR";
       const blocks: StructureBlock[] = Array.isArray(parsedStructure?.blocks) ? parsedStructure.blocks : [];
       for (const block of blocks) {
         block.lineIndices = block.lineIndices.filter((i) => i >= 0 && i < ocr.lines.length);
       }
-      return { merchant, date, currency, blocks, ms: pass.ms, usage: pass.usage };
+      return { merchant, date, currency, currencyRead, blocks, ms: pass.ms, usage: pass.usage };
     } catch {
       return null;
     }
@@ -521,8 +525,8 @@ async function main() {
     }
   }
 
-  const { merchant, date, currency, blocks } = structurePass;
-  console.log(`Structure: ${blocks.length} blocks (merchant=${merchant}, currency=${currency})`);
+  const { merchant, date, currency, currencyRead, blocks } = structurePass;
+  console.log(`Structure: ${blocks.length} blocks (merchant=${merchant}, currency=${currencyRead ?? "unknown (values read as EUR)"})`);
 
   // FIX 31 — kept in sync with index.ts: independent evidence for the
   // printed grand total. See totalWitness.ts's own header comment.
@@ -810,6 +814,8 @@ async function main() {
     merchant,
     date,
     currency,
+    // What the app receives: null = unknown, the app asks the host.
+    currencyRead,
 
     // Structuring call cost/performance telemetry — general diagnostic
     // instrumentation added during FIX 17 Part 2, kept after the experiment

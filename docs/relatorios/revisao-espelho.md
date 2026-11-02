@@ -464,3 +464,30 @@ Nenhuma sessão aberta seria recusada.
 2. Correr `db push --dry-run`, que deve mostrar só este ficheiro.
 3. Correr `db push`.
 4. Correr os mesmos casos em produção e comparar com o ensaio.
+
+---
+
+## Parser sem moeda: "moeda desconhecida" (2026-11-02, aprovado pelo dono)
+
+**O que mudou** (`parse-receipt/index.ts` e o espelho em
+`scripts/debug-parse-receipt.ts`):
+- Quando o modelo não devolve moeda, a resposta traz `currency: null`, e a app
+  pergunta ao anfitrião ("Qual é a moeda desta fatura?").
+- Antes, a resposta trazia `EUR`.
+- **A leitura dos valores não mudou.** Por dentro, o parser continua a ler os
+  valores com EUR (2 casas decimais) quando não há moeda, com a mesma
+  expressão de antes.
+- Só a resposta muda, e só depois do último cálculo: depois do `reconcile`, o
+  `payload` só é devolvido.
+
+**Deploy:** versão 58 → 59. Desde o deploy da 58 (29/10) não houve outros
+commits no parser, por isso a 59 é a 58 com esta mudança. Para reverter,
+fazer o deploy do parser do commit `ede2b81`.
+
+**Corpus:**
+- Correr o modelo outra vez não dá duas leituras iguais, mesmo sem mudança
+  nenhuma. Por isso comparei as mesmas leituras guardadas (11 do FIX 43 e o
+  Oligark), pelo caminho da app.
+- Primeiro com a moeda que o parser leu, depois com `currency: null`.
+- **0 diferenças** em itens, totais e estado.
+- Com `null`, a app pergunta ao anfitrião nas 12.

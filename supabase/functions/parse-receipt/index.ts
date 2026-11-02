@@ -574,6 +574,8 @@ async function handleRequest(req: Request, scan: ScanContext): Promise<Response>
       merchant: string | null;
       date: string | null;
       currency: string;
+      /** The currency the model read, or null: the answer says "unknown" then. */
+      currencyRead: string | null;
       blocks: StructureBlock[];
       ms: number;
     }
@@ -608,10 +610,14 @@ async function handleRequest(req: Request, scan: ScanContext): Promise<Response>
         const parsedStructure = JSON.parse(pass.result);
         const merchant = typeof parsedStructure?.merchant === "string" ? parsedStructure.merchant : null;
         const date = typeof parsedStructure?.date === "string" ? parsedStructure.date : null;
-        const currency =
+        // Currency point (owner, 02-11-2026): no currency read is answered
+        // as unknown (null), so the app asks the host. EUR stays only as the
+        // internal default for reading the values (decimals), unchanged.
+        const currencyRead =
           typeof parsedStructure?.currency === "string" && parsedStructure.currency.trim().length > 0
             ? parsedStructure.currency.trim().toUpperCase()
-            : "EUR";
+            : null;
+        const currency = currencyRead ?? "EUR";
         const blocks: StructureBlock[] = Array.isArray(parsedStructure?.blocks) ? parsedStructure.blocks : [];
         // Defense in depth: the schema enum should already make an
         // out-of-range lineIndex impossible, but a provider guarantee is
@@ -620,7 +626,7 @@ async function handleRequest(req: Request, scan: ScanContext): Promise<Response>
         for (const block of blocks) {
           block.lineIndices = block.lineIndices.filter((i) => i >= 0 && i < ocr.lines.length);
         }
-        return { merchant, date, currency, blocks, ms: pass.ms };
+        return { merchant, date, currency, currencyRead, blocks, ms: pass.ms };
       } catch {
         return null;
       }
@@ -661,7 +667,7 @@ async function handleRequest(req: Request, scan: ScanContext): Promise<Response>
       }
     }
 
-    const { merchant, date, currency, blocks } = structurePass;
+    const { merchant, date, currency, currencyRead, blocks } = structurePass;
 
     // ── FIX 31 — independent evidence for the printed grand total (label in
     // the raw OCR text, then typographic emphasis — see totalWitness.ts's
@@ -804,6 +810,8 @@ async function handleRequest(req: Request, scan: ScanContext): Promise<Response>
 
     const { payload, orphanCount, summaryRoleAssignments, priceKindOverrides, totalWitness: appliedTotalWitness } = assembled;
     payload.date = date;
+    // Only the answer changes: null = "currency unknown" (the app asks).
+    payload.currency = currencyRead;
 
     // ── Second coverage audit (post-ownership) + final validity ─────────────
     // Reconciliation success is never sufficient on its own: a receipt
