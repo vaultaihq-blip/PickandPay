@@ -408,3 +408,25 @@ ajustar. Sessão 2: 11 OK.
 3. Num item de uma unidade que o B já escolheu, o A carrega em Partilhar → B.
    - Não aparece nada em nenhum aparelho, e o círculo do B fica vivo.
    - Log do A: `[units] request …: … already`.
+
+### Ponto 4 — aceitar uma partilha não é Done
+
+**Causa:** o lobby marcava como "Done" quem tinha itens e estava `joined`, ou
+quem tinha itens no store do aparelho. Era um resto de antes, quando só o Done
+gravava escolhas. Com a R12, quem aceita uma partilha no lobby passa a ter
+itens sem ter feito Done.
+
+**Correção** (`app/(app)/session-lobby/[id].tsx`): "Done" vem só do estado
+`items_picked` no servidor, ou do aviso de Done do próprio aparelho.
+- Corrigidos os cinco sítios que o decidiam: o estado inicial, a releitura ao
+  abrir o lobby, a releitura ao voltar ao lobby, o realtime e a sincronização
+  antes do finalizar.
+- Quem tem itens sem Done fica como estava: "à espera", ou "a escolher" se
+  estiver na seleção.
+
+**Teste**
+1. O B está no lobby sem ter aberto a seleção.
+2. O A escolhe um item, carrega em Partilhar → B, e o B aceita no lobby.
+   - Em todos os aparelhos, o B **não** aparece como Done.
+   - O círculo do B aparece no item.
+3. O B abre a seleção e faz Done. Agora aparece como Done.

@@ -219,17 +219,11 @@ export default function SessionLobbyScreen() {
   }, [joinCode]);
   // userId → basic info for participants who scanned QR but haven't confirmed yet
   const [pendingParticipants, setPendingParticipants] = useState<Map<string, { name: string; color: string; avatarIcon?: string; avatarUrl?: string }>>(new Map());
-  // userId → done selecting — initialized from store so it survives lobby remounts
-  const [selectionDone, setSelectionDone] = useState<Set<string>>(() => {
-    const done = new Set<string>();
-    const sess = useSessionStore.getState().currentSession;
-    if (sess) {
-      for (const p of sess.participants) {
-        if (p.selections.length > 0) done.add(p.userId);
-      }
-    }
-    return done;
-  });
+  // userId → done selecting. Done = status items_picked on the server (or the
+  // Done broadcast); having items is not Done — with R12 a person can hold
+  // items without pressing Done (a share accepted in the lobby). Filled by
+  // the first read of the participant rows.
+  const [selectionDone, setSelectionDone] = useState<Set<string>>(() => new Set());
   // userId → timestamp when disconnected
   const [disconnectedAt, setDisconnectedAt] = useState<Map<string, number>>(new Map());
   // userId → seconds left on reconnect timer
@@ -307,14 +301,17 @@ export default function SessionLobbyScreen() {
       .eq("session_id", id);
     if (!data) return dbMap;
     const nowDone: string[] = [];
+    const notDone: string[] = [];
     for (const row of data) {
       const uid = row.user_id as string;
       const sels = Array.isArray(row.selections) ? (row.selections as ItemSelection[]) : [];
       const status = (row.status ?? "joined") as string;
       dbMap.set(uid, { selections: sels, status });
-      // "items_picked" = confirmed Done; "joined" + sels = legacy confirmed; "selecting" + sels = draft
-      const isConfirmed = sels.length > 0 && (status === "items_picked" || (status === "joined"));
+      // Done = "items_picked" only. "selecting" = in the selection (or a
+      // draft). "joined" with items = picked or accepted a share, no Done.
+      const isConfirmed = status === "items_picked";
       const isDraft = status === "selecting";
+      if (!isConfirmed) notDone.push(uid);
       if (isConfirmed) {
         nowDone.push(uid);
         useSessionStore.getState().updateSelections(uid, sels);
@@ -348,13 +345,16 @@ export default function SessionLobbyScreen() {
             return next;
           });
         }
-      } else if (sels.length === 0 && !goingToSelectionRef.current.has(uid)) {
-        useSessionStore.getState().updateSelections(uid, []);
+      } else {
+        // R12: the server's units, whatever they are (none, or a share accepted).
+        useSessionStore.getState().updateSelections(uid, sels);
       }
     }
-    if (nowDone.length > 0) {
-      setSelectionDone((prev) => new Set([...prev, ...nowDone]));
-    }
+    setSelectionDone((prev) => {
+      const next = new Set([...prev, ...nowDone]);
+      for (const uid of notDone) next.delete(uid);
+      return next;
+    });
     return dbMap;
   }, [id, myId]);
 
@@ -1127,7 +1127,9 @@ ${tr("host_now_you_all_picked")}`, [
         const sels = Array.isArray(row.selections) ? (row.selections as ItemSelection[]) : [];
         const status = row.status as string | undefined;
         const uid = row.user_id as string;
-        const confirmed = sels.length > 0 && (status === "items_picked" || status === "joined");
+        // Done = items_picked only (point 4, 02-11-2026: a share accepted in
+        // the lobby gives items, not Done).
+        const confirmed = status === "items_picked";
         const draft = status === "selecting";
         if (status === "left") {
           left.push(uid);
@@ -1339,6 +1341,14 @@ ${tr("host_now_you_all_picked")}`, [
               next.set(uid, selArray);
               return next;
             });
+          } else if (status !== "items_picked") {
+            // R12: items without Done (a share accepted in the lobby) — not Done.
+            setSelectionDone((prev) => {
+              if (!prev.has(uid)) return prev;
+              const next = new Set(prev);
+              next.delete(uid);
+              return next;
+            });
           } else {
             // Done: clear draft (Zustand now has the committed selections)
             setSelectionDone((prev) => new Set([...prev, uid]));
@@ -1401,15 +1411,9 @@ ${tr("host_now_you_all_picked")}`, [
         channelRef.current?.send({ type: "broadcast", event: "host_review_done", payload: {} });
       }
 
-      // Sync selectionDone from store for others (not myId — DB check handles my state accurately)
-      const doneFromStore = new Set<string>();
-      for (const p of sess.participants) {
-        if (p.selections.length > 0 && p.userId !== currentMyId) doneFromStore.add(p.userId);
-      }
-      if (doneFromStore.size > 0) {
-        setSelectionDone((prev) => new Set([...prev, ...doneFromStore]));
-      }
-      // IMPORTANT: do NOT clear goingToSelection here based on doneFromStore.
+      // R12: Done is read from the server's status (syncSelectionsFromDB
+      // below), not guessed from who has items in the store.
+      // IMPORTANT: do NOT clear goingToSelection here.
       // Doing so would wipe currentMyId from the ref before the async DB check below,
       // making the re-broadcast check always fail.
 
@@ -1424,8 +1428,8 @@ ${tr("host_now_you_all_picked")}`, [
         const myDbData = dbSelections.get(currentMyId);
         const myDbSels = myDbData?.selections ?? [];
         const myStatus = myDbData?.status ?? "joined";
-        // "items_picked" = Done was pressed; "joined" + sels = legacy Done; "selecting" + sels = draft Back
-        const isConfirmed = myStatus === "items_picked" || (myStatus === "joined" && myDbSels.length > 0);
+        // "items_picked" = Done was pressed; "selecting" + sels = draft Back
+        const isConfirmed = myStatus === "items_picked";
 
         if (wasGoingToSelection) {
           if (myDbSels.length > 0 && isConfirmed) {
