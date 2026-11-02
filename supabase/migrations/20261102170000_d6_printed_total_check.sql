@@ -12,7 +12,8 @@
 -- so when that base equals the printed total the shares do too. Checking each
 -- person's total_owed needs the app to send it (the rest of D.6).
 --
--- NOT APPLIED IN PRODUCTION: waiting for the owner's approval.
+-- Applied in production on 2026-11-02 with the owner's approval; post-verify:
+-- the rehearsal's 5 cases, 0 differences.
 
 -- items + charges − printed total, to the cent; NULL without a printed total.
 CREATE OR REPLACE FUNCTION public.receipt_printed_gap(r jsonb)

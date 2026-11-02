@@ -410,12 +410,13 @@ lido.
 
 ---
 
-## Verificação no servidor do total impresso (D.6, parte): ensaiada, NÃO aplicada
+## Verificação no servidor do total impresso (D.6, parte): aplicada a 2026-11-02
 
-**Está à espera da tua aprovação.** A migração está em
-`supabase/pending/20261102170000_d6_printed_total_check.sql`, fora de
-`supabase/migrations/`, para nenhum `db push` a aplicar por engano. O
-`db push --dry-run` diz "Remote database is up to date".
+**Aplicada em produção com a tua aprovação.** A migração está em
+`supabase/migrations/20261102170000_d6_printed_total_check.sql`.
+- Antes de aplicar: o `finalize_session` de produção era igual ao que a
+  reversão guardou.
+- Depois: os 5 casos do ensaio em produção, com 0 diferenças.
 
 ### O que faz
 - O `finalize_session` recusa antes de cobrar seja quem for:
