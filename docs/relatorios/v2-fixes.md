@@ -141,3 +141,44 @@ app voltou ao início sem dizer nada.
   reiniciada antes de a foto ser enviada. Não foi gasto nenhum crédito. Faz o
   scan outra vez." (nas 5 línguas).
 - Log: `[scan] the previous scan did not finish (stopped at: preview)`.
+
+---
+
+## O aviso de rejoin de uma sessão já terminada (2026-11-02)
+
+**De onde vinha**
+- O log mostra `[home] rejoin: status kept (selecting)` (linha 1601), e logo a
+  seguir o heartbeat responde `status closed` e o Sair responde `closed`. O
+  aviso ofereceu uma sessão que já estava fechada (`fa2ae2c9`, terminada pelo
+  anfitrião às 01:41:31).
+- O servidor está certo: `my_rejoinable_session` exclui as sessões `closed` e
+  as expiradas.
+- O problema estava no aparelho:
+  - o ecrã inicial perguntava ao servidor uma só vez e guardava a resposta;
+  - quando o anfitrião terminou a sessão depois disso, o aviso ficou;
+  - tocar nele entrava numa sessão fechada.
+- Não é a sessão guardada no disco: a sessão não fica gravada entre arranques.
+  Fica em memória enquanto a app está em segundo plano.
+
+**Correção** (`app/(app)/index.tsx`)
+- O aviso pergunta ao servidor sempre que o ecrã inicial aparece, e quando a
+  app volta ao primeiro plano.
+- Se o aparelho ainda tiver em memória uma sessão que o servidor diz estar
+  fechada, ela é apagada: `[home] session … is closed on the server —
+  dropped from memory`.
+- Os telemóveis que recebem o aviso de fecho já a apagavam
+  (`useSessionMonitor`). Quem estava em segundo plano apaga-a ao voltar.
+- **Ao tocar no aviso**, a app confirma primeiro com o servidor. Se a sessão
+  já não estiver aberta, aparece "Sessão terminada — Esta sessão já
+  terminou." e o aviso desaparece (`[home] rejoin: … is no longer open —
+  banner removed`).
+- **Sem rede**, a confirmação falha com a mensagem de erro, que fica até se
+  fechar. Nunca há um ecrã partido.
+
+**Teste**
+1. A cria a sessão, e B entra.
+2. B põe a app em segundo plano, sem a fechar.
+3. A termina a sessão.
+4. B volta à app.
+   - O aviso de rejoin não aparece.
+   - Se o B ainda vir o aviso e tocar, aparece "Esta sessão já terminou".

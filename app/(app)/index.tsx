@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Image,
   useWindowDimensions,
+  AppState,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -26,7 +27,7 @@ import { useReceiptStore } from "@/store/receiptStore";
 import { useSessionStore } from "@/store/sessionStore";
 import { Session, SessionParticipant } from "@/types";
 import { supabase } from "@/lib/supabase";
-import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
+import { expectRows, showWriteError, withTimeout, WriteError } from "@/lib/checkedWrite";
 import { ensureCreditsForNewSession, fetchFreshCredits, isNoCreditsError, showNoCreditsDialog } from "@/lib/credits";
 import { DevPanel } from "@/components/dev/DevPanel";
 import { isDeveloperUser, DEV_PIN } from "@/constants/dev";
@@ -121,37 +122,78 @@ export default function HomeScreen() {
   // Query for rejoinable sessions when no active session is in store. R7: the
   // same rule as the QR's "already part of it" (my_rejoinable_session on the
   // server): current or original host, still in it, or left after paying.
-  useEffect(() => {
-    if (!profile?.id || currentSession) {
+  // 02-11-2026: the answer was read once and kept, so a session the host
+  // ended afterwards was still offered. The server is asked again whenever
+  // this screen shows or the app comes back; a session kept in memory that
+  // the server has closed is dropped.
+  const refreshRejoin = useCallback(async () => {
+    if (!profile?.id) {
       setRejoinSession(null);
       return;
     }
-    let cancelled = false;
-    const checkRejoin = async () => {
-      try {
-        const { data, error } = await supabase.rpc("my_rejoinable_session");
-        if (error) console.log(`[home] rejoinable-session lookup failed: ${error.message}`);
-        const row = (data ?? null) as { session_id?: string; host_name?: string | null; restaurant?: string | null; my_status?: string | null } | null;
-        if (cancelled) return;
-        if (!row?.session_id) { setRejoinSession(null); return; }
-        setRejoinSession({
-          id: row.session_id,
-          restaurant: row.restaurant ?? null,
-          hostName: row.host_name ?? "Host",
-          myStatus: row.my_status ?? null,
-        });
-      } catch {
-        // Non-critical — just don't show the banner
+    const kept = useSessionStore.getState().currentSession;
+    if (kept && !kept.id.startsWith("session_") && !kept.id.startsWith("dev_session_")) {
+      const { data, error } = await supabase.from("sessions").select("status").eq("id", kept.id).maybeSingle();
+      if (!error && (!data || data.status === "closed")) {
+        console.log(`[home] session ${kept.id} is ${data ? "closed" : "gone"} on the server — dropped from memory`);
+        clearSession();
       }
-    };
-    checkRejoin();
-    return () => { cancelled = true; };
-  }, [profile?.id, currentSession]); // eslint-disable-line react-hooks/exhaustive-deps
+      return;
+    }
+    try {
+      const { data, error } = await supabase.rpc("my_rejoinable_session");
+      if (error) {
+        console.log(`[home] rejoinable-session lookup failed: ${error.message}`);
+        return;
+      }
+      const row = (data ?? null) as { session_id?: string; host_name?: string | null; restaurant?: string | null; my_status?: string | null } | null;
+      if (!row?.session_id) { setRejoinSession(null); return; }
+      setRejoinSession({
+        id: row.session_id,
+        restaurant: row.restaurant ?? null,
+        hostName: row.host_name ?? "Host",
+        myStatus: row.my_status ?? null,
+      });
+    } catch {
+      // Non-critical — the banner is checked again on tap
+    }
+  }, [profile?.id, clearSession]);
+
+  useEffect(() => {
+    if (currentSession) setRejoinSession(null);
+    void refreshRejoin();
+  }, [profile?.id, currentSession, refreshRejoin]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshRejoin();
+    }, [refreshRejoin])
+  );
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") void refreshRejoin();
+    });
+    return () => sub.remove();
+  }, [refreshRejoin]);
 
   const handleRejoin = async () => {
     if (!rejoinSession || !profile) return;
     setIsRejoining(true);
     try {
+      // The banner may be old: the server says whether this session is still
+      // open for me before anything is written.
+      const { data: live, error: liveErr } = await withTimeout(
+        "home: rejoin check",
+        supabase.rpc("my_rejoinable_session")
+      );
+      if (liveErr) throw liveErr;
+      if ((live as { session_id?: string } | null)?.session_id !== rejoinSession.id) {
+        console.log(`[home] rejoin: ${rejoinSession.id} is no longer open — banner removed`);
+        setRejoinSession(null);
+        showDialog(t("join_closed_title"), t("join_closed_msg"));
+        return;
+      }
       // A1 — still in it (joined, selecting, items_picked): the status stays
       // as it is, so items already picked are not taken back. Only someone
       // who left (after paying) or was pending is written back to joined.
@@ -177,6 +219,12 @@ export default function HomeScreen() {
         .single();
 
       if (error || !sessionData) throw new Error("Session not found");
+      if (sessionData.status === "closed") {
+        // closed between the check and this read
+        setRejoinSession(null);
+        showDialog(t("join_closed_title"), t("join_closed_msg"));
+        return;
+      }
 
       // Someone still pending (scanned, not confirmed) or cancelled is not a
       // participant, and must not count in the split's divisor (C.2).
