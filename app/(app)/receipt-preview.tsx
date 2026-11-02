@@ -45,8 +45,15 @@ export default function ReceiptPreviewScreen() {
   const cancelledRef = useRef(false);
   // A second tap on "Scan receipt" while one is on its way does nothing.
   const analyzingRef = useRef(false);
+  // The photo is ready but not sent: a restart from here (02-11-2026, Expo Go
+  // reloaded on this screen and the user was left on the home screen with no
+  // word) must be told at the next start. Leaving the screen clears it; the
+  // scan clears it when it ends.
   useEffect(() => {
-    void clearScanMark();
+    void markScanStep("preview");
+    return () => {
+      if (!analyzingRef.current) void clearScanMark();
+    };
   }, []);
 
   const handleRotate = useCallback(async (degrees: number) => {

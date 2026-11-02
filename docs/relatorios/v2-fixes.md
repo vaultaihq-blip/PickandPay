@@ -97,3 +97,47 @@ nova fatura? O crédito usado no scan anterior não é devolvido.", com duas
 opções:
 - **Continuar com esta fatura**;
 - **Fazer novo scan**, que só então volta ao ecrã de escolha.
+
+**Lobby, "Done" (2026-11-02, para a fila).** Quem aceita uma partilha no lobby
+sem ter feito Done não pode aparecer como "Done". Aceitar só muda os itens, e
+não o estado. Hoje o lobby trata como confirmada qualquer pessoa `joined` com
+itens.
+
+---
+
+## Scan que voltou ao menu sem aviso (2026-11-02, 00:44 UTC, conta A)
+
+**O que aconteceu**
+- A foto do Oligark foi escolhida na galeria e preparada: `[scan] photo taken
+  1848x4000`, `resized 1478x3200, 278 KB`, `base64 370 KB`.
+- O ecrã de pré-visualização abriu.
+- Antes de se tocar em "Scan" não há `[scan] sending`. O Expo Go recarregou a
+  app (`Android Bundled … (1 module)`, seguido do arranque normal), e a app
+  abriu no ecrã inicial.
+
+**No servidor**
+- A sessão `f2ea8fc9` ficou sem fatura (`draft`).
+- Não houve nenhum pedido de OCR, por isso não foi gasto crédito: a conta A
+  continua com 2.
+- Não há unidades nem escritas recusadas: a R12 não entrou nisto.
+- A sessão foi depois terminada pelo anfitrião no lobby (`host_ended`).
+
+**A causa do recarregamento** não está nos logs:
+- não veio do código da app (não há nenhuma chamada de reload);
+- não veio de ficheiros alterados (o último foi às 00:40);
+- não veio do servidor.
+
+É o Expo Go, ou o Android, a reiniciar a app no telemóvel. Numa build de
+produção, o equivalente seria o sistema fechar a app.
+
+**O que estava errado:** o aviso "O scan anterior não terminou" existe para
+isto, mas o ecrã de pré-visualização apagava a marca logo ao abrir. Por isso a
+app voltou ao início sem dizer nada.
+
+**Correção**
+- O ecrã de pré-visualização marca o passo `preview` e só o apaga quando se
+  sai dele, ou quando o scan termina.
+- Se a app reiniciar nesse ponto, o arranque seguinte mostra: "A app foi
+  reiniciada antes de a foto ser enviada. Não foi gasto nenhum crédito. Faz o
+  scan outra vez." (nas 5 línguas).
+- Log: `[scan] the previous scan did not finish (stopped at: preview)`.

@@ -325,5 +325,5 @@ Meyva.
 - **C3** (+ e − com 44×44) fica para o seu ponto.
 - **Quem aceita um pedido no lobby sem nunca ter aberto a seleção** aparece
   como "Done" no lobby, porque o lobby trata qualquer pessoa `joined` com
-  itens como confirmada. Isto já era assim antes do R12. Não mexi, por estar
-  fora do âmbito.
+  itens como confirmada. Isto já era assim antes do R12. Está na fila
+  (`docs/relatorios/v2-fixes.md`): aceitar só muda os itens, e não o estado.

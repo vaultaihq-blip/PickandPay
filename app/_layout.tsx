@@ -63,7 +63,8 @@ export default function RootLayout() {
       if (!step) return;
       console.log(`[scan] the previous scan did not finish (stopped at: ${step})`);
       const tr = useI18nStore.getState().t;
-      showDialog(tr("scan_interrupted_title"), tr("scan_interrupted_msg"));
+      // "preview": the photo was ready but never sent — no credit spent.
+      showDialog(tr("scan_interrupted_title"), tr(step === "preview" ? "scan_interrupted_preview_msg" : "scan_interrupted_msg"));
     });
   }, [isReady]);
 

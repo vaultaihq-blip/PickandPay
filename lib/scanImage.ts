@@ -42,7 +42,7 @@ export async function prepareScanImage(
 // the next start: "The previous scan did not finish."
 const SCAN_MARK_KEY = "pp.scan_in_progress";
 
-export async function markScanStep(step: "camera" | "gallery" | "sending"): Promise<void> {
+export async function markScanStep(step: "camera" | "gallery" | "preview" | "sending"): Promise<void> {
   try {
     await AsyncStorage.setItem(SCAN_MARK_KEY, JSON.stringify({ step, at: Date.now() }));
   } catch {
