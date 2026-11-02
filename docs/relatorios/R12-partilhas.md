@@ -499,8 +499,8 @@ sem resposta, nem uma recusa do servidor.
 ### Ponto 5 — a nova regra do "Cancelar" depois do Done (2026-11-02)
 
 **Regra do dono**
-- O "Cancelar" depois do Deixa de manter as escolhas: deita-as fora, depois
-  de uma confirmação.
+- O "Cancelar" depois do Done deixa de manter as escolhas: deita-as fora,
+  depois de uma confirmação.
 - O "Editar" continua a mantê-las, para corrigir.
 - A R12 nas regras de produto está atualizada.
 
