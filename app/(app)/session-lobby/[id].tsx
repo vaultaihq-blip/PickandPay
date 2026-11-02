@@ -1544,7 +1544,19 @@ ${tr("host_now_you_all_picked")}`, [
       showDialog(t("lobby_host_exit_title"), t("lobby_host_exit_msg"), [
         { text: t("lobby_stay"), style: "cancel" },
         { text: t("lobby_host_handover_btn"), onPress: () => void handOverAndLeave() },
-        { text: t("lobby_end_session"), style: "destructive", onPress: closeConfirmedSession },
+        {
+          text: t("lobby_end_session"),
+          style: "destructive",
+          // C1 (owner, 02-11-2026): ending for everyone after a validated
+          // scan also loses the scan's credit — say so before ending.
+          onPress: () =>
+            session.receipt
+              ? showDialog(t("lobby_confirm_end_title"), t("lobby_confirm_end_msg"), [
+                  { text: t("lobby_stay"), style: "cancel" },
+                  { text: t("lobby_end_session"), style: "destructive", onPress: closeConfirmedSession },
+                ])
+              : closeConfirmedSession(),
+        },
       ]);
       return;
     }
