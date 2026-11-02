@@ -4,7 +4,7 @@ Estas regras são **obrigatórias**. Nenhuma pode ser alterada sem pedido explí
 - O servidor (Supabase) é sempre quem decide e quem garante cada regra. A app só mostra o resultado.
 - Uma app modificada não consegue contornar nenhuma delas.
 
-Estado a 02-11-2026: R1 a R9 e R12, com as decisões do D (o D.1 já aplicado) e a R2 alargada ao total impresso. A R12 tem o servidor aplicado; a app ainda está por fazer. Os relatórios com os pormenores estão em `docs/relatorios/`.
+Estado a 02-11-2026: R1 a R9, R11 e R12, com as decisões do D (o D.1 já aplicado). A R2 alargada ao total impresso já está na app. A R12 está feita no servidor e na app. A R11 ainda está por implementar. Os relatórios com os pormenores estão em `docs/relatorios/`.
 
 ---
 
@@ -48,13 +48,31 @@ Estado a 02-11-2026: R1 a R9 e R12, com as decisões do D (o D.1 já aplicado) e
 | **"Start split" fica bloqueado a 0 créditos:** aparece um diálogo, e o OK abre o ecrã de créditos. | Começar uma divisão leva ao scan, que custa dinheiro. |
 | **"Join with QR" abre sempre o leitor**, com qualquer saldo. | Só depois de ler o QR se sabe se a pessoa já faz parte da sessão. |
 | Depois de ler o QR, **o servidor decide o ecrã de entrada** (`join_preview`). | A decisão é do servidor, e é a mesma na app e na web. |
-| **Já faz parte da sessão:** anfitrião atual ou original; ou estado `pending`, `joined`, `selecting` ou `items_picked`; ou saiu depois de já ter pago esta sessão. Mostra o ecrã de rejoin e entra **com qualquer saldo**. | Já pagou ou ainda vai pagar ao finalizar. Não faz sentido bloquear quem volta. |
-| **Entrada nova, ou saiu antes de pagar, com créditos:** ecrã de confirmação normal. | É uma entrada normal na divisão. |
-| **Entrada nova, ou saiu antes de pagar, a 0 créditos:** "Não tens créditos para te juntar à sessão de <anfitrião>", com Comprar créditos e Cancelar. Depois de comprar, a app volta ao mesmo ecrã, sem ler o QR outra vez. Na web: "instala a app para comprar créditos". | Na web não se compram créditos. |
+| **Já fez parte da sessão** (R11): é o anfitrião atual ou original, ou entrou e confirmou alguma vez nesta sessão (passou por `joined`), mesmo que depois tenha carregado em Sair. Mostra o ecrã de rejoin e entra **com qualquer saldo**. A exceção é quem foi retirado da divisão (R11). | Já pagou ou ainda vai pagar ao finalizar. Não faz sentido bloquear quem volta. |
+| **Entrada nova, com créditos:** ecrã de confirmação normal. Conta como entrada nova quem nunca confirmou, incluindo quem só leu o QR e cancelou na confirmação. | É uma entrada normal na divisão. |
+| **Entrada nova, a 0 créditos:** "Não tens créditos para te juntar à sessão de <anfitrião>", com Comprar créditos e Cancelar. Depois de comprar, a app volta ao mesmo ecrã, sem ler o QR outra vez. Na web: "instala a app para comprar créditos". | Na web não se compram créditos. |
 | **Sessão fechada:** "Esta sessão já terminou." **Sessão cheia:** "Sessão cheia." **QR inválido ou sessão inexistente:** cada caso tem a sua mensagem, sempre com contexto. | A pessoa tem de perceber o que se passa. |
 | **Privacidade:** antes de entrar, o ecrã só mostra o nome do anfitrião e o número de pessoas. Nada da fatura nem de valores. | Quem não entrou não tem de ver a conta dos outros. |
 | **O QR lido pela câmara do telemóvel** (fora da app), e qualquer link `…/session/<id>`, abre o mesmo ecrã de entrada. | Há um só caminho de entrada, com as mesmas regras. |
-| **O aviso "voltar à sessão"** do ecrã inicial usa a mesma regra do "já faz parte". | É coerente com o QR. |
+| **O aviso "voltar à sessão"** do ecrã inicial usa a mesma regra do "já fez parte". | É coerente com o QR. |
+
+## R11 — Voltar a uma sessão onde já se esteve, e retirar da divisão
+
+Pedida pelo dono a 01-11-2026. Substitui a parte da R7 sobre "quem saiu antes de pagar".
+
+| Regra | Porquê |
+|---|---|
+| **Quem já fez parte volta sempre:** pelo QR, pelo código ou pelo aviso de rejoin, **com qualquer saldo**, mesmo depois de ter carregado em Sair. "Já fez parte" é ser o anfitrião atual ou original, ou ter entrado e confirmado alguma vez nesta sessão. O servidor guarda isto numa marca na linha da pessoa, que nunca volta a falso. | Quem esteve na divisão e saiu por engano tem de poder voltar. O registo é do servidor, por isso a app não o consegue forjar. |
+| **Quem só cancelou na confirmação** (nunca confirmou) conta como **entrada nova**: a 0 créditos vê "Não tens créditos para te juntar…". | Nunca esteve na divisão. |
+| **Sessões novas** continuam bloqueadas a 0 créditos (R3 e R7). | O scan custa dinheiro. |
+| **Voltar a 0 créditos sem ter pago esta sessão:** ao entrar aparece o aviso "Tens 0 créditos. Podes voltar, mas precisas de 1 crédito antes de o anfitrião finalizar.", com **Comprar créditos** e **Continuar**. | A pessoa sabe logo que tem de resolver o crédito, antes de bloquear o grupo. |
+| **O finalizar** continua a exigir 1 crédito a quem está presente e ainda não pagou (R1). | Voltar não é pagar. |
+| **Retirar da divisão:** quando o finalizar é recusado por alguém presente estar a 0 créditos, o diálogo do anfitrião tem, para cada nome, o botão **"Retirar da divisão"**. Só o **anfitrião atual** o pode fazer. Passa por um RPC no servidor, com a escrita verificada. | Uma pessoa sem crédito não pode bloquear o grupo inteiro. |
+| **Estado próprio:** a pessoa retirada fica `removed`, que é diferente de `left`. Fica no registo de estados, com quem a retirou. | Tem de se saber se a pessoa saiu ou foi retirada, e por quem. |
+| **Itens de quem é retirado:** os itens que só ela escolheu ficam sem dono, e o anfitrião redistribui-os no diálogo dos itens sem dono. Nos itens partilhados, a parte dela é dividida pelos que ficaram. Funciona como quando alguém sai (R2). | As partes continuam a somar a fatura. |
+| **Créditos de quem é retirado:** não lhe é cobrado nada. Se já tinha sido cobrada nesta sessão (num finalizar anterior), recebe a devolução (R1). | Só paga quem fica na divisão final. |
+| **A pessoa retirada vê** "O anfitrião retirou-te desta divisão por falta de créditos." e volta ao ecrã inicial. | Tem de perceber o que aconteceu. |
+| **Voltar depois de ser retirada:** só com pelo menos 1 crédito. A 0 créditos vê a mensagem de falta de créditos com o botão para comprar. | Para não bloquear o grupo outra vez. |
 
 ## R12 — Unidades, seleção ao vivo e partilhas com confirmação
 
