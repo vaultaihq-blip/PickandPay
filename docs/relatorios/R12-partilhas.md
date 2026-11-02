@@ -194,6 +194,136 @@ Sour).
 3. **Sair depois de finalizar.** Com a sessão finalizada, o C carrega em Sair.
    - A parte do C continua no dashboard do anfitrião.
 
-## Fases 2 e 3 — App e web
+## Fases 2 e 3 — App e web (um commit)
 
-Por fazer. Começam depois de eu dizer "vou mexer na app" e de tu responderes.
+As duas fases mexem nos mesmos ecrãs (a linha do item tem os símbolos e o
+botão Partilhar), por isso vão num só commit. A app e o web usam os mesmos
+componentes.
+
+### O que mudou
+
+**Seleção ao vivo** (`app/(app)/selection/[sessionId].tsx`)
+- Aplica-se a quem escolhe para si numa sessão online, vinda do lobby. Cada
+  toque na linha, no + ou no − chama `pick_units`. A resposta do servidor
+  substitui as escolhas do aparelho.
+- O Done e o "voltar ao lobby" só gravam o estado; as escolhas já estão no
+  servidor.
+- O anfitrião a escolher por outra pessoa e as sessões offline continuam pelo
+  caminho antigo. O servidor converte essas escritas em unidades.
+- **As linhas** juntam-se pela regra do servidor (`lib/units.ts`, `groupItems`):
+  o mesmo nome e o mesmo preço unitário.
+- **Os símbolos** (`components/selection/PersonDot.tsx`):
+  - um círculo com as iniciais na cor da pessoa; com duas cores (R4b), o meio
+    círculo;
+  - iniciais únicas na sessão (`sessionInitials`): "R"; se se repetem,
+    "RI" / "RU";
+  - "Tu" no próprio;
+  - 3 círculos e "+N"; tocar mostra os nomes;
+  - os estados: esbatido = pedido à espera; cor viva = confirmado; X =
+    rejeitou.
+- **"1 de 2 livre"** nos itens com mais de uma unidade.
+- **Sem unidades livres**: "Os 2 Moskow Mule já foram escolhidos, por Ana e
+  Bruno. Partilhaste algum? Com quem?", com um botão por nome e Cancelar.
+- **O total a pagar** no fundo do ecrã usa as unidades (`selectionAmount`).
+
+**A divisão** (`utils/splitter.ts`)
+- Quando as escolhas trazem `unitSplits`, cada unidade é dividida por quem a
+  tem, ao cêntimo.
+- As unidades sem dono não são cobradas a ninguém; o finalizar recusa-as.
+- Na parte de cada um: "Moskow Mule (partilhado com Bruno) 550,00", no
+  dashboard, na lista de itens e no texto partilhado.
+
+**Partilhas**
+- **"Partilhar"** em cada linha: se ainda não tens o item, escolhe-o primeiro.
+  Depois abre a lista das pessoas (`ShareWithModal`). Quem já está na tua
+  unidade aparece marcado e não pode ser escolhido outra vez.
+- **Pedidos ao vivo** (`hooks/useShareRequests.ts`, ligado no lobby):
+  - um pedido novo, ou um "Lembrar" do anfitrião, abre a janela de pedidos;
+  - "Tens N pedidos de partilha" no lobby, e um ícone no cartão de cada
+    pessoa com pedidos;
+  - "N partilhas à espera de resposta" para todos;
+  - na seleção, "Pedido de partilha" na linha do item.
+- **Responder** (`components/session/ShareRequestsPanel.tsx`): cada pedido
+  mostra o valor, com Aceitar, Rejeitar e Aceitar todos. Também funciona
+  depois do Done.
+- **A lista do anfitrião**: Lembrar e Cancelar pedido. Quem pediu também pode
+  cancelar o seu.
+- **Rejeição**: quem pediu vê "O Bruno rejeitou partilhar o Arroz de Pato." e
+  o X. O X desaparece ao tocar nos círculos ou ao mexer no item.
+- **Deixar de partilhar**: quem fica recebe "Bruno deixou de partilhar o
+  Moskow Mule. Agora pagas 1.100,00 em vez de 550,00."
+- **O finalizar com pedidos pendentes** mostra a lista e "Ver pedidos".
+- **Os itens sem dono** mostram "1 de 2 sem dono".
+
+As 44 frases novas estão nas 5 línguas.
+
+**Verificações**
+- testes 95/95, com 9 novos (`units.test.ts`: unidades, linhas juntas,
+  unidades livres, iniciais, e a divisão A 1.100 / B 550 / C 550, o arroz por
+  três e "1 de 2");
+- tipos sem erros;
+- `check:alerts` limpo;
+- o bundle Android e o web compilam.
+
+### Testes (três aparelhos: A anfitrião, B, C)
+
+Usa o Oligark (2 Moskow Mule em duas linhas, Wisky Sour, Çerez & Meyva). Se
+quiseres um item de uma unidade para partilhar por três, serve o Çerez &
+Meyva.
+
+1. **Colisão.** A e B tocam cada um num Moskow Mule ao mesmo tempo, sem Done.
+   - Logs: `[units] pick b1 → want 1: ok, have 1 of 2, 1 free` num, e
+     `... 0 free` no outro.
+   - A e B fazem Done. O anfitrião finaliza: `[session-lobby] finalized`, sem
+     itens sem dono.
+2. **Linha com quantidade 2.** Numa sessão nova, só 1 Wisky Sour escolhido.
+   - O finalizar recusa, com "Wisky Sour — … — 1 de 2 sem dono".
+   - Log: `[session-lobby] finalize refused: 1 item(s) without an owner`.
+3. **Ao vivo.** Quando A toca num item, o círculo do A aparece na linha em B
+   e C, e desaparece quando desmarca.
+   - O próprio vê "Tu", e a linha fica destacada.
+   - Os Moskow Mule mostram "1 de 2 livre" e depois "0 de 2 livre".
+4. **Partilha automática.** A, B e C tocam no Çerez & Meyva. Os três círculos
+   aparecem, e cada um paga um terço (200,00).
+5. **Sem unidades livres.** Com os 2 Moskow Mule tomados (A e B), o C toca.
+   - Aparece "Os 2 Moskow Mule já foram escolhidos, por A e B. Partilhaste
+     algum? Com quem?". O C escolhe o B.
+   - Log do C: `[units] share b1 with … : shared (b2#1)`.
+   - No dashboard: A 1.100, B 550 (partilhado com C), C 550 (partilhado com
+     B).
+6. **Pedido aceite.** O A escolhe um item e carrega em Partilhar → B → Pedir
+   partilha.
+   - O B vê a janela "O A diz que partilhaste o … Se aceitares, pagas …",
+     "Tens 1 pedido de partilha" no lobby, e o ícone no cartão.
+   - O B aceita. O círculo do B passa de esbatido a cor viva.
+   - Logs: no A, `[units] request …: … requested`; no B,
+     `[share-requests] new request N for me` e
+     `[units] answer accept: N accepted`.
+7. **Pedido rejeitado.** O B rejeita.
+   - O A vê "O B rejeitou partilhar o …" e o X no círculo do B.
+   - O A volta a pedir: funciona. À terceira, aparece "Já não podes pedir
+     ao B…".
+8. **Resolvido sozinho.** O B já tem o item e o A pede-lhe. Fica confirmado,
+   sem pedido nem janela no B.
+   - Log do A: `… already`.
+9. **Bloqueio.** Com um pedido pendente, o anfitrião finaliza.
+   - Aparece "Há partilhas por responder", com a lista.
+   - Log: `[session-lobby] finalize refused: 1 share request(s) pending`.
+   - "Ver pedidos" → Cancelar pedido → finalizar passa.
+10. **O convidado sai.** Com um pedido pendente para o C, o C carrega em Sair.
+    O pedido desaparece da lista em todos.
+11. **Deixar de partilhar** (acrescento). Depois do teste 5, o B desmarca o
+    Moskow Mule.
+    - O C recebe "B deixou de partilhar o Moskow Mule. Agora pagas 1.100,00 em
+      vez de 550,00."
+
+### O que fica de fora
+
+- **O web publicado** (Netlify) ainda é o de antes. É preciso um novo
+  `web:export`, quando pedires.
+- **A3** ("selecionar por" do anfitrião) continua pelo caminho antigo.
+- **C3** (+ e − com 44×44) fica para o seu ponto.
+- **Quem aceita um pedido no lobby sem nunca ter aberto a seleção** aparece
+  como "Done" no lobby, porque o lobby trata qualquer pessoa `joined` com
+  itens como confirmada. Isto já era assim antes do R12. Não mexi, por estar
+  fora do âmbito.

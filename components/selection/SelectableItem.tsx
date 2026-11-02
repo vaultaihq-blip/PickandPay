@@ -41,6 +41,18 @@ interface SelectableItemProps {
   onToggle: () => void;
   onShareTap?: () => void;
   onQuantityChange?: (delta: number) => void;
+  /** R12 — units decided by the server: no local share flow, no "+N others" notes. */
+  live?: boolean;
+  /** R12 — who is on this item, at the far right of the row. */
+  dots?: React.ReactNode;
+  /** R12 — "1 de 2 livre" on items with more than one unit. */
+  freeLabel?: string;
+  /** R12 — a share request for this item is waiting for this user. */
+  requestLabel?: string;
+  onRequestPress?: () => void;
+  shareLabel?: string;
+  onSharePress?: () => void;
+  busy?: boolean;
 }
 
 export function SelectableItem({
@@ -60,12 +72,20 @@ export function SelectableItem({
   onToggle,
   onShareTap,
   onQuantityChange,
+  live = false,
+  dots,
+  freeLabel,
+  requestLabel,
+  onRequestPress,
+  shareLabel,
+  onSharePress,
+  busy = false,
 }: SelectableItemProps) {
   const isDark = useColorScheme() === "dark";
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
   const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
 
-  const isShareable = item.type === "shareable";
+  const isShareable = item.type === "shareable" && !live;
   const curr = currency as "EUR" | "USD" | "CAD" | "GBP";
 
   const maxQty = claimableQty ?? item.quantity;
@@ -92,7 +112,7 @@ export function SelectableItem({
           backgroundColor: selectionColor + "18",
         },
       ]}
-      onPress={isShareable ? onShareTap : onToggle}
+      onPress={busy ? undefined : isShareable ? onShareTap : onToggle}
       activeOpacity={0.7}
     >
       <View style={styles.info}>
@@ -131,11 +151,22 @@ export function SelectableItem({
           </Text>
         )}
 
-        {item.quantity > 1 && !selected && totalAllocatedByOthers > 0 && (
+        {!live && item.quantity > 1 && !selected && totalAllocatedByOthers > 0 && (
           <Text style={[styles.availNote, { color: mutedColor }]}>
             {totalAllocatedByOthers} selected by others · tap to share
           </Text>
         )}
+
+        {freeLabel ? (
+          <Text style={[styles.availNote, { color: mutedColor, fontStyle: "normal" }]}>{freeLabel}</Text>
+        ) : null}
+
+        {requestLabel && onRequestPress ? (
+          <Pressable onPress={onRequestPress} style={styles.requestPill} hitSlop={{ top: 8, bottom: 8 }}>
+            <Ionicons name="people" size={13} color="#F59E0B" />
+            <Text style={styles.requestPillText}>{requestLabel}</Text>
+          </Pressable>
+        ) : null}
 
         {/* Quantity selector — shown when checked for non-shareable items */}
         {selected && !isShareable && onQuantityChange && (
@@ -159,7 +190,7 @@ export function SelectableItem({
                 +
               </Text>
             </Pressable>
-            {maxQty > 1 && (
+            {!live && maxQty > 1 && (
               <Text style={[styles.qtyMeta, { color: mutedColor }]}>
                 {quantitySelected}/{maxQty}
                 {totalAllocatedByOthers > 0 ? ` · +${totalAllocatedByOthers} others` : ""}
@@ -167,7 +198,16 @@ export function SelectableItem({
             )}
           </View>
         )}
+
+        {shareLabel && onSharePress ? (
+          <Pressable onPress={onSharePress} style={styles.shareBtn} hitSlop={{ top: 6, bottom: 6 }} accessibilityRole="button">
+            <Ionicons name="person-add-outline" size={14} color={Colors.primary} />
+            <Text style={[styles.shareBtnText, { color: Colors.primary }]}>{shareLabel}</Text>
+          </Pressable>
+        ) : null}
       </View>
+
+      {dots ? <View style={styles.dotsCol}>{dots}</View> : null}
 
       <View style={styles.rightCol}>
         {!hidePrices && (
@@ -295,6 +335,41 @@ const styles = StyleSheet.create({
   rightCol: {
     alignItems: "flex-end",
     gap: 4,
+  },
+  dotsCol: {
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  requestPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 5,
+    marginLeft: 28,
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: "rgba(245,158,11,0.15)",
+  },
+  requestPillText: {
+    color: "#F59E0B",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  shareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 4,
+    marginLeft: 28,
+    marginTop: 4,
+    minHeight: 32,
+    paddingHorizontal: 6,
+  },
+  shareBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   price: {
     fontSize: 14,

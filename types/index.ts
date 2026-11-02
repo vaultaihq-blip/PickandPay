@@ -140,6 +140,8 @@ export interface ItemSelection {
   quantity: number;
   isShared: boolean;
   sharedWith?: string[];
+  /** R12 — set by the server: for each unit held, how many people hold it. */
+  unitSplits?: number[];
 }
 
 export interface SessionParticipant {
@@ -219,6 +221,8 @@ export interface SplitResult {
     /** Units this person picked of a multi-unit item, when not shared ("2 × 1.100,00"). */
     units?: number;
     unitPrice?: number;
+    /** R12 — the others holding the same units ("partilhado com <nome>"). */
+    sharedWith?: string[];
   }>;
   globalCostsShare: number;
   /** R2 — this person's part of each charge, by name (a discount is negative). */

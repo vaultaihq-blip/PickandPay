@@ -939,7 +939,16 @@ ${t("host_now_you_payments")}`
                 {(viewItemsSplitResult?.itemBreakdown.length ?? 0) > 0 ? (
                   viewItemsSplitResult!.itemBreakdown.map((entry) => (
                     <View key={entry.itemId} style={styles.itemRow}>
-                      <Text style={styles.itemRowName} numberOfLines={2}>{entry.itemName}</Text>
+                      <Text style={styles.itemRowName} numberOfLines={3}>
+                        {entry.itemName}
+                        {/* R12 — "(partilhado com Bruno)" */}
+                        {entry.sharedWith && entry.sharedWith.length > 0
+                          ? ` (${t("split_shared_with").replace(
+                              "{names}",
+                              entry.sharedWith.map((uid) => session?.participants.find((p) => p.userId === uid)?.profile.name ?? "?").join(", ")
+                            )})`
+                          : ""}
+                      </Text>
                       <View style={{ alignItems: "flex-end" }}>
                         <Text style={[styles.itemRowAmount, { color: viewItemsParticipant.profile.color ?? C.primary }]}>
                           {formatCurrency(entry.amount, receipt.currency)}

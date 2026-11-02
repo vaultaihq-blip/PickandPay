@@ -8,6 +8,7 @@ import "./money.test";
 import "./pipeline.test";
 import "./e2e-bridge.test";
 import "./printedTotalGap.test";
+import "./units.test";
 import { run } from "./harness";
 
 run();

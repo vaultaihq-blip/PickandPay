@@ -128,8 +128,14 @@ export function generateShareSummary(
 
     if (result && result.itemBreakdown.length > 0) {
       for (const entry of result.itemBreakdown) {
+        // R12 — the people sharing the same units, by name
+        const sharedNames = (entry.sharedWith ?? [])
+          .map((uid) => participants.find((pp) => pp.userId === uid)?.profile.name)
+          .filter(Boolean);
         const splitNote =
-          entry.splitCount > 1
+          sharedNames.length > 0
+            ? ` (shared with ${sharedNames.join(", ")})`
+            : entry.splitCount > 1
             ? ` (÷${entry.splitCount})`
             : (entry.units ?? 1) > 1 && entry.unitPrice !== undefined
               ? ` (${entry.units} × ${formatCurrency(entry.unitPrice, curr)})`

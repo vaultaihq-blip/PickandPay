@@ -1,5 +1,6 @@
 import { Session, SessionParticipant, SplitResult } from "@/types";
 import { toCents, fromCents } from "./validator";
+import { lineUnits, unitWeight } from "@/lib/units";
 
 // ─── Main Split Calculator ─────────────────────────────────────────────────────
 
@@ -43,6 +44,46 @@ export function calculateSplit(session: Session): Map<string, SplitResult> {
     );
     const itemTotalCents = toCents(item.totalPrice) + addonCents;
     const itemTotalFloat = fromCents(itemTotalCents);
+
+    // R12 — the server says who holds which unit (unitSplits): each unit's
+    // price is split between the people holding it; units nobody holds are
+    // not charged (the finalize refuses them). Older selections without
+    // unitSplits keep the paths below.
+    const weighted = participants
+      .map((p) => ({ p, sel: p.selections.find((s) => s.itemId === item.id) }))
+      .filter((x): x is { p: SessionParticipant; sel: NonNullable<typeof x.sel> } => !!x.sel);
+    if (weighted.some((x) => Array.isArray(x.sel.unitSplits) && x.sel.unitSplits.length > 0)) {
+      const itemUnits = lineUnits(item);
+      const exact = weighted.map((x) => (unitWeight(x.sel) / itemUnits) * itemTotalCents);
+      const target = Math.round(exact.reduce((a, b) => a + b, 0));
+      const floors = exact.map(Math.floor);
+      let rem = target - floors.reduce((a, b) => a + b, 0);
+      const order = exact
+        .map((e, i) => [i, e - floors[i]] as [number, number])
+        .sort((a, b) => b[1] - a[1]);
+      for (const [idx] of order) {
+        if (rem <= 0) break;
+        floors[idx] += 1;
+        rem -= 1;
+      }
+      const unitPrice = fromCents(Math.round(itemTotalCents / itemUnits));
+      weighted.forEach(({ p, sel }, idx) => {
+        const splits = sel.unitSplits ?? [];
+        const shared = splits.some((k) => k > 1);
+        results.get(p.userId)!.itemBreakdown.push({
+          itemId: item.id,
+          itemName: item.name,
+          amount: fromCents(floors[idx]),
+          itemTotal: itemTotalFloat,
+          splitCount: shared ? Math.max(...splits) : 1,
+          ...(shared
+            ? { sharedWith: (sel.sharedWith ?? []).filter((u) => u !== p.userId) }
+            : { units: sel.quantity ?? 1, unitPrice }),
+        });
+        totalCentsMap.set(p.userId, (totalCentsMap.get(p.userId) ?? 0) + floors[idx]);
+      });
+      continue;
+    }
 
     if (item.type === "shareable") {
       // Shareable: each selector uses their explicit sharedWith list

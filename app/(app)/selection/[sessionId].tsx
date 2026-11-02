@@ -32,6 +32,12 @@ import { ReceiptItem, ItemSelection } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showLeaveWriteError, showWriteError, withTimeout, WriteError } from "@/lib/checkedWrite";
 import { useI18nStore } from "@/store/i18nStore";
+import { groupItems, groupState, ItemGroup, selectionAmount, sessionInitials } from "@/lib/units";
+import { manageShareRequest, pickUnits, requestShare, shareUnit, showUnitsError, UnitHolder } from "@/lib/shareUnits";
+import { PersonDots, DotPerson } from "@/components/selection/PersonDot";
+import { ShareWithModal } from "@/components/selection/ShareWithModal";
+import { ShareRequestsModals } from "@/components/session/ShareRequestsPanel";
+import { useShareRequestsStore } from "@/store/shareRequestsStore";
 
 const ORDERED_CATEGORIES = [
   "starters",
@@ -151,6 +157,20 @@ export default function SelectionScreen() {
   const activeProfile = activeParticipant?.profile ?? profile;
   const accentColor = activeProfile?.color ?? Colors.primary;
 
+  // R12 — picking for myself in an online session from the lobby: every tap
+  // asks the server for units (pick_units) and the others see it live. The
+  // host picking for someone else and offline sessions keep the local path.
+  const live =
+    !!session && !!profile?.id && returnTo === "lobby" &&
+    !session.id.startsWith("session_") && !session.id.startsWith("dev_session_") &&
+    activeParticipant?.userId === profile.id;
+  const myId = profile?.id;
+  const shareRequests = useShareRequestsStore((s) => s.requests);
+  const [busyGroup, setBusyGroup] = useState<string | null>(null);
+  const [shareGroup, setShareGroup] = useState<ItemGroup | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const storeMine = live ? session?.participants.find((p) => p.userId === myId)?.selections : undefined;
+
   // ── Issue 1: Sync selections when userId changes (e.g. host switches users) ──
   useEffect(() => {
     if (!currentSession) return;
@@ -162,6 +182,12 @@ export default function SelectionScreen() {
     setTipContribution(tipAmt);
     setTipInputMode("choose");
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // R12 — the server's view of my picks wins: a share accepted, a unit
+  // released by someone I shared with, a pick answered by pick_units.
+  useEffect(() => {
+    if (live && storeMine) setSelections(new Map(storeMine.map((s) => [s.itemId, s])));
+  }, [live, storeMine]);
 
   // ── Supabase broadcast channel — send only (selection_complete broadcasts) ─
   useEffect(() => {
@@ -269,20 +295,21 @@ export default function SelectionScreen() {
       !String(sid).startsWith("dev_session_")
     ) {
       const selectionsArray = Array.from(selections.values());
-      // Save selections but keep status "selecting" — lobby shows Cancel+Edit for draft
+      // Save selections but keep status "selecting" — lobby shows Cancel+Edit for draft.
+      // R12: live picks are already on the server; only the status is written.
       expectRows(
         "selection: save draft (selecting)",
         supabase
           .from("session_participants")
-          .update({ selections: selectionsArray, status: "selecting" })
+          .update(live ? { status: "selecting" } : { selections: selectionsArray, status: "selecting" })
           .eq("session_id", sid)
           .eq("user_id", activeParticipant.userId)
           .select("id")
       ).catch((err) => showWriteError(err, t));
-      updateSelections(activeParticipant.userId, selectionsArray);
+      if (!live) updateSelections(activeParticipant.userId, selectionsArray);
     }
     router.back();
-  }, [activeParticipant, session?.id, sessionId, selections, updateSelections, t]);
+  }, [activeParticipant, live, session?.id, sessionId, selections, updateSelections, t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -370,6 +397,11 @@ export default function SelectionScreen() {
     for (const [itemId, sel] of selections) {
       const item = allItems.find((i) => i.id === itemId);
       if (!item) continue;
+      // R12 — each unit's price over the people holding it (as the split does).
+      if (Array.isArray(sel.unitSplits) && sel.unitSplits.length > 0) {
+        total += selectionAmount(item, sel);
+        continue;
+      }
       if (
         item.type === "individual" ||
         item.type === "combo" ||
@@ -513,7 +545,8 @@ export default function SelectionScreen() {
           .from("session_participants")
           // total_owed is not client-writable (B.3); every device computes the
           // split from the selections, and the server fills total_owed in C.
-          .update({ selections: selectionArray, status: "items_picked" })
+          // R12: live picks are already on the server; Done writes the status only.
+          .update(live ? { status: "items_picked" } : { selections: selectionArray, status: "items_picked" })
           .eq("session_id", session.id)
           .eq("user_id", activeParticipant.userId)
           .select("user_id")
@@ -644,6 +677,136 @@ export default function SelectionScreen() {
     ) as Record<typeof ORDERED_CATEGORIES[number], GroupedEntry[]>;
   }, [receipt]);
 
+  // ── R12: live picks (units decided by the server) ────────────────────────────
+  const liveGroups = useMemo(() => {
+    if (!receipt) return {} as Record<string, ItemGroup[]>;
+    return Object.fromEntries(
+      ORDERED_CATEGORIES.map((cat) => [cat, groupItems(receipt.categories[cat])])
+    ) as Record<string, ItemGroup[]>;
+  }, [receipt]);
+
+  const initials = useMemo(
+    () => sessionInitials((session?.participants ?? []).map((p) => ({ userId: p.userId, name: p.profile.name }))),
+    [session?.participants]
+  );
+
+  // everyone's picks, mine as this screen has them
+  const liveHolders = useMemo(
+    () =>
+      (session?.participants ?? []).map((p) => ({
+        userId: p.userId,
+        selections: p.userId === myId ? Array.from(selections.values()) : p.selections,
+      })),
+    [session?.participants, myId, selections]
+  );
+
+  const applyMine = useCallback(
+    (sels: ItemSelection[]) => {
+      if (!myId) return;
+      setSelections(new Map(sels.map((s) => [s.itemId, s])));
+      updateSelections(myId, sels);
+    },
+    [myId, updateSelections]
+  );
+
+  const joinNames = useCallback(
+    (names: string[]) =>
+      names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} ${t("units_and")} ${names[names.length - 1]}`,
+    [t]
+  );
+
+  const liveShare = useCallback(
+    async (g: ItemGroup, holderId: string) => {
+      if (!session) return;
+      setBusyGroup(g.lineIds[0]);
+      try {
+        const res = await shareUnit(session.id, g.lineIds[0], holderId);
+        if (res.selections) applyMine(res.selections);
+      } catch (err) {
+        showUnitsError(err, t);
+      } finally {
+        setBusyGroup(null);
+      }
+    },
+    [applyMine, session, t]
+  );
+
+  // No free unit: "Os 2 Moskow Mule já foram escolhidos, por A e B. Partilhaste algum? Com quem?"
+  const askWhoseUnit = useCallback(
+    (g: ItemGroup, holders: UnitHolder[], total: number) => {
+      console.log(`[selection] ${g.item.name}: no free unit, held by ${holders.map((h) => h.name).join(", ")}`);
+      showDialog(
+        t("units_full_title"),
+        t("units_full_msg")
+          .replace("{total}", String(total))
+          .replace("{item}", g.item.name)
+          .replace("{names}", joinNames(holders.map((h) => h.name))),
+        [
+          ...holders.map((h) => ({ text: h.name, onPress: () => void liveShare(g, h.user_id) })),
+          { text: t("cancel"), style: "cancel" as const },
+        ]
+      );
+    },
+    [joinNames, liveShare, t]
+  );
+
+  /** Asks the server for `want` units of the item; true when it gave them. */
+  const livePick = useCallback(
+    async (g: ItemGroup, want: number): Promise<boolean> => {
+      if (!session || busyGroup) return false;
+      setBusyGroup(g.lineIds[0]);
+      try {
+        const res = await pickUnits(session.id, g.lineIds[0], want);
+        applyMine(res.selections ?? []);
+        if (res.status === "full" && res.holders.length > 0) {
+          askWhoseUnit(g, res.holders, res.item_units);
+          return false;
+        }
+        return true;
+      } catch (err) {
+        showUnitsError(err, t);
+        return false;
+      } finally {
+        setBusyGroup(null);
+      }
+    },
+    [applyMine, askWhoseUnit, busyGroup, session, t]
+  );
+
+  // "Partilhar": I hold the item first (the request is for my unit).
+  const openShare = useCallback(
+    async (g: ItemGroup, mine: number) => {
+      if (mine === 0 && !(await livePick(g, 1))) return;
+      setShareGroup(g);
+    },
+    [livePick]
+  );
+
+  const sendShare = useCallback(
+    async (ids: string[]) => {
+      if (!session || !shareGroup) return;
+      setShareBusy(true);
+      try {
+        const res = await requestShare(session.id, shareGroup.lineIds[0], ids);
+        const nameOf = (uid: string) => session.participants.find((p) => p.userId === uid)?.profile.name ?? "?";
+        const notes = res.results.flatMap((r) =>
+          r.result === "limit"
+            ? [t("share_limit_msg").replace("{name}", nameOf(r.user_id)).replace("{item}", shareGroup.item.name)]
+            : r.result === "not_present"
+              ? [t("share_not_present_msg").replace("{name}", nameOf(r.user_id))]
+              : []
+        );
+        setShareGroup(null);
+        if (notes.length > 0) showDialog(t("share_with_title").replace("{item}", shareGroup.item.name), notes.join("\n"));
+      } catch (err) {
+        showUnitsError(err, t);
+      } finally {
+        setShareBusy(false);
+      }
+    },
+    [session, shareGroup, t]
+  );
+
   const handleShareConfirm = useCallback(
     (sharedWith: string[]) => {
       if (!sharedModalItem) return;
@@ -723,6 +886,111 @@ export default function SelectionScreen() {
   const selectedIds = new Set(selections.keys());
   const curr = receipt.currency as "EUR" | "USD" | "CAD" | "GBP";
 
+  // ── R12: who is on an item — confirmed (holds a unit), pending (asked),
+  //    rejected (refused my request; the X until I tap it or touch the item).
+  const dotPerson = (userId: string, state: DotPerson["state"]): DotPerson | null => {
+    const p = session.participants.find((pp) => pp.userId === userId);
+    if (!p) return null;
+    return {
+      userId,
+      name: p.profile.name,
+      initials: initials.get(userId) ?? "?",
+      color: p.profile.color,
+      color2: p.profile.color2,
+      isMe: userId === myId,
+      state,
+    };
+  };
+
+  const dotsFor = (g: ItemGroup, holderIds: string[]): DotPerson[] => {
+    const lineSet = new Set(g.lineIds);
+    const out: DotPerson[] = [];
+    const add = (uid: string, state: DotPerson["state"]) => {
+      if (out.some((d) => d.userId === uid)) return;
+      const d = dotPerson(uid, state);
+      if (d) out.push(d);
+    };
+    [...holderIds].sort((a, b) => (a === myId ? -1 : b === myId ? 1 : 0)).forEach((uid) => add(uid, "confirmed"));
+    for (const r of shareRequests) {
+      if (lineSet.has(r.item_id) && r.status === "pending") add(r.to_user, "pending");
+    }
+    for (const r of shareRequests) {
+      if (lineSet.has(r.item_id) && r.status === "rejected" && r.from_user === myId && !r.dismissed_at) add(r.to_user, "rejected");
+    }
+    return out;
+  };
+
+  // Tapping the circles: the names; my rejected requests there are seen (the X goes).
+  const showNames = (g: ItemGroup, people: DotPerson[]) => {
+    const lineSet = new Set(g.lineIds);
+    for (const r of shareRequests) {
+      if (lineSet.has(r.item_id) && r.status === "rejected" && r.from_user === myId && !r.dismissed_at) {
+        useShareRequestsStore.getState().upsert({ ...r, dismissed_at: new Date().toISOString() });
+        manageShareRequest(r.id, "dismiss").catch((err) => showUnitsError(err, t));
+      }
+    }
+    showDialog(
+      g.item.name,
+      people
+        .map((p) =>
+          `${p.isMe ? `${p.name} (${t("you_short")})` : p.name}` +
+          (p.state === "pending" ? ` — ${t("units_state_pending")}` : p.state === "rejected" ? ` — ${t("units_state_rejected")}` : "")
+        )
+        .join("\n")
+    );
+  };
+
+  const renderLive = (g: ItemGroup) => {
+    const st = groupState(g.lineIds, g.units, liveHolders, myId);
+    const people = dotsFor(g, st.holders.map((h) => h.userId));
+    const lineSet = new Set(g.lineIds);
+    const askedMe = shareRequests.some((r) => r.status === "pending" && r.to_user === myId && lineSet.has(r.item_id));
+    return (
+      <SelectableItem
+        key={`live_${g.lineIds[0]}`}
+        item={g.item}
+        currency={receipt.currency}
+        selected={st.myUnits > 0}
+        selectionColor={accentColor}
+        hasPriceVariant={g.priceVariant}
+        quantitySelected={Math.max(st.myUnits, 1)}
+        claimableQty={st.myUnits + st.freeUnits}
+        hidePrices
+        live
+        busy={busyGroup === g.lineIds[0]}
+        onToggle={() => void livePick(g, st.myUnits > 0 ? 0 : 1)}
+        onQuantityChange={g.units > 1 ? (delta) => void livePick(g, st.myUnits + delta) : undefined}
+        freeLabel={g.units > 1 ? t("units_free").replace("{free}", String(st.freeUnits)).replace("{total}", String(g.units)) : undefined}
+        dots={<PersonDots people={people} youLabel={t("you_short")} onPress={() => showNames(g, people)} />}
+        requestLabel={askedMe ? t("share_row_request") : undefined}
+        onRequestPress={() => useShareRequestsStore.getState().setSheetOpen(true)}
+        shareLabel={t("share_button")}
+        onSharePress={() => void openShare(g, st.myUnits)}
+      />
+    );
+  };
+
+  // The share window: everyone but me; on the item = on my unit (one-unit
+  // items: holding it), or already asked.
+  const sharePeople: DotPerson[] = (() => {
+    if (!shareGroup) return [];
+    const lineSet = new Set(shareGroup.lineIds);
+    const st = groupState(shareGroup.lineIds, shareGroup.units, liveHolders, myId);
+    const onMyUnit = new Set(
+      Array.from(selections.values())
+        .filter((s) => lineSet.has(s.itemId))
+        .flatMap((s) => s.sharedWith ?? [])
+    );
+    return session.participants
+      .filter((p) => p.userId !== myId)
+      .map((p) => {
+        const holds = shareGroup.units === 1 ? st.holders.some((h) => h.userId === p.userId) : onMyUnit.has(p.userId);
+        const asked = shareRequests.some((r) => r.status === "pending" && r.to_user === p.userId && lineSet.has(r.item_id));
+        return dotPerson(p.userId, holds ? "confirmed" : asked ? "pending" : "none");
+      })
+      .filter((d): d is DotPerson => !!d);
+  })();
+
   const SEL_BG = "#0B0D10";
   const SEL_CARD = "#15181D";
   const SEL_BORDER = "#252A32";
@@ -774,6 +1042,21 @@ export default function SelectionScreen() {
       >
         <View style={[styles.receiptCard, { backgroundColor: SEL_CARD, borderColor: SEL_BORDER }]}>
           {ORDERED_CATEGORIES.map((cat) => {
+            if (live) {
+              const lg = liveGroups[cat] ?? [];
+              if (lg.length === 0) return null;
+              return (
+                <View key={cat}>
+                  <View style={[styles.catHeader, { borderColor: SEL_BORDER }]}>
+                    <Text style={[styles.catLabel, { color: SEL_MUTED }]}>
+                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    </Text>
+                    <Ionicons name="chevron-down" size={14} color={SEL_MUTED} />
+                  </View>
+                  {lg.map(renderLive)}
+                </View>
+              );
+            }
             const groups = groupedCategories[cat] ?? [];
             if (groups.length === 0) return null;
             return (
@@ -1110,6 +1393,20 @@ export default function SelectionScreen() {
         onClose={() => setSharedModalItem(null)}
       />
 
+      {live && (
+        <>
+          <ShareWithModal
+            visible={!!shareGroup}
+            itemName={shareGroup?.item.name ?? ""}
+            people={sharePeople}
+            busy={shareBusy}
+            t={t}
+            onClose={() => setShareGroup(null)}
+            onSend={(ids) => void sendShare(ids)}
+          />
+          <ShareRequestsModals sessionId={session.id} myId={myId} hostId={session.creatorId} t={t} />
+        </>
+      )}
     </SafeAreaView>
   );
 }

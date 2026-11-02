@@ -12,6 +12,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/utils/formatter";
 import { useI18nStore } from "@/store/i18nStore";
+import { useSessionStore } from "@/store/sessionStore";
 
 type Currency = "EUR" | "USD" | "CAD" | "GBP";
 
@@ -44,6 +45,12 @@ export function BreakdownCard({
   const { profile, totalOwed, paid } = participant;
   const { t, language } = useI18nStore();
   void language;
+  // R12 — "Moskow Mule (partilhado com Bruno)"
+  const people = useSessionStore((s) => s.currentSession?.participants);
+  const sharedNote = (ids?: string[]) =>
+    ids && ids.length > 0
+      ? ` (${t("split_shared_with").replace("{names}", ids.map((id) => people?.find((p) => p.userId === id)?.profile.name ?? "?").join(", "))})`
+      : "";
 
   const isDark = useColorScheme() === "dark";
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
@@ -154,8 +161,8 @@ export function BreakdownCard({
               const isSplit = entry.splitCount > 1;
               return (
                 <View key={entry.itemId} style={styles.tableRow}>
-                  <Text style={[styles.itemName, { color: textColor }]} numberOfLines={2}>
-                    {entry.itemName}
+                  <Text style={[styles.itemName, { color: textColor }]} numberOfLines={3}>
+                    {entry.itemName}{sharedNote(entry.sharedWith)}
                   </Text>
                   <Text style={[styles.yourShare, { color: profile.color }]}>
                     {formatCurrency(entry.amount, curr)}

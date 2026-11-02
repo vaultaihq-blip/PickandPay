@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -40,6 +40,11 @@ import { QRGenerator } from "@/components/session/QRGenerator";
 import { buildSessionLink } from "@/lib/deeplink";
 import * as Clipboard from "expo-clipboard";
 import { formatJoinCode } from "@/lib/joinCode";
+import { sessionInitials } from "@/lib/units";
+import { PersonDot } from "@/components/selection/PersonDot";
+import { useShareNotices, useShareRequests } from "@/hooks/useShareRequests";
+import { ShareRequestsModals, ShareRequestsPanel } from "@/components/session/ShareRequestsPanel";
+import { useShareRequestsStore } from "@/store/shareRequestsStore";
 
 const HOME_THEME = {
   background: "#0B0D10",
@@ -139,6 +144,17 @@ export default function SessionLobbyScreen() {
   const visibleParticipants = useMemo(
     () => orderParticipants(participants, session?.creatorId, myId),
     [myId, participants, session?.creatorId]
+  );
+
+  // R12 — share requests (live), the "stopped sharing" notice, and each
+  // person's circle with initials next to their name (the legend).
+  useShareRequests(id, myId || undefined, t);
+  useShareNotices(myId || undefined, t);
+  const lobbyFocused = useIsFocused();
+  const shareRequests = useShareRequestsStore((s) => s.requests);
+  const initials = useMemo(
+    () => sessionInitials(participants.map((p) => ({ userId: p.userId, name: p.profile.name }))),
+    [participants]
   );
 
   // Fresh profiles — pre-populated from store so avatars show immediately, then refreshed from DB
@@ -1717,7 +1733,8 @@ ${tr("host_now_you_all_picked")}`, [
         const [result] = await expectRows<{
           status?: string;
           user_ids?: string[];
-          items?: { item_id: string; name: string; amount: number; names?: string[]; missing_names?: string[] }[];
+          items?: { item_id: string; name: string; amount: number; names?: string[]; missing_names?: string[]; units?: number; free_units?: number }[];
+          requests?: { request_id: number; name: string; to_name: string; from_name: string }[];
           split_user_ids?: string[];
           newly_charged?: number;
           refunded?: number;
@@ -1725,6 +1742,21 @@ ${tr("host_now_you_all_picked")}`, [
           "lobby: host finalizes (finalize_session)",
           supabase.rpc("finalize_session", { p_session_id: id })
         );
+        if (result?.status === "pending_shares") {
+          // R12: share requests still waiting for an answer block the finalize.
+          const reqs = result.requests ?? [];
+          console.log(`[session-lobby] finalize refused: ${reqs.length} share request(s) pending`);
+          countdownStarted.current = false;
+          showDialog(
+            t("lobby_pending_shares_title"),
+            `${t("lobby_pending_shares_msg")}\n\n${reqs.map((r) => `• ${r.name} — ${r.to_name}`).join("\n")}`,
+            [
+              { text: t("cancel"), style: "cancel" },
+              { text: t("lobby_pending_shares_view"), onPress: () => useShareRequestsStore.getState().setListOpen(true) },
+            ]
+          );
+          return;
+        }
         if (result?.status === "unowned_items") {
           // Items picked only by people no longer in the split: nobody would
           // pay for them. The host picks them (or the person comes back).
@@ -1736,7 +1768,11 @@ ${tr("host_now_you_all_picked")}`, [
             const who = (it.names ?? []).filter(Boolean).join(", ");
             // present people in the sharing who still have to pick it
             const missing = (it.missing_names ?? []).filter(Boolean).join(", ");
-            return `• ${it.name} — ${price}${who ? ` (${who})` : ""}${missing ? ` — ${t("lobby_unowned_missing")}${missing}` : ""}`;
+            // R12: units count — "1 de 2 sem dono"
+            const units = (it.units ?? 1) > 1
+              ? ` — ${t("lobby_unowned_units").replace("{free}", String(it.free_units ?? 0)).replace("{units}", String(it.units))}`
+              : "";
+            return `• ${it.name} — ${price}${units}${who ? ` (${who})` : ""}${missing ? ` — ${t("lobby_unowned_missing")}${missing}` : ""}`;
           });
           showDialog(t("lobby_unowned_title"), `${t("lobby_unowned_msg")}\n\n${lines.join("\n")}`, [
             { text: t("cancel"), style: "cancel" },
@@ -2149,6 +2185,9 @@ ${tr("host_now_you_all_picked")}`, [
           </View>
         </View>
 
+        {/* ── R12: share requests ─────────────────────────────────────────── */}
+        <ShareRequestsPanel myId={myId || undefined} t={t} />
+
         {/* ── Participants section ─────────────────────────────────────────── */}
         <Text style={styles.sectionLabel}>
           {t("lobby_participants_label")} ({participants.length})
@@ -2226,9 +2265,27 @@ ${tr("host_now_you_all_picked")}`, [
               {/* Name + status */}
               <View style={styles.participantInfo}>
                 <View style={styles.nameRow}>
+                  {!isLeft && (
+                    <PersonDot
+                      size={20}
+                      label={isMe ? t("you_short") : undefined}
+                      person={{
+                        userId: p.userId,
+                        name: p.profile.name,
+                        initials: initials.get(p.userId) ?? "?",
+                        color: participantColor,
+                        color2: participantColor2,
+                        isMe,
+                        state: "confirmed",
+                      }}
+                    />
+                  )}
                   <Text style={styles.participantName} numberOfLines={1}>
                     {p.profile.name}{isMe ? t("lobby_you") : ""}
                   </Text>
+                  {shareRequests.some((r) => r.status === "pending" && r.to_user === p.userId) && (
+                    <Ionicons name="people" size={16} color="#F59E0B" accessibilityLabel={t("share_row_request")} />
+                  )}
                   {p.userId === session.creatorId && (
                     <View style={styles.hostBadge}>
                       <Text style={styles.hostBadgeText}>{t("session_host_badge")}</Text>
@@ -2577,6 +2634,9 @@ ${tr("host_now_you_all_picked")}`, [
             : null
         }
       />
+      {lobbyFocused && id && !isOfflineSessionId(id) && (
+        <ShareRequestsModals sessionId={id} myId={myId || undefined} hostId={session?.creatorId} t={t} />
+      )}
     </SafeAreaView>
   );
 }
