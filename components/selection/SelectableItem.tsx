@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import {
+  Animated,
   View,
   Text,
   TouchableOpacity,
@@ -53,6 +54,8 @@ interface SelectableItemProps {
   shareLabel?: string;
   onSharePress?: () => void;
   busy?: boolean;
+  /** Point 1 (03-11-2026): marked at the tap, the server has not answered yet. */
+  saving?: boolean;
 }
 
 export function SelectableItem({
@@ -80,7 +83,24 @@ export function SelectableItem({
   shareLabel,
   onSharePress,
   busy = false,
+  saving = false,
 }: SelectableItemProps) {
+  // The circles pulse while the pick is on its way; taps are never blocked.
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!saving) {
+      pulse.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.35, duration: 450, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 450, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [saving, pulse]);
   const isDark = useColorScheme() === "dark";
   const textColor = isDark ? Colors.textPrimaryDark : Colors.textPrimaryLight;
   const mutedColor = isDark ? Colors.textMutedDark : Colors.textMutedLight;
@@ -207,7 +227,7 @@ export function SelectableItem({
         ) : null}
       </View>
 
-      {dots ? <View style={styles.dotsCol}>{dots}</View> : null}
+      {dots ? <Animated.View style={[styles.dotsCol, { opacity: pulse }]}>{dots}</Animated.View> : null}
 
       <View style={styles.rightCol}>
         {!hidePrices && (

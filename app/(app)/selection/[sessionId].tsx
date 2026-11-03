@@ -169,6 +169,12 @@ export default function SelectionScreen() {
   const myId = profile?.id;
   const shareRequests = useShareRequestsStore((s) => s.requests);
   const [busyGroup, setBusyGroup] = useState<string | null>(null);
+  // Point 1: what I want on each item while its pick is on its way, and the
+  // queue that folds fast repeated taps into one follow-up request.
+  const [optimistic, setOptimistic] = useState<Map<string, number>>(new Map());
+  const pickQueue = useRef(
+    new Map<string, { want: number; tapAt: number; inFlight: boolean; waiters: ((ok: boolean) => void)[] }>()
+  );
   const [shareGroup, setShareGroup] = useState<ItemGroup | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const storeMine = live ? session?.participants.find((p) => p.userId === myId)?.selections : undefined;
@@ -792,26 +798,72 @@ export default function SelectionScreen() {
   );
 
   /** Asks the server for `want` units of the item; true when it gave them. */
-  const livePick = useCallback(
-    async (g: ItemGroup, want: number): Promise<boolean> => {
-      if (!session || busyGroup) return false;
-      setBusyGroup(g.lineIds[0]);
+  // Point 1 (03-11-2026) — optimistic pick: the item is marked at the tap
+  // (`optimistic`, circles pulsing) and the request goes in the background.
+  // Taps on the same item while one is on its way are folded into a single
+  // follow-up with the last value. The server's answer then wins; a refusal
+  // takes the mark back, with the R12 message. Timings go to the log.
+  const flushPick = useCallback(
+    async (g: ItemGroup): Promise<void> => {
+      const key = g.lineIds[0];
+      const q = pickQueue.current.get(key);
+      if (!session || !q || q.inFlight) return;
+      q.inFlight = true;
+      const want = q.want;
+      const tapAt = q.tapAt;
+      const settle = (ok: boolean) => {
+        pickQueue.current.delete(key);
+        setOptimistic((m) => { const n = new Map(m); n.delete(key); return n; });
+        q.waiters.forEach((w) => w(ok));
+      };
       try {
-        const res = await pickUnits(session.id, g.lineIds[0], want);
-        applyMine(res.selections ?? []);
-        if (res.status === "full" && res.holders.length > 0) {
-          askWhoseUnit(g, res.holders, res.item_units);
-          return false;
+        const res = await pickUnits(session.id, key, want);
+        console.log(`[pick] ${key} want ${want}: tap → server answer ${Date.now() - tapAt} ms`);
+        if (q.want !== want) {
+          // More taps arrived meanwhile: send the latest one, keep the mark.
+          q.inFlight = false;
+          q.tapAt = Date.now();
+          void flushPick(g);
+          return;
         }
-        return true;
+        applyMine(res.selections ?? []);
+        requestAnimationFrame(() =>
+          console.log(`[pick] ${key} want ${want}: → ecrã atualizado ${Date.now() - tapAt} ms`)
+        );
+        if (res.status === "full" && res.holders.length > 0) {
+          settle(false);
+          askWhoseUnit(g, res.holders, res.item_units);
+          return;
+        }
+        settle(true);
       } catch (err) {
+        console.log(`[pick] ${key} want ${want}: refused after ${Date.now() - tapAt} ms — mark taken back`);
+        settle(false);
         showUnitsError(err, t);
-        return false;
-      } finally {
-        setBusyGroup(null);
       }
     },
-    [applyMine, askWhoseUnit, busyGroup, session, t]
+    [applyMine, askWhoseUnit, session, t]
+  );
+
+  const livePick = useCallback(
+    (g: ItemGroup, want: number): Promise<boolean> => {
+      if (!session) return Promise.resolve(false);
+      const key = g.lineIds[0];
+      const tapAt = Date.now();
+      setOptimistic((m) => new Map(m).set(key, want));
+      requestAnimationFrame(() => console.log(`[pick] ${key} want ${want}: tap → marked on screen ${Date.now() - tapAt} ms`));
+      return new Promise<boolean>((resolve) => {
+        const q = pickQueue.current.get(key);
+        if (q) {
+          q.want = want;
+          q.waiters.push(resolve);
+          return;
+        }
+        pickQueue.current.set(key, { want, tapAt, inFlight: false, waiters: [resolve] });
+        void flushPick(g);
+      });
+    },
+    [flushPick, session]
   );
 
   // "Partilhar": I hold the item first (the request is for my unit).
@@ -982,8 +1034,20 @@ export default function SelectionScreen() {
   };
 
   const renderLive = (g: ItemGroup) => {
-    const st = groupState(g.lineIds, g.units, liveHolders, myId);
-    const people = dotsFor(g, st.holders.map((h) => h.userId));
+    const server = groupState(g.lineIds, g.units, liveHolders, myId);
+    // Point 1: while a pick is on its way, show what I asked for.
+    const wanted = optimistic.get(g.lineIds[0]);
+    const saving = wanted !== undefined;
+    const st = saving
+      ? {
+          ...server,
+          myUnits: wanted,
+          freeUnits: Math.max(0, server.freeUnits - (wanted - server.myUnits)),
+        }
+      : server;
+    const holderIds = server.holders.map((h) => h.userId).filter((uid) => !(saving && wanted === 0 && uid === myId));
+    if (saving && wanted > 0 && myId && !holderIds.includes(myId)) holderIds.push(myId);
+    const people = dotsFor(g, holderIds);
     const lineSet = new Set(g.lineIds);
     const askedMe = shareRequests.some((r) => r.status === "pending" && r.to_user === myId && lineSet.has(r.item_id));
     return (
@@ -999,6 +1063,7 @@ export default function SelectionScreen() {
         hidePrices
         live
         busy={busyGroup === g.lineIds[0]}
+        saving={saving}
         onToggle={() => void livePick(g, st.myUnits > 0 ? 0 : 1)}
         onQuantityChange={g.units > 1 ? (delta) => void livePick(g, st.myUnits + delta) : undefined}
         freeLabel={g.units > 1 ? t("units_free").replace("{free}", String(st.freeUnits)).replace("{total}", String(g.units)) : undefined}
