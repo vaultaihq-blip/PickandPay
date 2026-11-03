@@ -109,6 +109,9 @@ const CATEGORY_LABEL_KEYS: Record<string, TranslationKey> = {
   others: "lobby_cat_others",
 };
 const RECONNECT_SECONDS = 300; // 5 min
+// R11 (lobby): "Retirar" next to someone away for more than 3 minutes; the
+// server checks it on the heartbeat. Independent of R6b's 5 minutes.
+const REMOVE_ABSENT_MS = 3 * 60_000;
 // FIX 49 — host takeover is switched OFF pending a server-side RPC
 // (`update sessions set host_id = me where host_id = <old>`, first caller
 // wins). As written it lied: RLS ("Host can update their session") makes a
@@ -1234,7 +1237,8 @@ ${tr("host_now_you_all_picked")}`, [
         if (!uid) return;
         // R11: the host removed me from the split — home, with the reason.
         if (status === "removed" && uid === myId) {
-          leaveGoneSession("lobby: removed by the host", String(id), "removed", useI18nStore.getState().t);
+          const why = payload.new?.removed_reason === "absent" ? "removed_absent" : "removed";
+          leaveGoneSession("lobby: removed by the host", String(id), why, useI18nStore.getState().t);
           return;
         }
         if (status === "pending" || status === "cancelled") {
@@ -1691,6 +1695,38 @@ ${tr("host_now_you_all_picked")}`, [
     channelRef.current?.send({ type: "broadcast", event: "going_to_selection", payload: { userId: myId } });
     router.push(`/(app)/selection/${id}?userId=${myId}&returnTo=lobby`);
   };
+
+  // R11 (lobby, owner 02-11-2026): the current host removes someone
+  // disconnected for more than 3 minutes. The server checks the 3 minutes on
+  // the heartbeat (STILL_CONNECTED otherwise); independent of R6b's 5 minutes.
+  const handleRemoveAbsent = useCallback((uid: string, name: string) => {
+    if (!id) return;
+    const remove = async () => {
+      try {
+        const [res] = await expectRows<{ result?: string; status?: string; reason?: string }>(
+          `lobby: remove ${uid} (absent)`,
+          supabase.rpc("remove_participant", { p_session_id: id, p_user_id: uid, p_reason: "absent" })
+        );
+        if (res?.result !== "removed" || res.status !== "removed") {
+          throw new Error(`remove_participant: ${res?.result} (${res?.status})`);
+        }
+        console.log(`[session-lobby] removed ${uid} (${name}) from the split: away for 3+ minutes`);
+        clearDisconnected(uid);
+        setLeftParticipantIds((prev) => new Set([...prev, uid]));
+      } catch (err) {
+        if (/STILL_CONNECTED/.test(String((err as { message?: string })?.message ?? err))) {
+          console.log(`[session-lobby] remove ${uid} refused: still connected on the server`);
+          showDialog(t("error"), t("lobby_remove_still_connected").replace(/\{name\}/g, name));
+          return;
+        }
+        showWriteError(err, t);
+      }
+    };
+    showDialog(t("lobby_remove_title"), t("lobby_remove_msg").replace(/\{name\}/g, name), [
+      { text: t("cancel_ready_back"), style: "cancel" },
+      { text: t("lobby_remove_btn"), style: "destructive", onPress: () => void remove() },
+    ]);
+  }, [clearDisconnected, id, t]);
 
   const handleTakeover = useCallback((targetId: string) => {
     const target = participants.find((p) => p.userId === targetId);
@@ -2502,6 +2538,19 @@ ${tr("host_now_you_all_picked")}`, [
                       activeOpacity={0.7}
                     >
                       <Text style={styles.takeoverBtnText}>🤝 {t("lobby_take_over_short")}</Text>
+                    </TouchableOpacity>
+                  )}
+                  {/* R11: away for more than 3 minutes (30 s grace + time marked), current host only */}
+                  {isCreator && !isMe &&
+                    Date.now() - (disconnectedAt.get(p.userId) ?? Date.now()) + 30_000 >= REMOVE_ABSENT_MS && (
+                    <TouchableOpacity
+                      style={[styles.skipBtn, { borderColor: HOME_THEME.error }]}
+                      onPress={() => handleRemoveAbsent(p.userId, p.profile.name)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.skipBtnText, { color: HOME_THEME.error }]}>
+                        {t("lobby_remove_btn")}
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>

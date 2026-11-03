@@ -10,8 +10,9 @@ import { useSessionStore } from "@/store/sessionStore";
 // never leaves a screen without a way out: the app goes straight home and
 // says why, with OK only. The reason comes from join_preview's
 // 'closed_reason' (session_closures is server only).
-// "removed": R11, the host removed this person from the split (no credits).
-export type SessionState = "open" | "closed_host" | "closed_inactive" | "closed" | "not_found" | "removed";
+// "removed": R11, the host removed this person from the split (no credits);
+// "removed_absent": R11 (lobby), removed for being away for 3+ minutes.
+export type SessionState = "open" | "closed_host" | "closed_inactive" | "closed" | "not_found" | "removed" | "removed_absent";
 
 // Throws on a failed or late read (10 s): the caller decides what to show.
 export async function readSessionState(label: string, sessionId: string): Promise<SessionState> {
@@ -23,9 +24,12 @@ export async function readSessionState(label: string, sessionId: string): Promis
     if (error.code === "22P02") return "not_found"; // not a session id at all
     throw error;
   }
-  const p = (data ?? null) as { result?: string; closed_reason?: string; my_status?: string | null } | null;
+  const p = (data ?? null) as { result?: string; closed_reason?: string; my_status?: string | null; removed_reason?: string | null } | null;
   if (!p || p.result === "not_found") return "not_found";
-  if (p.result !== "closed") return p.my_status === "removed" ? "removed" : "open";
+  if (p.result !== "closed") {
+    if (p.my_status !== "removed") return "open";
+    return p.removed_reason === "absent" ? "removed_absent" : "removed";
+  }
   if (p.closed_reason === "host") return "closed_host";
   if (p.closed_reason === "inactive") return "closed_inactive";
   return "closed";
@@ -58,13 +62,14 @@ export function leaveGoneSession(
   router.replace("/(app)");
   if (endedHere.has(sessionId)) return;
   const message =
-    state === "removed" ? t("session_removed_msg")
+    state === "removed_absent" ? t("session_removed_absent_msg")
+    : state === "removed" ? t("session_removed_msg")
     : state === "not_found" ? t("session_gone_not_found_msg")
     : state === "closed_host" ? t("session_gone_host_msg")
     : state === "closed_inactive" ? t("session_gone_inactive_msg")
     : t("join_closed_msg");
   showDialog(
-    state === "removed" ? t("session_removed_title")
+    state === "removed" || state === "removed_absent" ? t("session_removed_title")
     : state === "not_found" ? t("join_not_found_title") : t("join_closed_title"),
     message,
     [{ text: t("ok") }],

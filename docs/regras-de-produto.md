@@ -73,6 +73,10 @@ Pedida pelo dono a 01-11-2026. Substitui a parte da R7 sobre "quem saiu antes de
 | **Créditos de quem é retirado:** não lhe é cobrado nada. Se já tinha sido cobrada nesta sessão (num finalizar anterior), recebe a devolução (R1). | Só paga quem fica na divisão final. |
 | **A pessoa retirada vê** "O anfitrião retirou-te desta divisão por falta de créditos." e volta ao ecrã inicial. | Tem de perceber o que aconteceu. |
 | **Voltar depois de ser retirada:** só com pelo menos 1 crédito. A 0 créditos vê a mensagem de falta de créditos com o botão para comprar. | Para não bloquear o grupo outra vez. |
+| **Retirar no lobby** (pedido pelo dono a 02-11-2026): o **anfitrião atual** vê "Retirar da divisão" junto de quem está **desligado há mais de 3 minutos** (o sinal da R6b, o último sinal de vida da app dessa pessoa). Nunca junto de quem está ligado, nem de quem nunca enviou sinal. O servidor confirma os 3 minutos antes de retirar. | Uma pessoa que desapareceu não pode bloquear o grupo. |
+| **Confirmação antes de retirar no lobby:** "Os itens de <nome> ficam sem dono e vão ser divididos pelos outros. <nome> pode voltar à sessão." | O anfitrião sabe o que acontece aos itens. |
+| **Quem é retirado por ausência:** o mesmo que no "Retirar da divisão" (não é cobrado, os itens ficam livres, recebe o aviso), mas o aviso é "O anfitrião retirou-te desta divisão porque estiveste ausente.". Pode voltar **com qualquer saldo se já tiver pago esta sessão**; senão, com pelo menos 1 crédito. | O motivo é a ausência, não a falta de créditos. |
+| **Os 3 minutos** deste "Retirar" são independentes dos 5 minutos da troca de anfitrião (R6b). | São regras diferentes, com tempos diferentes. |
 
 ## R12 — Unidades, seleção ao vivo e partilhas com confirmação
 
