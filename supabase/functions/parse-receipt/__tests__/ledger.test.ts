@@ -5,7 +5,9 @@ import {
   buildLedgerFromOcr,
   resetAmountIdCounterForTests,
 } from "../ledger";
+import { normalizeVisionResponse } from "../ocr";
 import type { OcrLine, OcrWord, BoundingBox } from "../ocr";
+import { readFileSync } from "node:fs";
 
 describe("ledger: parseAmbiguousNumber", () => {
   it("parses plain 2-decimal", () => {
@@ -279,6 +281,68 @@ describe("ledger: FIX 15.2 — space-separated quantity/price never collapses ac
     const row = lineFromWords(0, [{ word: wordAt("L0W0", "3", 10) }, { word: wordAt("L0W1", "130.00", 500) }]);
     const ledger = buildLedgerFromOcr([row]);
     assert(!ledger.some((e) => e.value === 3130), "no column corroboration at all — never merge on faith");
+  });
+});
+
+// ─── 03-11-2026 — "Çerez & Meyva   1     600,00" read as 1600 ─────────────
+//
+// Reproduced on the real Oligark Vision response: moving the whole price
+// column left (a photo taken from further away) shrinks the gap between the
+// quantity "1" and "600,00"; at 10–20 px the code of parse-receipt v59 read
+// 1600. The quantity sits in the receipt's quantity column, so it must split.
+const OLIGARK_FIXTURE = new URL("../../../../backups/corpus-vision-2026-11-03/vision-oligark-tr.json", import.meta.url);
+
+function oligarkWithGap(gapPx: number): OcrLine[] {
+  const vision = JSON.parse(readFileSync(OLIGARK_FIXTURE, "utf8"));
+  const text = (w: any) => (w.symbols ?? []).map((s: any) => s.text).join("");
+  const xs = (w: any) => w.boundingBox.vertices.map((v: any) => v.x ?? 0);
+  const words: any[] = [];
+  for (const page of vision.fullTextAnnotation.pages) for (const bl of page.blocks) for (const p of bl.paragraphs) words.push(...p.words);
+  const price = words.find((w) => text(w) === "600,00");
+  const pY = Math.min(...price.boundingBox.vertices.map((v: any) => v.y ?? 0));
+  const one = words.find((w) => text(w) === "1" && Math.abs(Math.min(...w.boundingBox.vertices.map((v: any) => v.y ?? 0)) - pY) < 20);
+  const dx = Math.max(...xs(one)) + gapPx - Math.min(...xs(price));
+  const col = Math.min(...xs(price)) - 5;
+  for (const w of words) {
+    if (Math.min(...xs(w)) < col) continue;
+    w.boundingBox.vertices.forEach((v: any) => (v.x = (v.x ?? 0) + dx));
+    (w.symbols ?? []).forEach((s: any) => s.boundingBox?.vertices.forEach((v: any) => (v.x = (v.x ?? 0) + dx)));
+  }
+  return normalizeVisionResponse(vision, { geometricReconstruction: true }).lines;
+}
+
+describe("ledger: a quantity never glues onto the price (03-11-2026)", () => {
+  for (const gap of [20, 10]) {
+    it(`Oligark, ${gap} px between "1" and "600,00": 600, never 1600`, () => {
+      resetAmountIdCounterForTests();
+      const lines = oligarkWithGap(gap);
+      const cerez = lines.findIndex((l) => /erez/i.test(l.text));
+      const values = buildLedgerFromOcr(lines).filter((e) => e.lineIndex === cerez).map((e) => e.value);
+      assert(!values.includes(1600), `read ${JSON.stringify(values)}`);
+      assert(values.includes(600), `read ${JSON.stringify(values)}`);
+    });
+  }
+
+  it("a real space-grouped thousands figure, corroborated by its column, stays one number", () => {
+    resetAmountIdCounterForTests();
+    // the same corroborated price column as FIX 15.2's merge test, plus "1 100,00"
+    const row1 = lineFromWords(0, [{ word: wordAt("L0W0", "Widget", 10) }, { word: wordAt("L0W1", "45.00", 118, 20) }]);
+    const row2 = lineFromWords(1, [{ word: wordAt("L1W0", "Gizmo", 10) }, { word: wordAt("L1W1", "9.00", 122, 18) }]);
+    const row3 = lineFromWords(2, [{ word: wordAt("L2W0", "Sprocket", 10) }, { word: wordAt("L2W1", "12.50", 116, 24) }]);
+    const row4 = lineFromWords(3, [{ word: wordAt("L3W0", "TOTAL", 10) }, { word: wordAt("L3W1", "1", 100, 8) }, { word: wordAt("L3W2", "100.00", 110, 30) }]);
+    const ledger = buildLedgerFromOcr([row1, row2, row3, row4]);
+    assert(ledger.some((e) => e.value === 1100), "1 100.00 printed as one figure is 1100");
+  });
+
+  it("other space-grouped figures never count as a quantity column", () => {
+    resetAmountIdCounterForTests();
+    const row1 = lineFromWords(0, [{ word: wordAt("L0W0", "Widget", 10) }, { word: wordAt("L0W1", "45.00", 118, 20) }]);
+    const row2 = lineFromWords(1, [{ word: wordAt("L1W0", "Gizmo", 10) }, { word: wordAt("L1W1", "9.00", 122, 18) }]);
+    const row3 = lineFromWords(2, [{ word: wordAt("L2W0", "Sprocket", 10) }, { word: wordAt("L2W1", "12.50", 116, 24) }]);
+    const row4 = lineFromWords(3, [{ word: wordAt("L3W0", "Sub", 10) }, { word: wordAt("L3W1", "1", 100, 8) }, { word: wordAt("L3W2", "100.00", 110, 30) }]);
+    const row5 = lineFromWords(4, [{ word: wordAt("L4W0", "TOTAL", 10) }, { word: wordAt("L4W1", "1", 100, 8) }, { word: wordAt("L4W2", "100.00", 110, 30) }]);
+    const ledger = buildLedgerFromOcr([row1, row2, row3, row4, row5]);
+    assert(ledger.filter((e) => e.value === 1100).length === 2, "each 1 100.00 stays 1100");
   });
 });
 

@@ -1,0 +1,16 @@
+Replaying frozen OCR fixture: supabase/functions/parse-receipt/__fixtures__/vision-madgod-pt.json (geometric reconstruction)
+OCR: 58 lines, 389 words
+Ledger: 128 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 11506ms, tokens prompt=3092 completion=1920 total=5012
+Structure: 44 blocks (merchant=TIAGO BARATA COSTA UNIPESSOAL LDA, currency=EUR)
+Total witness: label -> 363.55 (agreement=agree)
+Geometric ownership: 42/44 confident, 0 anchor-corrected
+Constant-offset arbitration: formDetected=false, hypothesisAdopted=H0
+Suspicious (round 1): 0
+Reconciliation (round 1): reconciles=true, calculatedSubtotal=363.55, printedSubtotal=363.55
+
+Full report written to: backups/corpus-after-2026-11-03/vision-madgod-pt-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=363.55, printedSubtotal=363.55, printedTotal=363.55, reconciles=true (arithmeticOnly=true), summaryCoverageValid=true, summaryUnresolved=0, summaryDuplicateRoles=0, structuralGap=0, echoExact=34, echoMult=4, genuineMiss=0, priceKindOverrides=4, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=false, offsetHypothesisAdopted=H0, totalWitness=label, totalWitnessAgreement=agree, provenNonAdditiveCount=8, provenNonAdditiveBlockedBy=null, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=no_deficit, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null

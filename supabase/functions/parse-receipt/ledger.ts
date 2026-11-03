@@ -313,6 +313,35 @@ function leftEdgeXOfBox(box: BoundingBox, angle: number): number {
   return Math.min(...box.vertices.map((v) => toReadingFrame(v.x, v.y, angle).normalX));
 }
 
+/**
+ * 03-11-2026 — whether `word` (a bare 1-3 digit run) sits in the receipt's
+ * quantity column: at least one OTHER line has a bare 1-3 digit word whose
+ * right edge is within about one character of this one's, immediately
+ * followed by a price-shaped word that is NOT a plain 3-digit group (so it
+ * cannot be read as that integer's continuation, e.g. "2" then "2.200,00").
+ */
+function alignsWithQuantityColumn(
+  lines: OcrLine[],
+  lineIndex: number,
+  word: OcrLine["words"][number],
+  charWidth: number,
+  angle: number
+): boolean {
+  const edge = rightEdgeXOfBox(word.word.boundingBox, angle);
+  const tolerance = Math.max(charWidth, 4);
+  for (let li = 0; li < lines.length; li++) {
+    if (li === lineIndex) continue;
+    const ws = lines[li].words;
+    for (let i = 0; i + 1 < ws.length; i++) {
+      if (!/^\d{1,3}$/.test(ws[i].word.text)) continue;
+      const next = ws[i + 1].word.text;
+      if (!/\d[.,]\d{2}\)?$/.test(next) || /^\d{3}([.,]\d{1,2})?$/.test(next)) continue;
+      if (Math.abs(rightEdgeXOfBox(ws[i].word.boundingBox, angle) - edge) <= tolerance) return true;
+    }
+  }
+  return false;
+}
+
 interface RawTokenHit {
   lineIndex: number;
   token: MoneyToken;
@@ -418,7 +447,29 @@ function resplitSpaceGroupedTokens(hits: RawTokenHit[], lines: OcrLine[], angle:
     const { boundaryGap } = clusterByX(referencePoints);
     const gap = leftEdgeXOfBox(rightWord.word.boundingBox, angle) - rightEdgeXOfBox(leftWord.word.boundingBox, angle);
 
-    if (gap <= boundaryGap) {
+    // 03-11-2026 (owner): "Çerez & Meyva   1     600,00" was read as 1600 —
+    // on a receipt with wide columns the boundary threshold can exceed the
+    // distance from the quantity column to the price column. A thousands
+    // separator is one plain space, so a gap wider than about 2 characters
+    // (this line's own character width, from the two words' boxes) is never
+    // one number, whatever the column threshold says.
+    const boxWidth = (w: OcrLine["words"][number]) =>
+      rightEdgeXOfBox(w.word.boundingBox, angle) - leftEdgeXOfBox(w.word.boundingBox, angle);
+    const charWidth =
+      (boxWidth(leftWord) + boxWidth(rightWord)) /
+      Math.max(1, leftWord.word.text.length + rightWord.word.text.length);
+    const widerThanASpace = charWidth > 0 && gap > 2 * charWidth;
+
+    // When the gap alone can't tell (a photo taken from further away shrinks
+    // it to a space's width), the columns decide: a left run that sits in the
+    // same column as the receipt's quantities — integers on OTHER lines that
+    // are followed by a price which is clearly not their continuation
+    // ("2 2.200,00") — is a quantity, never the first group of the price.
+    // Lines that are themselves "1 100,00"-shaped never count as evidence,
+    // so a receipt full of space-grouped totals does not split them.
+    const inQuantityColumn = alignsWithQuantityColumn(lines, hit.lineIndex, leftWord, charWidth, angle);
+
+    if (gap <= boundaryGap && !widerThanASpace && !inQuantityColumn) {
       result.push(hit); // kerning-scale spacing — one genuine grouped number, keep merged
       continue;
     }

@@ -1,0 +1,17 @@
+Replaying frozen OCR fixture: backups/corpus-vision-2026-11-03/vision-bougain-pt.json (geometric reconstruction)
+OCR: 45 lines, 166 words
+Ledger: 19 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 5498ms, tokens prompt=1928 completion=826 total=2754
+Structure: 17 blocks (merchant=Bougain Avenida, currency=EUR)
+Total witness: label -> 185.6 (agreement=label_only)
+Geometric ownership: 15/17 confident, 0 anchor-corrected
+Constant-offset arbitration: formDetected=false, hypothesisAdopted=H0
+Suspicious (round 1): 2
+Suspicious round 1 skipped (no image available under --fixture): 2 would have been checked
+Reconciliation (round 1): reconciles=true, calculatedSubtotal=185.6, printedSubtotal=185.6
+
+Full report written to: backups/corpus-after-2026-11-03/vision-bougain-pt-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=185.6, printedSubtotal=185.6, printedTotal=185.6, reconciles=false (arithmeticOnly=true), summaryCoverageValid=false, summaryUnresolved=2, summaryDuplicateRoles=0, structuralGap=0, echoExact=0, echoMult=0, genuineMiss=1, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=false, offsetHypothesisAdopted=H0, totalWitness=label, totalWitnessAgreement=label_only, provenNonAdditiveCount=0, provenNonAdditiveBlockedBy=larger_unresolved_value, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=items_region_unresolved, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null

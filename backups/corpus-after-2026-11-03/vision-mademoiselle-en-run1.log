@@ -1,0 +1,17 @@
+Replaying frozen OCR fixture: supabase/functions/parse-receipt/__fixtures__/vision-mademoiselle-en.json (geometric reconstruction)
+OCR: 17 lines, 59 words
+Ledger: 10 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 2819ms, tokens prompt=1352 completion=378 total=1730
+Structure: 8 blocks (merchant=Mademoiselle Raw Bar & Grill, currency=CAD)
+Total witness: label -> 50.85 (agreement=agree)
+Geometric ownership: 6/8 confident, 0 anchor-corrected
+Constant-offset arbitration: formDetected=false, hypothesisAdopted=H0
+Suspicious (round 1): 1
+Suspicious round 1 skipped (no image available under --fixture): 1 would have been checked
+Reconciliation (round 1): reconciles=false, calculatedSubtotal=9, printedSubtotal=null
+
+Full report written to: backups/corpus-after-2026-11-03/vision-mademoiselle-en-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=9, printedSubtotal=null, printedTotal=50.85, reconciles=false (arithmeticOnly=false), summaryCoverageValid=false, summaryUnresolved=1, summaryDuplicateRoles=0, structuralGap=0, echoExact=0, echoMult=0, genuineMiss=1, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=false, offsetHypothesisAdopted=H0, totalWitness=label, totalWitnessAgreement=agree, provenNonAdditiveCount=0, provenNonAdditiveBlockedBy=sum_mismatch, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=items_region_unresolved, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null

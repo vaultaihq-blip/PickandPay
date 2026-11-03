@@ -1,0 +1,17 @@
+Replaying frozen OCR fixture: supabase/functions/parse-receipt/__fixtures__/vision-ramires-pt.json (geometric reconstruction)
+OCR: 59 lines, 217 words
+Ledger: 50 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 7083ms, tokens prompt=2477 completion=1160 total=3637
+Structure: 25 blocks (merchant=Restaurante Ramires, currency=EUR)
+Total witness: label -> 76.2 (agreement=label_only)
+Geometric ownership: 24/25 confident, 0 anchor-corrected
+Constant-offset arbitration: formDetected=false, hypothesisAdopted=H0
+Suspicious (round 1): 1
+Suspicious round 1 skipped (no image available under --fixture): 1 would have been checked
+Reconciliation (round 1): reconciles=true, calculatedSubtotal=76.2, printedSubtotal=76.2
+
+Full report written to: backups/corpus-after-2026-11-03/vision-ramires-pt-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=76.2, printedSubtotal=76.2, printedTotal=76.2, reconciles=true (arithmeticOnly=true), summaryCoverageValid=true, summaryUnresolved=0, summaryDuplicateRoles=0, structuralGap=0, echoExact=14, echoMult=4, genuineMiss=0, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=false, offsetHypothesisAdopted=H0, totalWitness=label, totalWitnessAgreement=label_only, provenNonAdditiveCount=7, provenNonAdditiveBlockedBy=null, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=no_deficit, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null

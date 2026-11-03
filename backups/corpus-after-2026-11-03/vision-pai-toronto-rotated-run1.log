@@ -1,0 +1,16 @@
+Replaying frozen OCR fixture: supabase/functions/parse-receipt/__fixtures__/vision-pai-toronto-rotated.json (geometric reconstruction)
+OCR: 45 lines, 151 words
+Ledger: 30 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 9403ms, tokens prompt=2125 completion=1510 total=3635
+Structure: 34 blocks (merchant=Pai Northern thai Kitchen- Uptown, currency=CAD)
+Total witness: label -> 499.03 (agreement=disagree)
+Geometric ownership: 34/34 confident, 0 anchor-corrected
+Constant-offset arbitration: formDetected=true, hypothesisAdopted=H0
+Suspicious (round 1): 0
+Reconciliation (round 1): reconciles=true, calculatedSubtotal=374.25, printedSubtotal=374.25
+
+Full report written to: backups/corpus-after-2026-11-03/vision-pai-toronto-rotated-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=374.25, printedSubtotal=374.25, printedTotal=499.03, reconciles=true (arithmeticOnly=true), summaryCoverageValid=true, summaryUnresolved=0, summaryDuplicateRoles=0, structuralGap=0, echoExact=0, echoMult=0, genuineMiss=0, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=true, offsetHypothesisAdopted=H0, totalWitness=label, totalWitnessAgreement=disagree, provenNonAdditiveCount=0, provenNonAdditiveBlockedBy=null, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=no_deficit, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null

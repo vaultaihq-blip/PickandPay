@@ -1,0 +1,3603 @@
+{
+  "imagePath": null,
+  "fixturePath": "supabase/functions/parse-receipt/__fixtures__/vision-ramires-pt.json",
+  "verificationAvailable": false,
+  "merchant": "Restaurante Ramires",
+  "date": "2026-05-02",
+  "currency": "EUR",
+  "currencyRead": "EUR",
+  "structureTimeMs": 7083,
+  "structureTokenUsage": {
+    "promptTokens": 2477,
+    "completionTokens": 1160,
+    "totalTokens": 3637
+  },
+  "structureRetryFired": false,
+  "structuralGapCountBeforeRetry": null,
+  "ocrLines": [
+    {
+      "lineIndex": 0,
+      "text": "Restaurante Ramires"
+    },
+    {
+      "lineIndex": 1,
+      "text": "Restaurante Ramires Unipessoal, Lda"
+    },
+    {
+      "lineIndex": 2,
+      "text": "Rus 25 de Abril, n.14"
+    },
+    {
+      "lineIndex": 3,
+      "text": "8200-433 Guia - Albufeira"
+    },
+    {
+      "lineIndex": 4,
+      "text": "NIF: 508870526"
+    },
+    {
+      "lineIndex": 5,
+      "text": "C.R.C. Albufeira sob no508870526"
+    },
+    {
+      "lineIndex": 6,
+      "text": "Capital Social 5000&euro;"
+    },
+    {
+      "lineIndex": 7,
+      "text": "2026-05-02 FATURA SIMPLIFICADA N:"
+    },
+    {
+      "lineIndex": 8,
+      "text": "Original FS 1A2603/649"
+    },
+    {
+      "lineIndex": 9,
+      "text": "21:29 MESA N: 436/0"
+    },
+    {
+      "lineIndex": 10,
+      "text": "Contribuinte: Consumidor final"
+    },
+    {
+      "lineIndex": 11,
+      "text": "QTD UNI DESCRICAO IVA VALOR"
+    },
+    {
+      "lineIndex": 12,
+      "text": "1 Uni Frango 13% 16,00"
+    },
+    {
+      "lineIndex": 13,
+      "text": "Preco: 16,00/Uni"
+    },
+    {
+      "lineIndex": 14,
+      "text": "+3 Uni C/Batata 13% OFERTA"
+    },
+    {
+      "lineIndex": 15,
+      "text": "Preco: 0,00/Uni"
+    },
+    {
+      "lineIndex": 16,
+      "text": "1 Uni 1/2 Frango 13% 8,00"
+    },
+    {
+      "lineIndex": 17,
+      "text": "Preco: 8,00/Uni"
+    },
+    {
+      "lineIndex": 18,
+      "text": "1 Uni 1/2 Frango c/Pi 13% 8,00"
+    },
+    {
+      "lineIndex": 19,
+      "text": "Preco: 8,00/Uni"
+    },
+    {
+      "lineIndex": 20,
+      "text": "1 Uni Salada Algarvia 13% 4,90"
+    },
+    {
+      "lineIndex": 21,
+      "text": "Preco: 4,90/Uni"
+    },
+    {
+      "lineIndex": 22,
+      "text": "1 Uni Dose Arroz 13% 1,80"
+    },
+    {
+      "lineIndex": 23,
+      "text": "Preco: 1,80/Uni"
+    },
+    {
+      "lineIndex": 24,
+      "text": "1 Uni Luso 0,50 13% 1,80"
+    },
+    {
+      "lineIndex": 25,
+      "text": "Preco: 1,80/Uni"
+    },
+    {
+      "lineIndex": 26,
+      "text": "1 Uni Coca Cola 23% 2,00"
+    },
+    {
+      "lineIndex": 27,
+      "text": "Preco: 2,00/Uni"
+    },
+    {
+      "lineIndex": 28,
+      "text": "2 Uni Cola Zero 23% 4,00"
+    },
+    {
+      "lineIndex": 29,
+      "text": "Preco: 2,00/Uni"
+    },
+    {
+      "lineIndex": 30,
+      "text": "2 Uni Cerveja Copo 20 23% 3,60"
+    },
+    {
+      "lineIndex": 31,
+      "text": "Preco: 1,80/Uni"
+    },
+    {
+      "lineIndex": 32,
+      "text": "3 Uni Pao 13% 2,40"
+    },
+    {
+      "lineIndex": 33,
+      "text": "Preco: 0,80/Uni"
+    },
+    {
+      "lineIndex": 34,
+      "text": "1 Uni Azeitonas 13% 0,90"
+    },
+    {
+      "lineIndex": 35,
+      "text": "Preco: 0,90/Uni"
+    },
+    {
+      "lineIndex": 36,
+      "text": "2 Uni Manteiga 13% 1,40"
+    },
+    {
+      "lineIndex": 37,
+      "text": "Preco: 0,70/Uni"
+    },
+    {
+      "lineIndex": 38,
+      "text": "1 Uni Queijo 13% 2,40"
+    },
+    {
+      "lineIndex": 39,
+      "text": "Preco: 2,40/Uni"
+    },
+    {
+      "lineIndex": 40,
+      "text": "1 Uni Banoffee 13% 4,50"
+    },
+    {
+      "lineIndex": 41,
+      "text": "Preco: 4,50/Uni"
+    },
+    {
+      "lineIndex": 42,
+      "text": "1 Uni Tarte Amendoa 13% 4,50"
+    },
+    {
+      "lineIndex": 43,
+      "text": "Preco: 4,50/Uni"
+    },
+    {
+      "lineIndex": 44,
+      "text": "1 Uni Maincraft 13% 4,50"
+    },
+    {
+      "lineIndex": 45,
+      "text": "Preco: 4,50/Uni"
+    },
+    {
+      "lineIndex": 46,
+      "text": "1 Uni Go Minis 13% 4,50"
+    },
+    {
+      "lineIndex": 47,
+      "text": "Preco: 4,50/Uni"
+    },
+    {
+      "lineIndex": 48,
+      "text": "1 Uni Cafe 13% 1,00"
+    },
+    {
+      "lineIndex": 49,
+      "text": "Preco: 1,00/Uni"
+    },
+    {
+      "lineIndex": 50,
+      "text": "TAXA IVA € INCID.€"
+    },
+    {
+      "lineIndex": 51,
+      "text": "13% 7,66 58,94"
+    },
+    {
+      "lineIndex": 52,
+      "text": "23% 1,80 7,80"
+    },
+    {
+      "lineIndex": 53,
+      "text": "TOTAL INCIDENCIAS: 9,46 66,74"
+    },
+    {
+      "lineIndex": 54,
+      "text": "TOTAL: 76,20 €"
+    },
+    {
+      "lineIndex": 55,
+      "text": "Pago por Cartao de Debito"
+    },
+    {
+      "lineIndex": 56,
+      "text": "Valor entregue: 76,20"
+    },
+    {
+      "lineIndex": 57,
+      "text": "REFERENTE A:"
+    },
+    {
+      "lineIndex": 58,
+      "text": "CM 1A2603/808"
+    }
+  ],
+  "ledger": [
+    {
+      "amountId": "A1",
+      "wordId": "W13",
+      "lineIndex": 2,
+      "rawText": "14",
+      "value": 14,
+      "ocrConfidence": 0.9520606,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 553,
+            "y": 1014
+          },
+          {
+            "x": 549,
+            "y": 927
+          },
+          {
+            "x": 580,
+            "y": 926
+          },
+          {
+            "x": 584,
+            "y": 1013
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A2",
+      "wordId": "W43",
+      "lineIndex": 8,
+      "rawText": "649",
+      "value": 649,
+      "ocrConfidence": 0.96575105,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 907,
+            "y": 720
+          },
+          {
+            "x": 905,
+            "y": 592
+          },
+          {
+            "x": 934,
+            "y": 592
+          },
+          {
+            "x": 936,
+            "y": 720
+          },
+          {
+            "x": 906,
+            "y": 586
+          },
+          {
+            "x": 906,
+            "y": 569
+          },
+          {
+            "x": 934,
+            "y": 569
+          },
+          {
+            "x": 934,
+            "y": 586
+          },
+          {
+            "x": 905,
+            "y": 568
+          },
+          {
+            "x": 904,
+            "y": 505
+          },
+          {
+            "x": 933,
+            "y": 505
+          },
+          {
+            "x": 934,
+            "y": 568
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A3",
+      "wordId": "W41",
+      "lineIndex": 9,
+      "rawText": "0",
+      "value": 0,
+      "ocrConfidence": 0.9774471,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 964,
+            "y": 1079
+          },
+          {
+            "x": 962,
+            "y": 965
+          },
+          {
+            "x": 993,
+            "y": 964
+          },
+          {
+            "x": 995,
+            "y": 1078
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A4",
+      "wordId": "W70",
+      "lineIndex": 12,
+      "rawText": "16,00",
+      "value": 16,
+      "ocrConfidence": 0.98654133,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1211,
+            "y": 605
+          },
+          {
+            "x": 1207,
+            "y": 495
+          },
+          {
+            "x": 1237,
+            "y": 494
+          },
+          {
+            "x": 1241,
+            "y": 604
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A5",
+      "wordId": "W60",
+      "lineIndex": 13,
+      "rawText": "16,00",
+      "value": 16,
+      "ocrConfidence": 0.8866304,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1271,
+            "y": 1205
+          },
+          {
+            "x": 1270,
+            "y": 1095
+          },
+          {
+            "x": 1303,
+            "y": 1095
+          },
+          {
+            "x": 1304,
+            "y": 1205
+          },
+          {
+            "x": 1270,
+            "y": 1092
+          },
+          {
+            "x": 1270,
+            "y": 1071
+          },
+          {
+            "x": 1302,
+            "y": 1071
+          },
+          {
+            "x": 1302,
+            "y": 1092
+          },
+          {
+            "x": 1270,
+            "y": 1072
+          },
+          {
+            "x": 1269,
+            "y": 1008
+          },
+          {
+            "x": 1301,
+            "y": 1008
+          },
+          {
+            "x": 1302,
+            "y": 1072
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A6",
+      "wordId": "W76",
+      "lineIndex": 15,
+      "rawText": "0,00",
+      "value": 0,
+      "ocrConfidence": 0.93410385,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1376,
+            "y": 1203
+          },
+          {
+            "x": 1376,
+            "y": 1116
+          },
+          {
+            "x": 1410,
+            "y": 1116
+          },
+          {
+            "x": 1410,
+            "y": 1203
+          },
+          {
+            "x": 1376,
+            "y": 1113
+          },
+          {
+            "x": 1376,
+            "y": 1094
+          },
+          {
+            "x": 1410,
+            "y": 1094
+          },
+          {
+            "x": 1410,
+            "y": 1113
+          },
+          {
+            "x": 1376,
+            "y": 1093
+          },
+          {
+            "x": 1376,
+            "y": 1028
+          },
+          {
+            "x": 1410,
+            "y": 1028
+          },
+          {
+            "x": 1410,
+            "y": 1093
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A7",
+      "wordId": "W85",
+      "lineIndex": 16,
+      "rawText": "8,00",
+      "value": 8,
+      "ocrConfidence": 0.9883733,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1420,
+            "y": 582
+          },
+          {
+            "x": 1416,
+            "y": 493
+          },
+          {
+            "x": 1445,
+            "y": 492
+          },
+          {
+            "x": 1449,
+            "y": 581
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A8",
+      "wordId": "W88",
+      "lineIndex": 17,
+      "rawText": "8,00",
+      "value": 8,
+      "ocrConfidence": 0.8542826,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1482,
+            "y": 1202
+          },
+          {
+            "x": 1482,
+            "y": 1114
+          },
+          {
+            "x": 1513,
+            "y": 1114
+          },
+          {
+            "x": 1513,
+            "y": 1202
+          },
+          {
+            "x": 1482,
+            "y": 1112
+          },
+          {
+            "x": 1482,
+            "y": 1094
+          },
+          {
+            "x": 1513,
+            "y": 1094
+          },
+          {
+            "x": 1513,
+            "y": 1112
+          },
+          {
+            "x": 1482,
+            "y": 1091
+          },
+          {
+            "x": 1482,
+            "y": 1028
+          },
+          {
+            "x": 1513,
+            "y": 1028
+          },
+          {
+            "x": 1513,
+            "y": 1091
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A9",
+      "wordId": "W100",
+      "lineIndex": 18,
+      "rawText": "8,00",
+      "value": 8,
+      "ocrConfidence": 0.9876523,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1523,
+            "y": 582
+          },
+          {
+            "x": 1521,
+            "y": 490
+          },
+          {
+            "x": 1553,
+            "y": 489
+          },
+          {
+            "x": 1555,
+            "y": 581
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A10",
+      "wordId": "W103",
+      "lineIndex": 19,
+      "rawText": "8,00",
+      "value": 8,
+      "ocrConfidence": 0.8243144,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1583,
+            "y": 1201
+          },
+          {
+            "x": 1583,
+            "y": 1113
+          },
+          {
+            "x": 1614,
+            "y": 1113
+          },
+          {
+            "x": 1614,
+            "y": 1201
+          },
+          {
+            "x": 1583,
+            "y": 1111
+          },
+          {
+            "x": 1583,
+            "y": 1090
+          },
+          {
+            "x": 1614,
+            "y": 1090
+          },
+          {
+            "x": 1614,
+            "y": 1111
+          },
+          {
+            "x": 1583,
+            "y": 1091
+          },
+          {
+            "x": 1583,
+            "y": 1027
+          },
+          {
+            "x": 1614,
+            "y": 1027
+          },
+          {
+            "x": 1614,
+            "y": 1091
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A11",
+      "wordId": "W112",
+      "lineIndex": 20,
+      "rawText": "4,90",
+      "value": 4.9,
+      "ocrConfidence": 0.98511475,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1626,
+            "y": 580
+          },
+          {
+            "x": 1625,
+            "y": 488
+          },
+          {
+            "x": 1656,
+            "y": 488
+          },
+          {
+            "x": 1657,
+            "y": 580
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A12",
+      "wordId": "W115",
+      "lineIndex": 21,
+      "rawText": "4,90",
+      "value": 4.9,
+      "ocrConfidence": 0.7940964,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1690,
+            "y": 1202
+          },
+          {
+            "x": 1690,
+            "y": 1113
+          },
+          {
+            "x": 1722,
+            "y": 1113
+          },
+          {
+            "x": 1722,
+            "y": 1202
+          },
+          {
+            "x": 1690,
+            "y": 1109
+          },
+          {
+            "x": 1690,
+            "y": 1090
+          },
+          {
+            "x": 1721,
+            "y": 1090
+          },
+          {
+            "x": 1721,
+            "y": 1109
+          },
+          {
+            "x": 1690,
+            "y": 1089
+          },
+          {
+            "x": 1690,
+            "y": 1026
+          },
+          {
+            "x": 1721,
+            "y": 1026
+          },
+          {
+            "x": 1721,
+            "y": 1089
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A13",
+      "wordId": "W124",
+      "lineIndex": 22,
+      "rawText": "1,80",
+      "value": 1.8,
+      "ocrConfidence": 0.99039435,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1732,
+            "y": 577
+          },
+          {
+            "x": 1730,
+            "y": 489
+          },
+          {
+            "x": 1760,
+            "y": 488
+          },
+          {
+            "x": 1762,
+            "y": 576
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A14",
+      "wordId": "W127",
+      "lineIndex": 23,
+      "rawText": "1,80",
+      "value": 1.8,
+      "ocrConfidence": 0.8482229,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1794,
+            "y": 1199
+          },
+          {
+            "x": 1793,
+            "y": 1112
+          },
+          {
+            "x": 1824,
+            "y": 1112
+          },
+          {
+            "x": 1825,
+            "y": 1199
+          },
+          {
+            "x": 1793,
+            "y": 1109
+          },
+          {
+            "x": 1793,
+            "y": 1089
+          },
+          {
+            "x": 1824,
+            "y": 1089
+          },
+          {
+            "x": 1824,
+            "y": 1109
+          },
+          {
+            "x": 1793,
+            "y": 1088
+          },
+          {
+            "x": 1792,
+            "y": 1025
+          },
+          {
+            "x": 1823,
+            "y": 1025
+          },
+          {
+            "x": 1824,
+            "y": 1088
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A15",
+      "wordId": "W133",
+      "lineIndex": 24,
+      "rawText": "0,50",
+      "value": 0.5,
+      "ocrConfidence": 0.94731426,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1846,
+            "y": 1045
+          },
+          {
+            "x": 1846,
+            "y": 952
+          },
+          {
+            "x": 1877,
+            "y": 952
+          },
+          {
+            "x": 1877,
+            "y": 1045
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A16",
+      "wordId": "W136",
+      "lineIndex": 24,
+      "rawText": "1,80",
+      "value": 1.8,
+      "ocrConfidence": 0.988631,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1840,
+            "y": 575
+          },
+          {
+            "x": 1836,
+            "y": 488
+          },
+          {
+            "x": 1866,
+            "y": 487
+          },
+          {
+            "x": 1870,
+            "y": 574
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A17",
+      "wordId": "W139",
+      "lineIndex": 25,
+      "rawText": "1,80",
+      "value": 1.8,
+      "ocrConfidence": 0.8640557,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1897,
+            "y": 1197
+          },
+          {
+            "x": 1896,
+            "y": 1110
+          },
+          {
+            "x": 1928,
+            "y": 1110
+          },
+          {
+            "x": 1929,
+            "y": 1197
+          },
+          {
+            "x": 1897,
+            "y": 1107
+          },
+          {
+            "x": 1897,
+            "y": 1087
+          },
+          {
+            "x": 1929,
+            "y": 1087
+          },
+          {
+            "x": 1929,
+            "y": 1107
+          },
+          {
+            "x": 1896,
+            "y": 1088
+          },
+          {
+            "x": 1896,
+            "y": 1022
+          },
+          {
+            "x": 1929,
+            "y": 1022
+          },
+          {
+            "x": 1929,
+            "y": 1088
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A18",
+      "wordId": "W148",
+      "lineIndex": 26,
+      "rawText": "2,00",
+      "value": 2,
+      "ocrConfidence": 0.989061,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1943,
+            "y": 573
+          },
+          {
+            "x": 1943,
+            "y": 485
+          },
+          {
+            "x": 1972,
+            "y": 485
+          },
+          {
+            "x": 1972,
+            "y": 573
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A19",
+      "wordId": "W151",
+      "lineIndex": 27,
+      "rawText": "2,00",
+      "value": 2,
+      "ocrConfidence": 0.8648338,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2001,
+            "y": 1197
+          },
+          {
+            "x": 2000,
+            "y": 1109
+          },
+          {
+            "x": 2033,
+            "y": 1109
+          },
+          {
+            "x": 2034,
+            "y": 1197
+          },
+          {
+            "x": 2001,
+            "y": 1106
+          },
+          {
+            "x": 2001,
+            "y": 1087
+          },
+          {
+            "x": 2033,
+            "y": 1087
+          },
+          {
+            "x": 2033,
+            "y": 1106
+          },
+          {
+            "x": 2001,
+            "y": 1088
+          },
+          {
+            "x": 2001,
+            "y": 1020
+          },
+          {
+            "x": 2033,
+            "y": 1020
+          },
+          {
+            "x": 2033,
+            "y": 1088
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A20",
+      "wordId": "W160",
+      "lineIndex": 28,
+      "rawText": "4,00",
+      "value": 4,
+      "ocrConfidence": 0.9911485,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2047,
+            "y": 568
+          },
+          {
+            "x": 2044,
+            "y": 482
+          },
+          {
+            "x": 2073,
+            "y": 481
+          },
+          {
+            "x": 2076,
+            "y": 567
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A21",
+      "wordId": "W163",
+      "lineIndex": 29,
+      "rawText": "2,00",
+      "value": 2,
+      "ocrConfidence": 0.9407283,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2107,
+            "y": 1199
+          },
+          {
+            "x": 2106,
+            "y": 1110
+          },
+          {
+            "x": 2140,
+            "y": 1110
+          },
+          {
+            "x": 2141,
+            "y": 1199
+          },
+          {
+            "x": 2106,
+            "y": 1106
+          },
+          {
+            "x": 2106,
+            "y": 1087
+          },
+          {
+            "x": 2139,
+            "y": 1087
+          },
+          {
+            "x": 2139,
+            "y": 1106
+          },
+          {
+            "x": 2105,
+            "y": 1085
+          },
+          {
+            "x": 2104,
+            "y": 1022
+          },
+          {
+            "x": 2138,
+            "y": 1022
+          },
+          {
+            "x": 2139,
+            "y": 1085
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A22",
+      "wordId": "W173",
+      "lineIndex": 30,
+      "rawText": "3,60",
+      "value": 3.6,
+      "ocrConfidence": 0.9856859,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2148,
+            "y": 568
+          },
+          {
+            "x": 2149,
+            "y": 480
+          },
+          {
+            "x": 2178,
+            "y": 481
+          },
+          {
+            "x": 2177,
+            "y": 568
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A23",
+      "wordId": "W176",
+      "lineIndex": 31,
+      "rawText": "1,80",
+      "value": 1.8,
+      "ocrConfidence": 0.85823166,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2209,
+            "y": 1194
+          },
+          {
+            "x": 2207,
+            "y": 1107
+          },
+          {
+            "x": 2238,
+            "y": 1106
+          },
+          {
+            "x": 2240,
+            "y": 1193
+          },
+          {
+            "x": 2207,
+            "y": 1103
+          },
+          {
+            "x": 2207,
+            "y": 1083
+          },
+          {
+            "x": 2237,
+            "y": 1082
+          },
+          {
+            "x": 2237,
+            "y": 1102
+          },
+          {
+            "x": 2207,
+            "y": 1084
+          },
+          {
+            "x": 2206,
+            "y": 1020
+          },
+          {
+            "x": 2236,
+            "y": 1019
+          },
+          {
+            "x": 2237,
+            "y": 1083
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A24",
+      "wordId": "W184",
+      "lineIndex": 32,
+      "rawText": "2,40",
+      "value": 2.4,
+      "ocrConfidence": 0.99182594,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2250,
+            "y": 569
+          },
+          {
+            "x": 2248,
+            "y": 483
+          },
+          {
+            "x": 2280,
+            "y": 482
+          },
+          {
+            "x": 2282,
+            "y": 568
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A25",
+      "wordId": "W187",
+      "lineIndex": 33,
+      "rawText": "0,80",
+      "value": 0.8,
+      "ocrConfidence": 0.83247674,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2310,
+            "y": 1191
+          },
+          {
+            "x": 2308,
+            "y": 1104
+          },
+          {
+            "x": 2340,
+            "y": 1103
+          },
+          {
+            "x": 2342,
+            "y": 1190
+          },
+          {
+            "x": 2309,
+            "y": 1101
+          },
+          {
+            "x": 2309,
+            "y": 1080
+          },
+          {
+            "x": 2340,
+            "y": 1079
+          },
+          {
+            "x": 2340,
+            "y": 1100
+          },
+          {
+            "x": 2308,
+            "y": 1082
+          },
+          {
+            "x": 2307,
+            "y": 1018
+          },
+          {
+            "x": 2338,
+            "y": 1017
+          },
+          {
+            "x": 2339,
+            "y": 1081
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A26",
+      "wordId": "W195",
+      "lineIndex": 34,
+      "rawText": "0,90",
+      "value": 0.9,
+      "ocrConfidence": 0.9777298,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2351,
+            "y": 568
+          },
+          {
+            "x": 2350,
+            "y": 483
+          },
+          {
+            "x": 2380,
+            "y": 483
+          },
+          {
+            "x": 2381,
+            "y": 568
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A27",
+      "wordId": "W198",
+      "lineIndex": 35,
+      "rawText": "0,90",
+      "value": 0.9,
+      "ocrConfidence": 0.94097006,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2412,
+            "y": 1187
+          },
+          {
+            "x": 2411,
+            "y": 1102
+          },
+          {
+            "x": 2444,
+            "y": 1102
+          },
+          {
+            "x": 2445,
+            "y": 1187
+          },
+          {
+            "x": 2412,
+            "y": 1097
+          },
+          {
+            "x": 2412,
+            "y": 1077
+          },
+          {
+            "x": 2445,
+            "y": 1077
+          },
+          {
+            "x": 2445,
+            "y": 1097
+          },
+          {
+            "x": 2411,
+            "y": 1077
+          },
+          {
+            "x": 2411,
+            "y": 1015
+          },
+          {
+            "x": 2445,
+            "y": 1015
+          },
+          {
+            "x": 2445,
+            "y": 1077
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A28",
+      "wordId": "W206",
+      "lineIndex": 36,
+      "rawText": "1,40",
+      "value": 1.4,
+      "ocrConfidence": 0.9882189,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2456,
+            "y": 567
+          },
+          {
+            "x": 2456,
+            "y": 479
+          },
+          {
+            "x": 2486,
+            "y": 479
+          },
+          {
+            "x": 2486,
+            "y": 567
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A29",
+      "wordId": "W209",
+      "lineIndex": 37,
+      "rawText": "0,70",
+      "value": 0.7,
+      "ocrConfidence": 0.7525512,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2516,
+            "y": 1187
+          },
+          {
+            "x": 2515,
+            "y": 1100
+          },
+          {
+            "x": 2548,
+            "y": 1100
+          },
+          {
+            "x": 2549,
+            "y": 1187
+          },
+          {
+            "x": 2515,
+            "y": 1096
+          },
+          {
+            "x": 2515,
+            "y": 1077
+          },
+          {
+            "x": 2547,
+            "y": 1077
+          },
+          {
+            "x": 2547,
+            "y": 1096
+          },
+          {
+            "x": 2515,
+            "y": 1077
+          },
+          {
+            "x": 2514,
+            "y": 1014
+          },
+          {
+            "x": 2547,
+            "y": 1014
+          },
+          {
+            "x": 2548,
+            "y": 1077
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A30",
+      "wordId": "W217",
+      "lineIndex": 38,
+      "rawText": "2,40",
+      "value": 2.4,
+      "ocrConfidence": 0.9900223,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2562,
+            "y": 565
+          },
+          {
+            "x": 2561,
+            "y": 477
+          },
+          {
+            "x": 2590,
+            "y": 477
+          },
+          {
+            "x": 2591,
+            "y": 565
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A31",
+      "wordId": "W220",
+      "lineIndex": 39,
+      "rawText": "2,40",
+      "value": 2.4,
+      "ocrConfidence": 0.83238584,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2622,
+            "y": 1186
+          },
+          {
+            "x": 2620,
+            "y": 1099
+          },
+          {
+            "x": 2655,
+            "y": 1098
+          },
+          {
+            "x": 2657,
+            "y": 1185
+          },
+          {
+            "x": 2620,
+            "y": 1096
+          },
+          {
+            "x": 2620,
+            "y": 1076
+          },
+          {
+            "x": 2654,
+            "y": 1075
+          },
+          {
+            "x": 2654,
+            "y": 1095
+          },
+          {
+            "x": 2619,
+            "y": 1075
+          },
+          {
+            "x": 2618,
+            "y": 1014
+          },
+          {
+            "x": 2652,
+            "y": 1013
+          },
+          {
+            "x": 2653,
+            "y": 1074
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A32",
+      "wordId": "W228",
+      "lineIndex": 40,
+      "rawText": "4,50",
+      "value": 4.5,
+      "ocrConfidence": 0.97672343,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2668,
+            "y": 569
+          },
+          {
+            "x": 2665,
+            "y": 476
+          },
+          {
+            "x": 2697,
+            "y": 475
+          },
+          {
+            "x": 2700,
+            "y": 568
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A33",
+      "wordId": "W231",
+      "lineIndex": 41,
+      "rawText": "4,50",
+      "value": 4.5,
+      "ocrConfidence": 0.70656955,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2727,
+            "y": 1187
+          },
+          {
+            "x": 2724,
+            "y": 1094
+          },
+          {
+            "x": 2756,
+            "y": 1093
+          },
+          {
+            "x": 2759,
+            "y": 1186
+          },
+          {
+            "x": 2725,
+            "y": 1093
+          },
+          {
+            "x": 2724,
+            "y": 1072
+          },
+          {
+            "x": 2755,
+            "y": 1071
+          },
+          {
+            "x": 2756,
+            "y": 1092
+          },
+          {
+            "x": 2724,
+            "y": 1076
+          },
+          {
+            "x": 2722,
+            "y": 1012
+          },
+          {
+            "x": 2753,
+            "y": 1011
+          },
+          {
+            "x": 2755,
+            "y": 1075
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A34",
+      "wordId": "W240",
+      "lineIndex": 42,
+      "rawText": "4,50",
+      "value": 4.5,
+      "ocrConfidence": 0.9752044,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2771,
+            "y": 566
+          },
+          {
+            "x": 2768,
+            "y": 473
+          },
+          {
+            "x": 2801,
+            "y": 472
+          },
+          {
+            "x": 2804,
+            "y": 565
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A35",
+      "wordId": "W243",
+      "lineIndex": 43,
+      "rawText": "4,50",
+      "value": 4.5,
+      "ocrConfidence": 0.89597017,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2829,
+            "y": 1184
+          },
+          {
+            "x": 2827,
+            "y": 1095
+          },
+          {
+            "x": 2860,
+            "y": 1094
+          },
+          {
+            "x": 2862,
+            "y": 1183
+          },
+          {
+            "x": 2827,
+            "y": 1092
+          },
+          {
+            "x": 2826,
+            "y": 1073
+          },
+          {
+            "x": 2859,
+            "y": 1072
+          },
+          {
+            "x": 2860,
+            "y": 1091
+          },
+          {
+            "x": 2826,
+            "y": 1071
+          },
+          {
+            "x": 2824,
+            "y": 1009
+          },
+          {
+            "x": 2858,
+            "y": 1008
+          },
+          {
+            "x": 2860,
+            "y": 1070
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A36",
+      "wordId": "W251",
+      "lineIndex": 44,
+      "rawText": "4,50",
+      "value": 4.5,
+      "ocrConfidence": 0.9425459,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2876,
+            "y": 564
+          },
+          {
+            "x": 2876,
+            "y": 472
+          },
+          {
+            "x": 2908,
+            "y": 472
+          },
+          {
+            "x": 2908,
+            "y": 564
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A37",
+      "wordId": "W254",
+      "lineIndex": 45,
+      "rawText": "4,50",
+      "value": 4.5,
+      "ocrConfidence": 0.9517335,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2934,
+            "y": 1184
+          },
+          {
+            "x": 2931,
+            "y": 1094
+          },
+          {
+            "x": 2965,
+            "y": 1093
+          },
+          {
+            "x": 2968,
+            "y": 1183
+          },
+          {
+            "x": 2931,
+            "y": 1091
+          },
+          {
+            "x": 2930,
+            "y": 1071
+          },
+          {
+            "x": 2964,
+            "y": 1070
+          },
+          {
+            "x": 2965,
+            "y": 1090
+          },
+          {
+            "x": 2930,
+            "y": 1071
+          },
+          {
+            "x": 2928,
+            "y": 1007
+          },
+          {
+            "x": 2962,
+            "y": 1006
+          },
+          {
+            "x": 2964,
+            "y": 1070
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A38",
+      "wordId": "W263",
+      "lineIndex": 46,
+      "rawText": "4,50",
+      "value": 4.5,
+      "ocrConfidence": 0.9677919,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2985,
+            "y": 555
+          },
+          {
+            "x": 2985,
+            "y": 470
+          },
+          {
+            "x": 3013,
+            "y": 470
+          },
+          {
+            "x": 3013,
+            "y": 555
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A39",
+      "wordId": "W266",
+      "lineIndex": 47,
+      "rawText": "4,50",
+      "value": 4.5,
+      "ocrConfidence": 0.89728826,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3040,
+            "y": 1181
+          },
+          {
+            "x": 3037,
+            "y": 1091
+          },
+          {
+            "x": 3073,
+            "y": 1090
+          },
+          {
+            "x": 3076,
+            "y": 1180
+          },
+          {
+            "x": 3037,
+            "y": 1089
+          },
+          {
+            "x": 3036,
+            "y": 1070
+          },
+          {
+            "x": 3072,
+            "y": 1069
+          },
+          {
+            "x": 3073,
+            "y": 1088
+          },
+          {
+            "x": 3037,
+            "y": 1069
+          },
+          {
+            "x": 3035,
+            "y": 1005
+          },
+          {
+            "x": 3071,
+            "y": 1004
+          },
+          {
+            "x": 3073,
+            "y": 1068
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A40",
+      "wordId": "W274",
+      "lineIndex": 48,
+      "rawText": "1,00",
+      "value": 1,
+      "ocrConfidence": 0.9924883,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3093,
+            "y": 559
+          },
+          {
+            "x": 3092,
+            "y": 467
+          },
+          {
+            "x": 3121,
+            "y": 467
+          },
+          {
+            "x": 3122,
+            "y": 559
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A41",
+      "wordId": "W277",
+      "lineIndex": 49,
+      "rawText": "1,00",
+      "value": 1,
+      "ocrConfidence": 0.88461477,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3148,
+            "y": 1177
+          },
+          {
+            "x": 3146,
+            "y": 1091
+          },
+          {
+            "x": 3184,
+            "y": 1090
+          },
+          {
+            "x": 3186,
+            "y": 1176
+          },
+          {
+            "x": 3146,
+            "y": 1090
+          },
+          {
+            "x": 3145,
+            "y": 1070
+          },
+          {
+            "x": 3182,
+            "y": 1069
+          },
+          {
+            "x": 3183,
+            "y": 1089
+          },
+          {
+            "x": 3146,
+            "y": 1068
+          },
+          {
+            "x": 3144,
+            "y": 1008
+          },
+          {
+            "x": 3181,
+            "y": 1007
+          },
+          {
+            "x": 3183,
+            "y": 1067
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A42",
+      "wordId": "W288",
+      "lineIndex": 51,
+      "rawText": "7,66",
+      "value": 7.66,
+      "ocrConfidence": 0.98553145,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3372,
+            "y": 794
+          },
+          {
+            "x": 3372,
+            "y": 710
+          },
+          {
+            "x": 3402,
+            "y": 710
+          },
+          {
+            "x": 3402,
+            "y": 794
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A43",
+      "wordId": "W296",
+      "lineIndex": 51,
+      "rawText": "58,94",
+      "value": 58.94,
+      "ocrConfidence": 0.988205,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3372,
+            "y": 572
+          },
+          {
+            "x": 3372,
+            "y": 461
+          },
+          {
+            "x": 3403,
+            "y": 461
+          },
+          {
+            "x": 3403,
+            "y": 572
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A44",
+      "wordId": "W291",
+      "lineIndex": 52,
+      "rawText": "1,80",
+      "value": 1.8,
+      "ocrConfidence": 0.9888316,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3432,
+            "y": 800
+          },
+          {
+            "x": 3428,
+            "y": 708
+          },
+          {
+            "x": 3461,
+            "y": 707
+          },
+          {
+            "x": 3465,
+            "y": 798
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A45",
+      "wordId": "W297",
+      "lineIndex": 52,
+      "rawText": "7,80",
+      "value": 7.8,
+      "ocrConfidence": 0.9927753,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3428,
+            "y": 548
+          },
+          {
+            "x": 3428,
+            "y": 459
+          },
+          {
+            "x": 3462,
+            "y": 459
+          },
+          {
+            "x": 3462,
+            "y": 548
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A46",
+      "wordId": "W295",
+      "lineIndex": 53,
+      "rawText": "9,46",
+      "value": 9.46,
+      "ocrConfidence": 0.9552913,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3486,
+            "y": 795
+          },
+          {
+            "x": 3485,
+            "y": 708
+          },
+          {
+            "x": 3511,
+            "y": 708
+          },
+          {
+            "x": 3512,
+            "y": 795
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A47",
+      "wordId": "W298",
+      "lineIndex": 53,
+      "rawText": "66,74",
+      "value": 66.74,
+      "ocrConfidence": 0.975886,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3481,
+            "y": 569
+          },
+          {
+            "x": 3480,
+            "y": 460
+          },
+          {
+            "x": 3504,
+            "y": 460
+          },
+          {
+            "x": 3505,
+            "y": 569
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A48",
+      "wordId": "W301",
+      "lineIndex": 54,
+      "rawText": "76,20",
+      "value": 76.2,
+      "ocrConfidence": 0.9883165,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3572,
+            "y": 644
+          },
+          {
+            "x": 3569,
+            "y": 507
+          },
+          {
+            "x": 3607,
+            "y": 506
+          },
+          {
+            "x": 3610,
+            "y": 643
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A49",
+      "wordId": "W318",
+      "lineIndex": 56,
+      "rawText": "76,20",
+      "value": 76.2,
+      "ocrConfidence": 0.9667166,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3726,
+            "y": 566
+          },
+          {
+            "x": 3726,
+            "y": 460
+          },
+          {
+            "x": 3754,
+            "y": 460
+          },
+          {
+            "x": 3754,
+            "y": 566
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A50",
+      "wordId": "W315",
+      "lineIndex": 58,
+      "rawText": "808",
+      "value": 808,
+      "ocrConfidence": 0.98107153,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3901,
+            "y": 1283
+          },
+          {
+            "x": 3890,
+            "y": 1150
+          },
+          {
+            "x": 3922,
+            "y": 1148
+          },
+          {
+            "x": 3933,
+            "y": 1280
+          },
+          {
+            "x": 3890,
+            "y": 1146
+          },
+          {
+            "x": 3889,
+            "y": 1128
+          },
+          {
+            "x": 3920,
+            "y": 1125
+          },
+          {
+            "x": 3922,
+            "y": 1143
+          },
+          {
+            "x": 3888,
+            "y": 1125
+          },
+          {
+            "x": 3883,
+            "y": 1061
+          },
+          {
+            "x": 3916,
+            "y": 1059
+          },
+          {
+            "x": 3921,
+            "y": 1122
+          }
+        ]
+      }
+    }
+  ],
+  "summaryBlocks": [
+    {
+      "blockId": "b22",
+      "name": null,
+      "lineIndices": [
+        50,
+        51,
+        52,
+        53
+      ],
+      "amountId": "A47",
+      "value": 66.74
+    },
+    {
+      "blockId": "b23",
+      "name": null,
+      "lineIndices": [
+        54
+      ],
+      "amountId": "A48",
+      "value": 76.2
+    }
+  ],
+  "summaryRoleAssignments": [
+    {
+      "amountId": "A48",
+      "role": "GRAND_TOTAL",
+      "value": 76.2
+    }
+  ],
+  "summaryCoverage": [
+    {
+      "amountId": "A42",
+      "lineIndex": 51,
+      "role": "PROVEN_NON_ADDITIVE",
+      "value": 7.66
+    },
+    {
+      "amountId": "A43",
+      "lineIndex": 51,
+      "role": "PROVEN_NON_ADDITIVE",
+      "value": 58.94
+    },
+    {
+      "amountId": "A44",
+      "lineIndex": 52,
+      "role": "PROVEN_NON_ADDITIVE",
+      "value": 1.8
+    },
+    {
+      "amountId": "A45",
+      "lineIndex": 52,
+      "role": "PROVEN_NON_ADDITIVE",
+      "value": 7.8
+    },
+    {
+      "amountId": "A46",
+      "lineIndex": 53,
+      "role": "PROVEN_NON_ADDITIVE",
+      "value": 9.46
+    },
+    {
+      "amountId": "A47",
+      "lineIndex": 53,
+      "role": "PROVEN_NON_ADDITIVE",
+      "value": 66.74
+    },
+    {
+      "amountId": "A48",
+      "lineIndex": 54,
+      "role": "GRAND_TOTAL",
+      "value": 76.2
+    },
+    {
+      "amountId": "A49",
+      "lineIndex": 56,
+      "role": "PROVEN_NON_ADDITIVE",
+      "value": 76.2
+    }
+  ],
+  "summaryDuplicateRoles": [],
+  "summaryCoverageValid": true,
+  "summaryMonetaryObservationCount": 8,
+  "summaryClaimedAmountCount": 8,
+  "summaryUnresolvedAmountCount": 0,
+  "summaryDuplicateRoleAttemptCount": 0,
+  "validity": {
+    "valid": true,
+    "structuralGapCount": 0,
+    "echoExactCount": 14,
+    "echoMultiplicativeCount": 4,
+    "descriptiveNumberCount": 1,
+    "zeroValueCount": 1,
+    "rowQuantityProvenCount": 0,
+    "rowUnitPriceProvenCount": 0,
+    "itemsProvenNonAdditiveCount": 0,
+    "unresolvedLoadBearingCount": 0,
+    "duplicateOwnershipCount": 0,
+    "ownershipInvalidCount": 0,
+    "reconciles": true
+  },
+  "finalReconciles": true,
+  "structureAgreement": null,
+  "structureDisagreements": [],
+  "priceKindOverrideCount": 0,
+  "priceKindOverrides": [],
+  "crossingsDetected": 0,
+  "summaryBoundaryPenalties": 0,
+  "offsetFormDetected": false,
+  "offsetHypothesisAdopted": "H0",
+  "totalWitness": "label",
+  "totalWitnessAgreement": "label_only",
+  "totalCandidatesFound": 1,
+  "totalChosenBy": "single",
+  "provenNonAdditiveCount": 7,
+  "provenNonAdditiveBlockedBy": null,
+  "provenAdditiveCount": 0,
+  "additiveCorroboratedByRate": false,
+  "provenAdditiveBlockedBy": "no_deficit",
+  "columnRolesDetected": {
+    "quantity": false,
+    "unitPrice": true,
+    "total": true
+  },
+  "rowsArithmeticallyProven": 0,
+  "itemsRegionSaturated": true,
+  "itemsRegionSaturationCount": 0,
+  "itemsRegionSaturationBlockedBy": null,
+  "partialNumberTokensRejected": 6,
+  "blocks": [
+    {
+      "blockId": "b0",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b0",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b1",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        7,
+        8,
+        9,
+        10
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A2",
+        "A3",
+        "A4"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b1",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b2",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        11
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A3",
+        "A4",
+        "A5"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b2",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b3",
+      "kind": "ITEM",
+      "lineIndices": [
+        12,
+        13
+      ],
+      "parentBlockId": null,
+      "name": "Frango",
+      "amountId": "A4",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A4",
+        "A5",
+        "A6"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b3",
+        "amountId": "A4",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b4",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        14,
+        15
+      ],
+      "parentBlockId": "b3",
+      "name": "C/Batata",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b4",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b5",
+      "kind": "ITEM",
+      "lineIndices": [
+        16,
+        17
+      ],
+      "parentBlockId": null,
+      "name": "1/2 Frango",
+      "amountId": "A7",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8",
+        "A9",
+        "A10"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b5",
+        "amountId": "A7",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b6",
+      "kind": "ITEM",
+      "lineIndices": [
+        18,
+        19
+      ],
+      "parentBlockId": null,
+      "name": "1/2 Frango c/Pi",
+      "amountId": "A9",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A7",
+        "A8",
+        "A9",
+        "A10",
+        "A11",
+        "A12"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b6",
+        "amountId": "A9",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b7",
+      "kind": "ITEM",
+      "lineIndices": [
+        20,
+        21
+      ],
+      "parentBlockId": null,
+      "name": "Salada Algarvia",
+      "amountId": "A11",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A9",
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b7",
+        "amountId": "A11",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b8",
+      "kind": "ITEM",
+      "lineIndices": [
+        22,
+        23
+      ],
+      "parentBlockId": null,
+      "name": "Dose Arroz",
+      "amountId": "A13",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A15",
+        "A16",
+        "A17"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b8",
+        "amountId": "A13",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b9",
+      "kind": "ITEM",
+      "lineIndices": [
+        24,
+        25
+      ],
+      "parentBlockId": null,
+      "name": "Luso 0,50",
+      "amountId": "A16",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A13",
+        "A14",
+        "A15",
+        "A16",
+        "A17",
+        "A18",
+        "A19"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b9",
+        "amountId": "A16",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b10",
+      "kind": "ITEM",
+      "lineIndices": [
+        26,
+        27
+      ],
+      "parentBlockId": null,
+      "name": "Coca Cola",
+      "amountId": "A18",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A15",
+        "A16",
+        "A17",
+        "A18",
+        "A19",
+        "A20",
+        "A21"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b10",
+        "amountId": "A18",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b11",
+      "kind": "ITEM",
+      "lineIndices": [
+        28,
+        29
+      ],
+      "parentBlockId": null,
+      "name": "Cola Zero",
+      "amountId": "A20",
+      "quantity": 2,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A18",
+        "A19",
+        "A20",
+        "A21",
+        "A22",
+        "A23"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b11",
+        "amountId": "A20",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b12",
+      "kind": "ITEM",
+      "lineIndices": [
+        30,
+        31
+      ],
+      "parentBlockId": null,
+      "name": "Cerveja Copo 20",
+      "amountId": "A22",
+      "quantity": 2,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A20",
+        "A21",
+        "A22",
+        "A23",
+        "A24",
+        "A25"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b12",
+        "amountId": "A22",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b13",
+      "kind": "ITEM",
+      "lineIndices": [
+        32,
+        33
+      ],
+      "parentBlockId": null,
+      "name": "Pao",
+      "amountId": "A24",
+      "quantity": 3,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A22",
+        "A23",
+        "A24",
+        "A25",
+        "A26",
+        "A27"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b13",
+        "amountId": "A24",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b14",
+      "kind": "ITEM",
+      "lineIndices": [
+        34,
+        35
+      ],
+      "parentBlockId": null,
+      "name": "Azeitonas",
+      "amountId": "A26",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A24",
+        "A25",
+        "A26",
+        "A27",
+        "A28",
+        "A29"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b14",
+        "amountId": "A26",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b15",
+      "kind": "ITEM",
+      "lineIndices": [
+        36,
+        37
+      ],
+      "parentBlockId": null,
+      "name": "Manteiga",
+      "amountId": "A28",
+      "quantity": 2,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A26",
+        "A27",
+        "A28",
+        "A29",
+        "A30",
+        "A31"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b15",
+        "amountId": "A28",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b16",
+      "kind": "ITEM",
+      "lineIndices": [
+        38,
+        39
+      ],
+      "parentBlockId": null,
+      "name": "Queijo",
+      "amountId": "A30",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A28",
+        "A29",
+        "A30",
+        "A31",
+        "A32",
+        "A33"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b16",
+        "amountId": "A30",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b17",
+      "kind": "ITEM",
+      "lineIndices": [
+        40,
+        41
+      ],
+      "parentBlockId": null,
+      "name": "Banoffee",
+      "amountId": "A32",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A30",
+        "A31",
+        "A32",
+        "A33",
+        "A34",
+        "A35"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b17",
+        "amountId": "A32",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b18",
+      "kind": "ITEM",
+      "lineIndices": [
+        42,
+        43
+      ],
+      "parentBlockId": null,
+      "name": "Tarte Amendoa",
+      "amountId": "A34",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A32",
+        "A33",
+        "A34",
+        "A35",
+        "A36",
+        "A37"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b18",
+        "amountId": "A34",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b19",
+      "kind": "ITEM",
+      "lineIndices": [
+        44,
+        45
+      ],
+      "parentBlockId": null,
+      "name": "Maincraft",
+      "amountId": "A36",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A34",
+        "A35",
+        "A36",
+        "A37",
+        "A38",
+        "A39"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b19",
+        "amountId": "A36",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b20",
+      "kind": "ITEM",
+      "lineIndices": [
+        46,
+        47
+      ],
+      "parentBlockId": null,
+      "name": "Go Minis",
+      "amountId": "A38",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A36",
+        "A37",
+        "A38",
+        "A39",
+        "A40",
+        "A41"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b20",
+        "amountId": "A38",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b21",
+      "kind": "ITEM",
+      "lineIndices": [
+        48,
+        49
+      ],
+      "parentBlockId": null,
+      "name": "Cafe",
+      "amountId": "A40",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A38",
+        "A39",
+        "A40",
+        "A41",
+        "A42",
+        "A43"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b21",
+        "amountId": "A40",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b22",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        50,
+        51,
+        52,
+        53
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": "A47",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A40",
+        "A41",
+        "A42",
+        "A43",
+        "A44",
+        "A45",
+        "A46",
+        "A47",
+        "A48"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b22",
+        "amountId": "A47",
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b23",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        54
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": "A48",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A44",
+        "A45",
+        "A46",
+        "A47",
+        "A48",
+        "A49"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b23",
+        "amountId": "A48",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b24",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        55,
+        56,
+        57,
+        58
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A46",
+        "A47",
+        "A48",
+        "A49",
+        "A50"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b24",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    }
+  ],
+  "finalItems": [
+    {
+      "itemInstanceId": "b3",
+      "name": "Frango",
+      "sourceLineIndex": 12,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b4",
+          "name": "C/Batata",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 16
+    },
+    {
+      "itemInstanceId": "b5",
+      "name": "1/2 Frango",
+      "sourceLineIndex": 16,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 8
+    },
+    {
+      "itemInstanceId": "b6",
+      "name": "1/2 Frango c/Pi",
+      "sourceLineIndex": 18,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 8
+    },
+    {
+      "itemInstanceId": "b7",
+      "name": "Salada Algarvia",
+      "sourceLineIndex": 20,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 4.9
+    },
+    {
+      "itemInstanceId": "b8",
+      "name": "Dose Arroz",
+      "sourceLineIndex": 22,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 1.8
+    },
+    {
+      "itemInstanceId": "b9",
+      "name": "Luso 0,50",
+      "sourceLineIndex": 24,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 1.8
+    },
+    {
+      "itemInstanceId": "b10",
+      "name": "Coca Cola",
+      "sourceLineIndex": 26,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 2
+    },
+    {
+      "itemInstanceId": "b11",
+      "name": "Cola Zero",
+      "sourceLineIndex": 28,
+      "priceTokenValue": null,
+      "quantity": 2,
+      "modifiers": [],
+      "effectiveTotal": 4
+    },
+    {
+      "itemInstanceId": "b12",
+      "name": "Cerveja Copo 20",
+      "sourceLineIndex": 30,
+      "priceTokenValue": null,
+      "quantity": 2,
+      "modifiers": [],
+      "effectiveTotal": 3.6
+    },
+    {
+      "itemInstanceId": "b13",
+      "name": "Pao",
+      "sourceLineIndex": 32,
+      "priceTokenValue": null,
+      "quantity": 3,
+      "modifiers": [],
+      "effectiveTotal": 2.4
+    },
+    {
+      "itemInstanceId": "b14",
+      "name": "Azeitonas",
+      "sourceLineIndex": 34,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 0.9
+    },
+    {
+      "itemInstanceId": "b15",
+      "name": "Manteiga",
+      "sourceLineIndex": 36,
+      "priceTokenValue": null,
+      "quantity": 2,
+      "modifiers": [],
+      "effectiveTotal": 1.4
+    },
+    {
+      "itemInstanceId": "b16",
+      "name": "Queijo",
+      "sourceLineIndex": 38,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 2.4
+    },
+    {
+      "itemInstanceId": "b17",
+      "name": "Banoffee",
+      "sourceLineIndex": 40,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 4.5
+    },
+    {
+      "itemInstanceId": "b18",
+      "name": "Tarte Amendoa",
+      "sourceLineIndex": 42,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 4.5
+    },
+    {
+      "itemInstanceId": "b19",
+      "name": "Maincraft",
+      "sourceLineIndex": 44,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 4.5
+    },
+    {
+      "itemInstanceId": "b20",
+      "name": "Go Minis",
+      "sourceLineIndex": 46,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 4.5
+    },
+    {
+      "itemInstanceId": "b21",
+      "name": "Cafe",
+      "sourceLineIndex": 48,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 1
+    }
+  ],
+  "arithmetic": [
+    "item[0] \"Frango\" = lineTotal(16) = 16   [running sum = 16]",
+    "item[1] \"1/2 Frango\" = lineTotal(8) = 8   [running sum = 24]",
+    "item[2] \"1/2 Frango c/Pi\" = lineTotal(8) = 8   [running sum = 32]",
+    "item[3] \"Salada Algarvia\" = lineTotal(4.9) = 4.9   [running sum = 36.9]",
+    "item[4] \"Dose Arroz\" = lineTotal(1.8) = 1.8   [running sum = 38.7]",
+    "item[5] \"Luso 0,50\" = lineTotal(1.8) = 1.8   [running sum = 40.5]",
+    "item[6] \"Coca Cola\" = lineTotal(2) = 2   [running sum = 42.5]",
+    "item[7] \"Cola Zero\" = lineTotal(4) = 4   [running sum = 46.5]",
+    "item[8] \"Cerveja Copo 20\" = lineTotal(3.6) = 3.6   [running sum = 50.1]",
+    "item[9] \"Pao\" = lineTotal(2.4) = 2.4   [running sum = 52.5]",
+    "item[10] \"Azeitonas\" = lineTotal(0.9) = 0.9   [running sum = 53.4]",
+    "item[11] \"Manteiga\" = lineTotal(1.4) = 1.4   [running sum = 54.8]",
+    "item[12] \"Queijo\" = lineTotal(2.4) = 2.4   [running sum = 57.2]",
+    "item[13] \"Banoffee\" = lineTotal(4.5) = 4.5   [running sum = 61.7]",
+    "item[14] \"Tarte Amendoa\" = lineTotal(4.5) = 4.5   [running sum = 66.2]",
+    "item[15] \"Maincraft\" = lineTotal(4.5) = 4.5   [running sum = 70.7]",
+    "item[16] \"Go Minis\" = lineTotal(4.5) = 4.5   [running sum = 75.2]",
+    "item[17] \"Cafe\" = lineTotal(1) = 1   [running sum = 76.2]"
+  ],
+  "calculatedSubtotal": 76.2,
+  "printedSubtotal": 76.2,
+  "printedTotal": 76.2,
+  "subtotalDelta": 0,
+  "reconciles": true,
+  "arithmeticReconciles": true,
+  "expectedTotal": null,
+  "expectedDelta": null,
+  "orphanCount": 30,
+  "unresolvedLines": [
+    {
+      "id": "unclassified_b22",
+      "amount": 66.74,
+      "text": "TAXA IVA € INCID.€",
+      "lineIndex": 50
+    },
+    {
+      "id": "orphan_A1",
+      "amount": 14,
+      "text": "14",
+      "lineIndex": 2
+    },
+    {
+      "id": "orphan_A2",
+      "amount": 649,
+      "text": "649",
+      "lineIndex": 8
+    },
+    {
+      "id": "orphan_A3",
+      "amount": 0,
+      "text": "0",
+      "lineIndex": 9
+    },
+    {
+      "id": "orphan_A5",
+      "amount": 16,
+      "text": "16,00",
+      "lineIndex": 13
+    },
+    {
+      "id": "orphan_A6",
+      "amount": 0,
+      "text": "0,00",
+      "lineIndex": 15
+    },
+    {
+      "id": "orphan_A8",
+      "amount": 8,
+      "text": "8,00",
+      "lineIndex": 17
+    },
+    {
+      "id": "orphan_A10",
+      "amount": 8,
+      "text": "8,00",
+      "lineIndex": 19
+    },
+    {
+      "id": "orphan_A12",
+      "amount": 4.9,
+      "text": "4,90",
+      "lineIndex": 21
+    },
+    {
+      "id": "orphan_A14",
+      "amount": 1.8,
+      "text": "1,80",
+      "lineIndex": 23
+    },
+    {
+      "id": "orphan_A15",
+      "amount": 0.5,
+      "text": "0,50",
+      "lineIndex": 24
+    },
+    {
+      "id": "orphan_A17",
+      "amount": 1.8,
+      "text": "1,80",
+      "lineIndex": 25
+    },
+    {
+      "id": "orphan_A19",
+      "amount": 2,
+      "text": "2,00",
+      "lineIndex": 27
+    },
+    {
+      "id": "orphan_A21",
+      "amount": 2,
+      "text": "2,00",
+      "lineIndex": 29
+    },
+    {
+      "id": "orphan_A23",
+      "amount": 1.8,
+      "text": "1,80",
+      "lineIndex": 31
+    },
+    {
+      "id": "orphan_A25",
+      "amount": 0.8,
+      "text": "0,80",
+      "lineIndex": 33
+    },
+    {
+      "id": "orphan_A27",
+      "amount": 0.9,
+      "text": "0,90",
+      "lineIndex": 35
+    },
+    {
+      "id": "orphan_A29",
+      "amount": 0.7,
+      "text": "0,70",
+      "lineIndex": 37
+    },
+    {
+      "id": "orphan_A31",
+      "amount": 2.4,
+      "text": "2,40",
+      "lineIndex": 39
+    },
+    {
+      "id": "orphan_A33",
+      "amount": 4.5,
+      "text": "4,50",
+      "lineIndex": 41
+    },
+    {
+      "id": "orphan_A35",
+      "amount": 4.5,
+      "text": "4,50",
+      "lineIndex": 43
+    },
+    {
+      "id": "orphan_A37",
+      "amount": 4.5,
+      "text": "4,50",
+      "lineIndex": 45
+    },
+    {
+      "id": "orphan_A39",
+      "amount": 4.5,
+      "text": "4,50",
+      "lineIndex": 47
+    },
+    {
+      "id": "orphan_A41",
+      "amount": 1,
+      "text": "1,00",
+      "lineIndex": 49
+    },
+    {
+      "id": "orphan_A42",
+      "amount": 7.66,
+      "text": "7,66",
+      "lineIndex": 51
+    },
+    {
+      "id": "orphan_A43",
+      "amount": 58.94,
+      "text": "58,94",
+      "lineIndex": 51
+    },
+    {
+      "id": "orphan_A44",
+      "amount": 1.8,
+      "text": "1,80",
+      "lineIndex": 52
+    },
+    {
+      "id": "orphan_A45",
+      "amount": 7.8,
+      "text": "7,80",
+      "lineIndex": 52
+    },
+    {
+      "id": "orphan_A46",
+      "amount": 9.46,
+      "text": "9,46",
+      "lineIndex": 53
+    },
+    {
+      "id": "orphan_A49",
+      "amount": 76.2,
+      "text": "76,20",
+      "lineIndex": 56
+    },
+    {
+      "id": "orphan_A50",
+      "amount": 808,
+      "text": "808",
+      "lineIndex": 58
+    }
+  ],
+  "charges": [],
+  "suspectedPatterns": {
+    "subtotalCountedAsItem": [],
+    "totalCountedAsItem": [],
+    "taxCountedAsItem": [],
+    "amountClaimedByMultipleBlocks": [],
+    "duplicateWordIdsInLedger": [],
+    "overlappingItemLineIndices": [],
+    "itemBlocksAfterFirstSummaryLine": [],
+    "itemsWithQuantityAboveOne": [
+      {
+        "blockId": "b11",
+        "quantity": 2
+      },
+      {
+        "blockId": "b12",
+        "quantity": 2
+      },
+      {
+        "blockId": "b13",
+        "quantity": 3
+      },
+      {
+        "blockId": "b15",
+        "quantity": 2
+      }
+    ]
+  },
+  "verificationRound1": null,
+  "verificationRound2": null,
+  "reconciliationRetried": false
+}

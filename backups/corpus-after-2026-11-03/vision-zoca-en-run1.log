@@ -1,0 +1,17 @@
+Replaying frozen OCR fixture: supabase/functions/parse-receipt/__fixtures__/vision-zoca-en.json (geometric reconstruction)
+OCR: 25 lines, 98 words
+Ledger: 18 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 6987ms, tokens prompt=1703 completion=1056 total=2759
+Structure: 24 blocks (merchant=ZOCA RESTAURANT, currency=USD)
+Total witness: label -> 0 (agreement=label_only)
+Geometric ownership: 20/24 confident, 0 anchor-corrected
+Constant-offset arbitration: formDetected=false, hypothesisAdopted=H0
+Suspicious (round 1): 1
+Suspicious round 1 skipped (no image available under --fixture): 1 would have been checked
+Reconciliation (round 1): reconciles=true, calculatedSubtotal=152, printedSubtotal=152
+
+Full report written to: backups/corpus-after-2026-11-03/vision-zoca-en-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=152, printedSubtotal=152, printedTotal=0, reconciles=false (arithmeticOnly=true), summaryCoverageValid=false, summaryUnresolved=2, summaryDuplicateRoles=0, structuralGap=0, echoExact=0, echoMult=2, genuineMiss=0, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=1, offsetFormDetected=false, offsetHypothesisAdopted=H0, totalWitness=label, totalWitnessAgreement=label_only, provenNonAdditiveCount=0, provenNonAdditiveBlockedBy=sum_mismatch, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=larger_unresolved_value, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null
