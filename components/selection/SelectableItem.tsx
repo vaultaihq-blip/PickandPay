@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { ReceiptItem as ReceiptItemType } from "@/types";
 import { Badge } from "@/components/ui/Badge";
+import { StepperButton } from "@/components/ui/StepperButton";
 import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/utils/formatter";
 import { Avatar } from "@/components/ui/Avatar";
@@ -191,25 +192,24 @@ export function SelectableItem({
         {/* Quantity selector — shown when checked for non-shareable items */}
         {selected && !isShareable && onQuantityChange && (
           <View style={styles.qtyRow}>
-            <Pressable
-              onPress={() => canDecrement && onQuantityChange(-1)}
-              style={[styles.qtyBtn, !canDecrement && styles.qtyBtnDisabled]}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <Text style={[styles.qtyBtnText, { color: canDecrement ? selectionColor : mutedColor }]}>
-                −
-              </Text>
-            </Pressable>
+            {/* C3: 48×48 to touch */}
+            <StepperButton
+              label="−"
+              onPress={() => onQuantityChange(-1)}
+              disabled={!canDecrement}
+              color={selectionColor}
+              mutedColor={mutedColor}
+              accessibilityLabel="−1"
+            />
             <Text style={[styles.qtyCount, { color: selectionColor }]}>{quantitySelected}</Text>
-            <Pressable
-              onPress={() => canIncrement && onQuantityChange(1)}
-              style={[styles.qtyBtn, !canIncrement && styles.qtyBtnDisabled]}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <Text style={[styles.qtyBtnText, { color: canIncrement ? selectionColor : mutedColor }]}>
-                +
-              </Text>
-            </Pressable>
+            <StepperButton
+              label="+"
+              onPress={() => onQuantityChange(1)}
+              disabled={!canIncrement}
+              color={selectionColor}
+              mutedColor={mutedColor}
+              accessibilityLabel="+1"
+            />
             {!live && maxQty > 1 && (
               <Text style={[styles.qtyMeta, { color: mutedColor }]}>
                 {quantitySelected}/{maxQty}
@@ -321,26 +321,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginLeft: 28,
-    marginTop: 4,
-    gap: 8,
-  },
-  qtyBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  qtyBtnDisabled: {
-    borderColor: Colors.textMutedDark,
-    opacity: 0.4,
-  },
-  qtyBtnText: {
-    fontSize: 16,
-    fontWeight: "700",
-    lineHeight: 18,
+    marginTop: 6,
+    gap: 12,
   },
   qtyCount: {
     fontSize: 15,
