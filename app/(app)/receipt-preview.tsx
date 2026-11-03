@@ -169,7 +169,19 @@ export default function ReceiptPreviewScreen() {
         ]);
         return;
       }
-      showDialog(t("scan_analysis_failed"), `${t("scan_analysis_failed_msg")}\n\n${msg || String(err)}`, [
+      // Point 4 (03-11-2026): plain words, and whether the credit was used.
+      // 422 UNREADABLE_RECEIPT is kept (Vision was paid for); every other
+      // answer from the server refunds it (parse-receipt settleScan). The
+      // technical text goes to the log only.
+      console.log(`[scan] failed: ${code ?? "no code"} — ${msg || String(err)}`);
+      if (code === "UNREADABLE_RECEIPT") {
+        showDialog(t("scan_no_receipt_title"), t("scan_no_receipt_msg"), [
+          { text: t("scan_enter_manually"), onPress: () => { setReceipt(createBlankReceipt()); router.push("/(app)/review"); } },
+          { text: t("scan_try_again"), style: "cancel" },
+        ]);
+        return;
+      }
+      showDialog(t("scan_analysis_failed"), t("scan_failed_refunded_msg"), [
         { text: t("scan_enter_manually"), onPress: () => { setReceipt(createBlankReceipt()); router.push("/(app)/review"); } },
         { text: t("scan_try_again"), style: "cancel" },
       ]);
