@@ -812,6 +812,26 @@ async function handleRequest(req: Request, scan: ScanContext): Promise<Response>
     payload.date = date;
     // Only the answer changes: null = "currency unknown" (the app asks).
     payload.currency = currencyRead;
+    // R10 (agreed addition, 03-11-2026): where each item's line sits on the
+    // photo, [x0, y0, x1, y1] as fractions of the page (0–1) — the field the
+    // app's model already reads — for the correction panel's crop.
+    // Added after the last computation: nothing here reads it, so no value
+    // changes.
+    if (ocr.pageWidth && ocr.pageHeight) {
+      const pw = ocr.pageWidth, ph = ocr.pageHeight;
+      const boxOf = (lineIndex: number) => {
+        const vs = (ocr.lines[lineIndex]?.words ?? []).flatMap((w) => w.word.boundingBox.vertices);
+        if (vs.length === 0) return undefined;
+        const xs = vs.map((v) => v.x ?? 0), ys = vs.map((v) => v.y ?? 0);
+        const r = (n: number) => Math.round(n * 10000) / 10000;
+        return [r(Math.min(...xs) / pw), r(Math.min(...ys) / ph), r(Math.max(...xs) / pw), r(Math.max(...ys) / ph)] as [number, number, number, number];
+      };
+      for (const item of payload.items ?? []) {
+        if (item.sourceEvidence && typeof item.sourceEvidence.lineIndex === "number") {
+          item.sourceEvidence.boundingBox = boxOf(item.sourceEvidence.lineIndex);
+        }
+      }
+    }
 
     // ── Second coverage audit (post-ownership) + final validity ─────────────
     // Reconciliation success is never sufficient on its own: a receipt

@@ -23,7 +23,8 @@ export interface RawItem {
   baseLineTotal?: unknown;
   discount?: unknown;
   modifiers?: RawModifier[];
-  sourceEvidence?: { lineIndex?: number; lineText?: string };
+  /** boundingBox: R10 — the line's place on the photo, [x0, y0, x1, y1] in 0–1. */
+  sourceEvidence?: { lineIndex?: number; lineText?: string; boundingBox?: [number, number, number, number] };
 }
 
 export interface RawCharge {

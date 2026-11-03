@@ -4,7 +4,7 @@ Estas regras são **obrigatórias**. Nenhuma pode ser alterada sem pedido explí
 - O servidor (Supabase) é sempre quem decide e quem garante cada regra. A app só mostra o resultado.
 - Uma app modificada não consegue contornar nenhuma delas.
 
-Estado a 02-11-2026: R1 a R9, R11 e R12, com as decisões do D (o D.1 já aplicado). A R2 alargada ao total impresso já está na app. A R11 e a R12 estão feitas no servidor e na app. Os relatórios com os pormenores estão em `docs/relatorios/`.
+Estado a 02-11-2026: R1 a R12, com as decisões do D (o D.1 já aplicado). A R2 alargada ao total impresso já está na app. A R11 e a R12 estão feitas no servidor e na app. Os relatórios com os pormenores estão em `docs/relatorios/`.
 
 ---
 
@@ -55,6 +55,21 @@ Estado a 02-11-2026: R1 a R9, R11 e R12, com as decisões do D (o D.1 já aplica
 | **Privacidade:** antes de entrar, o ecrã só mostra o nome do anfitrião e o número de pessoas. Nada da fatura nem de valores. | Quem não entrou não tem de ver a conta dos outros. |
 | **O QR lido pela câmara do telemóvel** (fora da app), e qualquer link `…/session/<id>`, abre o mesmo ecrã de entrada. | Há um só caminho de entrada, com as mesmas regras. |
 | **O aviso "voltar à sessão"** do ecrã inicial usa a mesma regra do "já fez parte". | É coerente com o QR. |
+
+## R10 — Revisão da fatura em espelho
+
+Pedida pelo dono a 03-11-2026.
+
+| Regra | Porquê |
+|---|---|
+| **Cabeçalho:** "Confirmar a fatura · Passo 2 de 3 · Compara com o papel", com a barra de passos (Foto, Confirmar, Dividir) e a moeda com "Alterar". | O anfitrião sabe onde está e o que tem de fazer. |
+| **Cartão com aspeto de papel**, com as linhas na ordem da fatura e os números no formato e na moeda da fatura. As linhas iguais (mesmo nome, sem contar maiúsculas e espaços, e o mesmo preço unitário) aparecem juntas, **só neste ecrã**. | Compara-se linha a linha com o papel. |
+| **Estados das linhas:** vermelho claro com "!" (por confirmar), verde claro com "✓" (confirmada), sem destaque (sem dúvidas). Há uma legenda por baixo. Os avisos saem do painel do topo e passam para as linhas, em português claro. | O que falta ver está à vista, no sítio certo. |
+| **Fim da fatura:** Soma dos itens, os encargos, a diferença respondida (por exemplo "+ Encargos sem linha 600,00") e "TOTAL IMPRESSO ✓". Por baixo, "Os 600,00 são repartidos na proporção do que cada um escolheu." | A conta lê-se como no papel. |
+| **A pergunta da diferença (R2)**, "É um encargo ou falta um item?", é uma linha vermelha no fim da fatura. Abre o mesmo painel de resposta, com a sugestão pré-escolhida e o nome do encargo. | Está onde a diferença aparece. |
+| **Painel de correção** (de baixo para cima) ao tocar numa linha: o recorte da foto dessa linha (com a posição que o parser envia), o nome, a quantidade com − / + de 48×48, o preço unitário e o total da linha, calculado sozinho. Tem Apagar e Guardar. Guardar põe a linha a verde. | Corrige-se a olhar para o papel. |
+| **Continuar** só fica ativo sem linhas a vermelho ("Confirma N linhas para continuar"), com a diferença respondida, a moeda conhecida e o total impresso preenchido. | Nada segue para a divisão por confirmar. |
+| Ficam **"Adicionar item em falta"** e **"Ver a foto inteira"**. A gratificação sugerida (R13) fica para depois. | — |
 
 ## R11 — Voltar a uma sessão onde já se esteve, e retirar da divisão
 

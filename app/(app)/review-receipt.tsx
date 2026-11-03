@@ -7,6 +7,7 @@ import {
   TextInput,
   Image,
   Modal,
+  Pressable,
   useColorScheme,
   KeyboardAvoidingView,
   Platform,
@@ -35,6 +36,8 @@ import {
 import { moneyToMajorNumber } from "@/lib/receipt/money";
 import { Currency, ItemCategory, ParsedReceipt, ReceiptItem } from "@/types";
 import { CurrencyCard } from "@/components/receipt/CurrencyCard";
+import { MirrorReview } from "@/components/receipt/mirror/MirrorReview";
+import { meaningfulOrphans } from "@/lib/receipt/orphans";
 import { markScanCharged, useScanCreditGuard } from "@/lib/scanCredit";
 import { useSessionStore } from "@/store/sessionStore";
 import { useI18nStore } from "@/store/i18nStore";
@@ -530,98 +533,97 @@ export default function ReviewReceiptScreen() {
   const itemsSum = calculatedTotal;
   const closingDifference = Math.round((itemsSum + chargesSum - confirmedTotal) * 100) / 100;
 
-  // ── FIX 45 — guided flow renders instead of the full list, unless the user
-  // asked to see everything. The list below is unchanged from before. ────────
+  // ── R10 (owner, 03-11-2026) — the review is a mirror of the paper. The
+  // detailed list below stays, through "Ver em lista". ────────────────────────
   if (!showAllItems) {
-    if (step === "total") {
-      return (
-        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-            <GuidedTotalStep
-              merchantName={receipt.restaurant ?? "Fatura"}
-              problems={guidance.problems}
-              totalText={confirmedTotalText}
-              onChangeTotal={setConfirmedTotalText}
-              missingTotal={guidance.missingTotal}
-              currencyLabel={currency}
-              currencyCard={
-                <CurrencyCard
-                  currency={currency}
-                  ask={!currencyOk}
-                  onChoose={setChosenCurrency}
-                  textColor={textColor}
-                  mutedColor={mutedColor}
-                  cardColor={cardColor}
-                  borderColor={borderColor}
-                />
-              }
-              confirmDisabled={!currencyOk}
-              onConfirm={afterTotal}
-              onBack={() => router.back()}
+    const canonicalNow = useCanonicalReceiptStore.getState().receipt;
+    const orphanNear = new Set(
+      canonicalNow ? meaningfulOrphans(canonicalNow).map((l) => l.nearestItemId).filter((id): id is string => !!id) : []
+    );
+    const issueType = new Map(canonicalIssues.filter((i) => i.itemId).map((i) => [i.itemId as string, i.type]));
+    // The warnings live on the lines now, in plain words.
+    const reasonFor = (id: string) => {
+      const it = items.find((i) => i.id === id);
+      if (it && (it.totalPrice === 0 || it.name.trim() === "")) return t("mirror_reason_unpriced");
+      if (issueType.get(id) === "unverifiable_value") return t("mirror_reason_value");
+      if (orphanNear.has(id)) return t("mirror_reason_orphan");
+      return t("mirror_reason_check");
+    };
+    // Lines the parser flagged, plus any line still empty or without a price.
+    const attentionIds = new Set([
+      ...attentionQueue,
+      ...items.filter((i) => !i.reviewed && (i.name.trim() === "" || i.totalPrice === 0)).map((i) => i.id),
+    ]);
+    const photoBoxById = new Map(
+      Object.values(receipt.categories).flat().filter((i) => i.photoBox).map((i) => [i.id, i.photoBox])
+    );
+    const saveLine = (ids: string[], v: { name: string; quantity: number; unitPrice: number }) => {
+      const [first, ...rest] = ids;
+      const total = Math.round(v.quantity * v.unitPrice * 100) / 100;
+      console.log(`[review-receipt] R10 line saved: "${v.name}" ${v.quantity} × ${v.unitPrice} (${ids.length} line(s))`);
+      setItems((prev) =>
+        prev
+          .filter((i) => !rest.includes(i.id))
+          .map((i) =>
+            i.id === first
+              ? { ...i, name: v.name, quantity: v.quantity, unitPrice: v.unitPrice, totalPrice: total,
+                  qtyText: String(v.quantity), unitPriceText: v.unitPrice.toFixed(2), totalText: total.toFixed(2), reviewed: true }
+              : i
+          )
+      );
+    };
+    const deleteLine = (ids: string[]) =>
+      showDialog(t("review_receipt_remove_title"), t("review_receipt_remove_msg"), [
+        { text: t("cancel"), style: "cancel" },
+        { text: t("review_receipt_remove_btn"), style: "destructive", onPress: () => setItems((p) => p.filter((i) => !ids.includes(i.id))) },
+      ]);
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: "#F3F4F6" }]}>
+        <MirrorReview
+          items={items.map((i) => ({ ...i, photoBox: photoBoxById.get(i.id) }))}
+          attentionIds={attentionIds}
+          reasonFor={reasonFor}
+          formatMoney={formatMoney}
+          currencyCard={
+            <CurrencyCard
+              currency={currency}
+              ask={!currencyOk}
+              onChoose={setChosenCurrency}
+              textColor={textColor}
+              mutedColor={mutedColor}
+              cardColor={cardColor}
+              borderColor={borderColor}
             />
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      );
-    }
-
-    if (step === "items" && guidedItem !== undefined) {
-      return (
-        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-          <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-            <GuidedItemStep
-              item={guidedItem}
-              position={queueIndex + 1}
-              total={attentionQueue.length}
-              reason={itemReason}
-              currencyLabel={currency}
-              onChangeField={updateItem}
-              onToggleReviewed={toggleReviewed}
-              onConfirm={() => advanceQueue(true)}
-              onSkip={() => advanceQueue(false)}
-              onBack={retreatQueue}
-              onSeeAll={() => setShowAllItems(true)}
-            />
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      );
-    }
-
-    if (step === "closing" || step === "items") {
-      return (
-        <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
-          <GuidedClosingStep
-            itemsSum={itemsSum}
-            chargesSum={chargesSum}
-            confirmedTotal={confirmedTotal}
-            difference={closingDifference}
-            formatMoney={formatMoney}
-            gapCard={
-              <PrintedTotalGapCard
-                gap={gap}
-                answer={gapAnswer}
-                suggestion={gapSuggestion}
-                formatMoney={formatMoney}
-                onAnswer={setGapAnswer}
-                onAddMissing={() => { addItem(); setShowAllItems(true); }}
-                onReviewItems={() => setShowAllItems(true)}
-              />
-            }
-            gapAnswer={gapAnswered ? gapAnswer : null}
-            canAccept={gapOk && currencyOk}
-            onAccept={handleContinue}
-            onReviewAgain={reviewAgain}
-            onBack={() => (attentionQueue.length > 0 ? goToStep("items") : goToStep("total"))}
-            onSeeAll={() => setShowAllItems(true)}
-          />
-        </SafeAreaView>
-      );
-    }
+          }
+          photoUri={rawImageUri}
+          itemsSum={calculatedTotal}
+          chargesSum={chargesSum}
+          gap={gap}
+          gapAnswer={gapAnswer}
+          gapAnswered={gapAnswered}
+          gapSuggestion={gapSuggestion}
+          onAnswerGap={setGapAnswer}
+          confirmedTotal={confirmedTotal}
+          confirmedTotalText={confirmedTotalText}
+          onChangeTotal={setConfirmedTotalText}
+          currencyOk={currencyOk}
+          onSaveLine={saveLine}
+          onDeleteLine={deleteLine}
+          onAddItem={addItem}
+          onSeePhoto={() => setImageModalVisible(true)}
+          onSeeList={() => setShowAllItems(true)}
+          onContinue={handleContinue}
+          onBack={() => router.back()}
+        />
+        {rawImageUri && (
+          <Modal visible={imageModalVisible} transparent animationType="fade" onRequestClose={() => setImageModalVisible(false)}>
+            <Pressable style={styles.photoModalOverlay} onPress={() => setImageModalVisible(false)}>
+              <Image source={{ uri: rawImageUri }} style={{ width: "100%", height: "90%" }} resizeMode="contain" />
+            </Pressable>
+          </Modal>
+        )}
+      </SafeAreaView>
+    );
   }
 
   // ─── Render — the full item list ("ver todos os itens") ───────────────────

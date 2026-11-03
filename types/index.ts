@@ -57,6 +57,8 @@ export interface ReceiptItem {
   participants?: string[];
   confidence?: number;
   warnings?: string[];
+  /** R10 — the line's place on the photo, [x0, y0, x1, y1] in 0–1 (from the parser). */
+  photoBox?: readonly [number, number, number, number];
   /** User has confirmed this item is correct — set automatically on any edit,
    *  or toggled by hand with no edit at all. FIX 44. */
   reviewed?: boolean;

@@ -96,6 +96,7 @@ export function normalizeReceiptItem(raw: Partial<ReceiptItem>): ReceiptItem {
     participants: raw.participants,
     confidence: raw.confidence,
     warnings: raw.warnings,
+    photoBox: raw.photoBox,
   };
 }
 

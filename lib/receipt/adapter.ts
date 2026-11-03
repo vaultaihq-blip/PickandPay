@@ -83,6 +83,8 @@ function toLegacyItem(item: ReceiptLineItem): ReceiptItem {
     unitPrice: lineTotal / quantity,
     totalPrice: lineTotal,
     type: quantity > 1 ? "quantity" : "individual",
+    // R10: where the line is on the photo, for the correction panel's crop.
+    ...(item.sourceEvidence?.boundingBox ? { photoBox: item.sourceEvidence.boundingBox } : {}),
     notes: notes.length > 0 ? notes : undefined,
     addOns:
       paid.length > 0
