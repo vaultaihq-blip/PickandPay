@@ -1,0 +1,1958 @@
+{
+  "imagePath": null,
+  "fixturePath": "supabase/functions/parse-receipt/__fixtures__/vision-pai-nova-en.json",
+  "verificationAvailable": false,
+  "merchant": "Pai Northern Thai Kitchen",
+  "date": "2026-02-12",
+  "currency": "CAD",
+  "currencyRead": "CAD",
+  "structureTimeMs": 7065,
+  "structureTokenUsage": {
+    "promptTokens": 1798,
+    "completionTokens": 1107,
+    "totalTokens": 2905
+  },
+  "structureRetryFired": false,
+  "structuralGapCountBeforeRetry": null,
+  "ocrLines": [
+    {
+      "lineIndex": 0,
+      "text": "PAI"
+    },
+    {
+      "lineIndex": 1,
+      "text": "0.1/ 8"
+    },
+    {
+      "lineIndex": 2,
+      "text": "Pai Northern Thai Kitchen"
+    },
+    {
+      "lineIndex": 3,
+      "text": "18 Duncan St, Toronto"
+    },
+    {
+      "lineIndex": 4,
+      "text": "(416)901-4724"
+    },
+    {
+      "lineIndex": 5,
+      "text": "Server: Jeren J"
+    },
+    {
+      "lineIndex": 6,
+      "text": "Check #509 Table SPDR1"
+    },
+    {
+      "lineIndex": 7,
+      "text": "Guest Count: 7"
+    },
+    {
+      "lineIndex": 8,
+      "text": "Ordered: 2026-02-12 8:03 p.m."
+    },
+    {
+      "lineIndex": 9,
+      "text": "1 Singha $10.25"
+    },
+    {
+      "lineIndex": 10,
+      "text": "Do Not Make"
+    },
+    {
+      "lineIndex": 11,
+      "text": "3 Khao Soi Beef $71.25"
+    },
+    {
+      "lineIndex": 12,
+      "text": "1 Singha $10.25"
+    },
+    {
+      "lineIndex": 13,
+      "text": "Do Not Make"
+    },
+    {
+      "lineIndex": 14,
+      "text": "1 Singha $10.25"
+    },
+    {
+      "lineIndex": 15,
+      "text": "Do Not Make"
+    },
+    {
+      "lineIndex": 16,
+      "text": "1 Pad Thai Shrimp $25.75"
+    },
+    {
+      "lineIndex": 17,
+      "text": "Mild"
+    },
+    {
+      "lineIndex": 18,
+      "text": "Shared"
+    },
+    {
+      "lineIndex": 19,
+      "text": "Chilli Oil"
+    },
+    {
+      "lineIndex": 20,
+      "text": "1 Singha $10.25"
+    },
+    {
+      "lineIndex": 21,
+      "text": "Do Not Make"
+    },
+    {
+      "lineIndex": 22,
+      "text": "1 Khao Soi Shrimp $25.75"
+    },
+    {
+      "lineIndex": 23,
+      "text": "1 Singha $10.25"
+    },
+    {
+      "lineIndex": 24,
+      "text": "Do Not Make"
+    },
+    {
+      "lineIndex": 25,
+      "text": "1 Khao Soi Chicken $23.75"
+    },
+    {
+      "lineIndex": 26,
+      "text": "1 Singha $10.25"
+    },
+    {
+      "lineIndex": 27,
+      "text": "Do Not Make"
+    },
+    {
+      "lineIndex": 28,
+      "text": "7 Espolon Reposado $70.00"
+    },
+    {
+      "lineIndex": 29,
+      "text": "Subtotal $278.00"
+    },
+    {
+      "lineIndex": 30,
+      "text": "Large Party (20.00%) $55.60"
+    },
+    {
+      "lineIndex": 31,
+      "text": "Tax $43.37"
+    },
+    {
+      "lineIndex": 32,
+      "text": "Total $376.97"
+    },
+    {
+      "lineIndex": 33,
+      "text": "Kop Koon Kha!"
+    },
+    {
+      "lineIndex": 34,
+      "text": "HST : 837438134"
+    }
+  ],
+  "ledger": [
+    {
+      "amountId": "A1",
+      "wordId": "W2",
+      "lineIndex": 1,
+      "rawText": "0.1",
+      "value": 0.1,
+      "ocrConfidence": 0.4647441,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 451,
+            "y": 1026
+          },
+          {
+            "x": 447,
+            "y": 812
+          },
+          {
+            "x": 569,
+            "y": 810
+          },
+          {
+            "x": 573,
+            "y": 1024
+          },
+          {
+            "x": 448,
+            "y": 841
+          },
+          {
+            "x": 446,
+            "y": 742
+          },
+          {
+            "x": 567,
+            "y": 740
+          },
+          {
+            "x": 569,
+            "y": 839
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A2",
+      "wordId": "W4",
+      "lineIndex": 1,
+      "rawText": "8",
+      "value": 8,
+      "ocrConfidence": 0.78472906,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 446,
+            "y": 724
+          },
+          {
+            "x": 445,
+            "y": 640
+          },
+          {
+            "x": 566,
+            "y": 638
+          },
+          {
+            "x": 567,
+            "y": 722
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A3",
+      "wordId": "W23",
+      "lineIndex": 6,
+      "rawText": "1",
+      "value": 1,
+      "ocrConfidence": 0.9885498,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1117,
+            "y": 558
+          },
+          {
+            "x": 1119,
+            "y": 447
+          },
+          {
+            "x": 1162,
+            "y": 448
+          },
+          {
+            "x": 1160,
+            "y": 559
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A4",
+      "wordId": "W27",
+      "lineIndex": 7,
+      "rawText": "7",
+      "value": 7,
+      "ocrConfidence": 0.980048,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1178,
+            "y": 1118
+          },
+          {
+            "x": 1178,
+            "y": 1091
+          },
+          {
+            "x": 1220,
+            "y": 1092
+          },
+          {
+            "x": 1220,
+            "y": 1119
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A5",
+      "wordId": "W35",
+      "lineIndex": 9,
+      "rawText": "10.25",
+      "value": 10.25,
+      "ocrConfidence": 0.9903789,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1389,
+            "y": 584
+          },
+          {
+            "x": 1389,
+            "y": 563
+          },
+          {
+            "x": 1433,
+            "y": 562
+          },
+          {
+            "x": 1433,
+            "y": 583
+          },
+          {
+            "x": 1388,
+            "y": 557
+          },
+          {
+            "x": 1387,
+            "y": 451
+          },
+          {
+            "x": 1431,
+            "y": 450
+          },
+          {
+            "x": 1432,
+            "y": 556
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A6",
+      "wordId": "W44",
+      "lineIndex": 11,
+      "rawText": "71.25",
+      "value": 71.25,
+      "ocrConfidence": 0.9730006,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1517,
+            "y": 588
+          },
+          {
+            "x": 1517,
+            "y": 568
+          },
+          {
+            "x": 1558,
+            "y": 568
+          },
+          {
+            "x": 1558,
+            "y": 588
+          },
+          {
+            "x": 1516,
+            "y": 565
+          },
+          {
+            "x": 1515,
+            "y": 453
+          },
+          {
+            "x": 1556,
+            "y": 453
+          },
+          {
+            "x": 1557,
+            "y": 565
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A7",
+      "wordId": "W48",
+      "lineIndex": 12,
+      "rawText": "10.25",
+      "value": 10.25,
+      "ocrConfidence": 0.9923473,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1584,
+            "y": 590
+          },
+          {
+            "x": 1584,
+            "y": 569
+          },
+          {
+            "x": 1626,
+            "y": 568
+          },
+          {
+            "x": 1626,
+            "y": 589
+          },
+          {
+            "x": 1583,
+            "y": 564
+          },
+          {
+            "x": 1581,
+            "y": 459
+          },
+          {
+            "x": 1624,
+            "y": 458
+          },
+          {
+            "x": 1626,
+            "y": 563
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A8",
+      "wordId": "W55",
+      "lineIndex": 14,
+      "rawText": "10.25",
+      "value": 10.25,
+      "ocrConfidence": 0.9935964,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1708,
+            "y": 594
+          },
+          {
+            "x": 1708,
+            "y": 574
+          },
+          {
+            "x": 1749,
+            "y": 574
+          },
+          {
+            "x": 1749,
+            "y": 594
+          },
+          {
+            "x": 1707,
+            "y": 568
+          },
+          {
+            "x": 1706,
+            "y": 464
+          },
+          {
+            "x": 1748,
+            "y": 464
+          },
+          {
+            "x": 1749,
+            "y": 568
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A9",
+      "wordId": "W64",
+      "lineIndex": 16,
+      "rawText": "25.75",
+      "value": 25.75,
+      "ocrConfidence": 0.99276525,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1834,
+            "y": 599
+          },
+          {
+            "x": 1834,
+            "y": 579
+          },
+          {
+            "x": 1874,
+            "y": 578
+          },
+          {
+            "x": 1874,
+            "y": 598
+          },
+          {
+            "x": 1833,
+            "y": 576
+          },
+          {
+            "x": 1832,
+            "y": 470
+          },
+          {
+            "x": 1873,
+            "y": 469
+          },
+          {
+            "x": 1874,
+            "y": 575
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A10",
+      "wordId": "W72",
+      "lineIndex": 20,
+      "rawText": "10.25",
+      "value": 10.25,
+      "ocrConfidence": 0.99391,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2057,
+            "y": 585
+          },
+          {
+            "x": 2057,
+            "y": 564
+          },
+          {
+            "x": 2095,
+            "y": 564
+          },
+          {
+            "x": 2095,
+            "y": 585
+          },
+          {
+            "x": 2056,
+            "y": 560
+          },
+          {
+            "x": 2055,
+            "y": 452
+          },
+          {
+            "x": 2094,
+            "y": 452
+          },
+          {
+            "x": 2095,
+            "y": 560
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A11",
+      "wordId": "W81",
+      "lineIndex": 22,
+      "rawText": "25.75",
+      "value": 25.75,
+      "ocrConfidence": 0.9909779,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2179,
+            "y": 580
+          },
+          {
+            "x": 2179,
+            "y": 559
+          },
+          {
+            "x": 2218,
+            "y": 559
+          },
+          {
+            "x": 2218,
+            "y": 580
+          },
+          {
+            "x": 2178,
+            "y": 557
+          },
+          {
+            "x": 2177,
+            "y": 444
+          },
+          {
+            "x": 2217,
+            "y": 444
+          },
+          {
+            "x": 2218,
+            "y": 557
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A12",
+      "wordId": "W85",
+      "lineIndex": 23,
+      "rawText": "10.25",
+      "value": 10.25,
+      "ocrConfidence": 0.9917901,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2242,
+            "y": 578
+          },
+          {
+            "x": 2242,
+            "y": 555
+          },
+          {
+            "x": 2282,
+            "y": 555
+          },
+          {
+            "x": 2282,
+            "y": 578
+          },
+          {
+            "x": 2241,
+            "y": 551
+          },
+          {
+            "x": 2240,
+            "y": 440
+          },
+          {
+            "x": 2280,
+            "y": 440
+          },
+          {
+            "x": 2281,
+            "y": 551
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A13",
+      "wordId": "W94",
+      "lineIndex": 25,
+      "rawText": "23.75",
+      "value": 23.75,
+      "ocrConfidence": 0.9941678,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2371,
+            "y": 573
+          },
+          {
+            "x": 2371,
+            "y": 553
+          },
+          {
+            "x": 2414,
+            "y": 552
+          },
+          {
+            "x": 2414,
+            "y": 572
+          },
+          {
+            "x": 2370,
+            "y": 550
+          },
+          {
+            "x": 2369,
+            "y": 435
+          },
+          {
+            "x": 2413,
+            "y": 434
+          },
+          {
+            "x": 2414,
+            "y": 549
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A14",
+      "wordId": "W98",
+      "lineIndex": 26,
+      "rawText": "10.25",
+      "value": 10.25,
+      "ocrConfidence": 0.9784807,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2438,
+            "y": 572
+          },
+          {
+            "x": 2438,
+            "y": 551
+          },
+          {
+            "x": 2484,
+            "y": 551
+          },
+          {
+            "x": 2484,
+            "y": 572
+          },
+          {
+            "x": 2437,
+            "y": 544
+          },
+          {
+            "x": 2437,
+            "y": 430
+          },
+          {
+            "x": 2483,
+            "y": 430
+          },
+          {
+            "x": 2483,
+            "y": 544
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A15",
+      "wordId": "W106",
+      "lineIndex": 28,
+      "rawText": "70.00",
+      "value": 70,
+      "ocrConfidence": 0.975073,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2574,
+            "y": 569
+          },
+          {
+            "x": 2574,
+            "y": 546
+          },
+          {
+            "x": 2620,
+            "y": 546
+          },
+          {
+            "x": 2620,
+            "y": 569
+          },
+          {
+            "x": 2573,
+            "y": 545
+          },
+          {
+            "x": 2572,
+            "y": 424
+          },
+          {
+            "x": 2618,
+            "y": 424
+          },
+          {
+            "x": 2619,
+            "y": 545
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A16",
+      "wordId": "W109",
+      "lineIndex": 29,
+      "rawText": "278.00",
+      "value": 278,
+      "ocrConfidence": 0.99256545,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2712,
+            "y": 590
+          },
+          {
+            "x": 2712,
+            "y": 570
+          },
+          {
+            "x": 2755,
+            "y": 570
+          },
+          {
+            "x": 2755,
+            "y": 590
+          },
+          {
+            "x": 2711,
+            "y": 567
+          },
+          {
+            "x": 2711,
+            "y": 424
+          },
+          {
+            "x": 2754,
+            "y": 424
+          },
+          {
+            "x": 2754,
+            "y": 567
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A17",
+      "wordId": "W117",
+      "lineIndex": 30,
+      "rawText": "55.60",
+      "value": 55.6,
+      "ocrConfidence": 0.98960155,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2783,
+            "y": 569
+          },
+          {
+            "x": 2783,
+            "y": 547
+          },
+          {
+            "x": 2825,
+            "y": 547
+          },
+          {
+            "x": 2825,
+            "y": 569
+          },
+          {
+            "x": 2782,
+            "y": 543
+          },
+          {
+            "x": 2781,
+            "y": 426
+          },
+          {
+            "x": 2824,
+            "y": 426
+          },
+          {
+            "x": 2825,
+            "y": 542
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A18",
+      "wordId": "W120",
+      "lineIndex": 31,
+      "rawText": "43.37",
+      "value": 43.37,
+      "ocrConfidence": 0.9764949,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2849,
+            "y": 570
+          },
+          {
+            "x": 2849,
+            "y": 549
+          },
+          {
+            "x": 2894,
+            "y": 548
+          },
+          {
+            "x": 2894,
+            "y": 569
+          },
+          {
+            "x": 2848,
+            "y": 548
+          },
+          {
+            "x": 2846,
+            "y": 427
+          },
+          {
+            "x": 2891,
+            "y": 426
+          },
+          {
+            "x": 2893,
+            "y": 547
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A19",
+      "wordId": "W123",
+      "lineIndex": 32,
+      "rawText": "376.97",
+      "value": 376.97,
+      "ocrConfidence": 0.99355435,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2919,
+            "y": 594
+          },
+          {
+            "x": 2919,
+            "y": 571
+          },
+          {
+            "x": 2962,
+            "y": 570
+          },
+          {
+            "x": 2962,
+            "y": 593
+          },
+          {
+            "x": 2918,
+            "y": 570
+          },
+          {
+            "x": 2916,
+            "y": 427
+          },
+          {
+            "x": 2959,
+            "y": 426
+          },
+          {
+            "x": 2961,
+            "y": 569
+          }
+        ]
+      }
+    }
+  ],
+  "summaryBlocks": [
+    {
+      "blockId": "b20",
+      "name": "Subtotal",
+      "lineIndices": [
+        29
+      ],
+      "amountId": "A16",
+      "value": 278
+    },
+    {
+      "blockId": "b21",
+      "name": "Large Party (20.00%)",
+      "lineIndices": [
+        30
+      ],
+      "amountId": "A17",
+      "value": 55.6
+    },
+    {
+      "blockId": "b22",
+      "name": "Tax",
+      "lineIndices": [
+        31
+      ],
+      "amountId": "A18",
+      "value": 43.37
+    },
+    {
+      "blockId": "b23",
+      "name": "Total",
+      "lineIndices": [
+        32
+      ],
+      "amountId": "A19",
+      "value": 376.97
+    }
+  ],
+  "summaryRoleAssignments": [
+    {
+      "amountId": "A18",
+      "role": "TAX",
+      "value": 43.37
+    },
+    {
+      "amountId": "A16",
+      "role": "SUBTOTAL",
+      "value": 278
+    },
+    {
+      "amountId": "A19",
+      "role": "GRAND_TOTAL",
+      "value": 376.97
+    }
+  ],
+  "summaryCoverage": [
+    {
+      "amountId": "A16",
+      "lineIndex": 29,
+      "role": "SUBTOTAL",
+      "value": 278
+    },
+    {
+      "amountId": "A17",
+      "lineIndex": 30,
+      "role": "PROVEN_ADDITIVE_CHARGE",
+      "value": 55.6
+    },
+    {
+      "amountId": "A18",
+      "lineIndex": 31,
+      "role": "TAX",
+      "value": 43.37
+    },
+    {
+      "amountId": "A19",
+      "lineIndex": 32,
+      "role": "GRAND_TOTAL",
+      "value": 376.97
+    }
+  ],
+  "summaryDuplicateRoles": [],
+  "summaryCoverageValid": true,
+  "summaryMonetaryObservationCount": 4,
+  "summaryClaimedAmountCount": 4,
+  "summaryUnresolvedAmountCount": 0,
+  "summaryDuplicateRoleAttemptCount": 0,
+  "validity": {
+    "valid": true,
+    "structuralGapCount": 0,
+    "echoExactCount": 0,
+    "echoMultiplicativeCount": 0,
+    "descriptiveNumberCount": 0,
+    "zeroValueCount": 0,
+    "rowQuantityProvenCount": 0,
+    "rowUnitPriceProvenCount": 0,
+    "itemsProvenNonAdditiveCount": 0,
+    "unresolvedLoadBearingCount": 0,
+    "duplicateOwnershipCount": 0,
+    "ownershipInvalidCount": 0,
+    "reconciles": true
+  },
+  "finalReconciles": true,
+  "structureAgreement": null,
+  "structureDisagreements": [],
+  "priceKindOverrideCount": 0,
+  "priceKindOverrides": [],
+  "crossingsDetected": 0,
+  "summaryBoundaryPenalties": 0,
+  "offsetFormDetected": false,
+  "offsetHypothesisAdopted": "H0",
+  "totalWitness": "label",
+  "totalWitnessAgreement": "disagree",
+  "totalCandidatesFound": 1,
+  "totalChosenBy": "single",
+  "provenNonAdditiveCount": 0,
+  "provenNonAdditiveBlockedBy": null,
+  "provenAdditiveCount": 1,
+  "additiveCorroboratedByRate": true,
+  "provenAdditiveBlockedBy": null,
+  "columnRolesDetected": {
+    "quantity": false,
+    "unitPrice": false,
+    "total": true
+  },
+  "rowsArithmeticallyProven": 0,
+  "itemsRegionSaturated": false,
+  "itemsRegionSaturationCount": 0,
+  "itemsRegionSaturationBlockedBy": "no_separate_total_band",
+  "partialNumberTokensRejected": 2,
+  "blocks": [
+    {
+      "blockId": "b0",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b0",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b1",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        5,
+        6,
+        7,
+        8
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A3",
+        "A4",
+        "A5"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b1",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b2",
+      "kind": "ITEM",
+      "lineIndices": [
+        9
+      ],
+      "parentBlockId": null,
+      "name": "Singha",
+      "amountId": "A5",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A4",
+        "A5",
+        "A6"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b2",
+        "amountId": "A5",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b3",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        10
+      ],
+      "parentBlockId": "b2",
+      "name": "Do Not Make",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A5",
+        "A6",
+        "A7"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b3",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b4",
+      "kind": "ITEM",
+      "lineIndices": [
+        11
+      ],
+      "parentBlockId": null,
+      "name": "Khao Soi Beef",
+      "amountId": "A6",
+      "quantity": 3,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A5",
+        "A6",
+        "A7"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b4",
+        "amountId": "A6",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b5",
+      "kind": "ITEM",
+      "lineIndices": [
+        12
+      ],
+      "parentBlockId": null,
+      "name": "Singha",
+      "amountId": "A7",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b5",
+        "amountId": "A7",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b6",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        13
+      ],
+      "parentBlockId": "b5",
+      "name": "Do Not Make",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b6",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b7",
+      "kind": "ITEM",
+      "lineIndices": [
+        14
+      ],
+      "parentBlockId": null,
+      "name": "Singha",
+      "amountId": "A8",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A7",
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b7",
+        "amountId": "A8",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b8",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        15
+      ],
+      "parentBlockId": "b7",
+      "name": "Do Not Make",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b8",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b9",
+      "kind": "ITEM",
+      "lineIndices": [
+        16
+      ],
+      "parentBlockId": null,
+      "name": "Pad Thai Shrimp",
+      "amountId": "A9",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b9",
+        "amountId": "A9",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b10",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        17,
+        18,
+        19
+      ],
+      "parentBlockId": "b9",
+      "name": "Mild, Shared, Chilli Oil",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A9",
+        "A10"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b10",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b11",
+      "kind": "ITEM",
+      "lineIndices": [
+        20
+      ],
+      "parentBlockId": null,
+      "name": "Singha",
+      "amountId": "A10",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A10",
+        "A11"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b11",
+        "amountId": "A10",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b12",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        21
+      ],
+      "parentBlockId": "b11",
+      "name": "Do Not Make",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A10",
+        "A11",
+        "A12"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b12",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b13",
+      "kind": "ITEM",
+      "lineIndices": [
+        22
+      ],
+      "parentBlockId": null,
+      "name": "Khao Soi Shrimp",
+      "amountId": "A11",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A10",
+        "A11",
+        "A12"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b13",
+        "amountId": "A11",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b14",
+      "kind": "ITEM",
+      "lineIndices": [
+        23
+      ],
+      "parentBlockId": null,
+      "name": "Singha",
+      "amountId": "A12",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A11",
+        "A12",
+        "A13"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b14",
+        "amountId": "A12",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b15",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        24
+      ],
+      "parentBlockId": "b14",
+      "name": "Do Not Make",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A11",
+        "A12",
+        "A13",
+        "A14"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b15",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b16",
+      "kind": "ITEM",
+      "lineIndices": [
+        25
+      ],
+      "parentBlockId": null,
+      "name": "Khao Soi Chicken",
+      "amountId": "A13",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A12",
+        "A13",
+        "A14"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b16",
+        "amountId": "A13",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b17",
+      "kind": "ITEM",
+      "lineIndices": [
+        26
+      ],
+      "parentBlockId": null,
+      "name": "Singha",
+      "amountId": "A14",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A13",
+        "A14",
+        "A15"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b17",
+        "amountId": "A14",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b18",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        27
+      ],
+      "parentBlockId": "b17",
+      "name": "Do Not Make",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A13",
+        "A14",
+        "A15",
+        "A16"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b18",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b19",
+      "kind": "ITEM",
+      "lineIndices": [
+        28
+      ],
+      "parentBlockId": null,
+      "name": "Espolon Reposado",
+      "amountId": "A15",
+      "quantity": 7,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A14",
+        "A15",
+        "A16",
+        "A17"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b19",
+        "amountId": "A15",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b20",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        29
+      ],
+      "parentBlockId": null,
+      "name": "Subtotal",
+      "amountId": "A16",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A15",
+        "A16",
+        "A17",
+        "A18"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b20",
+        "amountId": "A16",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b21",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        30
+      ],
+      "parentBlockId": null,
+      "name": "Large Party (20.00%)",
+      "amountId": "A17",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A15",
+        "A16",
+        "A17",
+        "A18",
+        "A19"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b21",
+        "amountId": "A17",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b22",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        31
+      ],
+      "parentBlockId": null,
+      "name": "Tax",
+      "amountId": "A18",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A16",
+        "A17",
+        "A18",
+        "A19"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b22",
+        "amountId": "A18",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b23",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        32
+      ],
+      "parentBlockId": null,
+      "name": "Total",
+      "amountId": "A19",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A17",
+        "A18",
+        "A19"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b23",
+        "amountId": "A19",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b24",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        33,
+        34
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A18",
+        "A19"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b24",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    }
+  ],
+  "finalItems": [
+    {
+      "itemInstanceId": "b2",
+      "name": "Singha",
+      "sourceLineIndex": 9,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b3",
+          "name": "Do Not Make",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 10.25
+    },
+    {
+      "itemInstanceId": "b4",
+      "name": "Khao Soi Beef",
+      "sourceLineIndex": 11,
+      "priceTokenValue": null,
+      "quantity": 3,
+      "modifiers": [],
+      "effectiveTotal": 71.25
+    },
+    {
+      "itemInstanceId": "b5",
+      "name": "Singha",
+      "sourceLineIndex": 12,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b6",
+          "name": "Do Not Make",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 10.25
+    },
+    {
+      "itemInstanceId": "b7",
+      "name": "Singha",
+      "sourceLineIndex": 14,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b8",
+          "name": "Do Not Make",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 10.25
+    },
+    {
+      "itemInstanceId": "b9",
+      "name": "Pad Thai Shrimp",
+      "sourceLineIndex": 16,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b10",
+          "name": "Mild, Shared, Chilli Oil",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 25.75
+    },
+    {
+      "itemInstanceId": "b11",
+      "name": "Singha",
+      "sourceLineIndex": 20,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b12",
+          "name": "Do Not Make",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 10.25
+    },
+    {
+      "itemInstanceId": "b13",
+      "name": "Khao Soi Shrimp",
+      "sourceLineIndex": 22,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 25.75
+    },
+    {
+      "itemInstanceId": "b14",
+      "name": "Singha",
+      "sourceLineIndex": 23,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b15",
+          "name": "Do Not Make",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 10.25
+    },
+    {
+      "itemInstanceId": "b16",
+      "name": "Khao Soi Chicken",
+      "sourceLineIndex": 25,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 23.75
+    },
+    {
+      "itemInstanceId": "b17",
+      "name": "Singha",
+      "sourceLineIndex": 26,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b18",
+          "name": "Do Not Make",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 10.25
+    },
+    {
+      "itemInstanceId": "b19",
+      "name": "Espolon Reposado",
+      "sourceLineIndex": 28,
+      "priceTokenValue": null,
+      "quantity": 7,
+      "modifiers": [],
+      "effectiveTotal": 70
+    }
+  ],
+  "arithmetic": [
+    "item[0] \"Singha\" = lineTotal(10.25) = 10.25   [running sum = 10.25]",
+    "item[1] \"Khao Soi Beef\" = lineTotal(71.25) = 71.25   [running sum = 81.5]",
+    "item[2] \"Singha\" = lineTotal(10.25) = 10.25   [running sum = 91.75]",
+    "item[3] \"Singha\" = lineTotal(10.25) = 10.25   [running sum = 102]",
+    "item[4] \"Pad Thai Shrimp\" = lineTotal(25.75) = 25.75   [running sum = 127.75]",
+    "item[5] \"Singha\" = lineTotal(10.25) = 10.25   [running sum = 138]",
+    "item[6] \"Khao Soi Shrimp\" = lineTotal(25.75) = 25.75   [running sum = 163.75]",
+    "item[7] \"Singha\" = lineTotal(10.25) = 10.25   [running sum = 174]",
+    "item[8] \"Khao Soi Chicken\" = lineTotal(23.75) = 23.75   [running sum = 197.75]",
+    "item[9] \"Singha\" = lineTotal(10.25) = 10.25   [running sum = 208]",
+    "item[10] \"Espolon Reposado\" = lineTotal(70) = 70   [running sum = 278]"
+  ],
+  "calculatedSubtotal": 278,
+  "printedSubtotal": 278,
+  "printedTotal": 376.97,
+  "subtotalDelta": 0,
+  "reconciles": true,
+  "arithmeticReconciles": true,
+  "expectedTotal": null,
+  "expectedDelta": null,
+  "orphanCount": 4,
+  "unresolvedLines": [
+    {
+      "id": "unclassified_b21",
+      "amount": 55.6,
+      "text": "Large Party (20.00%) $55.60",
+      "lineIndex": 30
+    },
+    {
+      "id": "orphan_A1",
+      "amount": 0.1,
+      "text": "0.1",
+      "lineIndex": 1
+    },
+    {
+      "id": "orphan_A2",
+      "amount": 8,
+      "text": "8",
+      "lineIndex": 1
+    },
+    {
+      "id": "orphan_A3",
+      "amount": 1,
+      "text": "1",
+      "lineIndex": 6
+    },
+    {
+      "id": "orphan_A4",
+      "amount": 7,
+      "text": "7",
+      "lineIndex": 7
+    }
+  ],
+  "charges": [
+    {
+      "id": "b22",
+      "name": "Tax",
+      "amount": 43.37,
+      "kind": "tax"
+    },
+    {
+      "id": "A17",
+      "name": "Large Party (20.00%)",
+      "amount": 55.6,
+      "kind": "fee"
+    }
+  ],
+  "suspectedPatterns": {
+    "subtotalCountedAsItem": [],
+    "totalCountedAsItem": [],
+    "taxCountedAsItem": [],
+    "amountClaimedByMultipleBlocks": [],
+    "duplicateWordIdsInLedger": [],
+    "overlappingItemLineIndices": [],
+    "itemBlocksAfterFirstSummaryLine": [],
+    "itemsWithQuantityAboveOne": [
+      {
+        "blockId": "b4",
+        "quantity": 3
+      },
+      {
+        "blockId": "b19",
+        "quantity": 7
+      }
+    ]
+  },
+  "verificationRound1": null,
+  "verificationRound2": null,
+  "reconciliationRetried": false
+}

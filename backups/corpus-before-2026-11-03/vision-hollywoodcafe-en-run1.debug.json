@@ -1,0 +1,1164 @@
+{
+  "imagePath": null,
+  "fixturePath": "supabase/functions/parse-receipt/__fixtures__/vision-hollywoodcafe-en.json",
+  "verificationAvailable": false,
+  "merchant": "HOLLYWOOD CAFE & SPORTS, BAR",
+  "date": "2017-09-08",
+  "currency": "USD",
+  "currencyRead": "USD",
+  "structureTimeMs": 4644,
+  "structureTokenUsage": {
+    "promptTokens": 1506,
+    "completionTokens": 776,
+    "totalTokens": 2282
+  },
+  "structureRetryFired": false,
+  "structuralGapCountBeforeRetry": null,
+  "ocrLines": [
+    {
+      "lineIndex": 0,
+      "text": "HOLLYWOOD CAFE & SPORTS, BAR"
+    },
+    {
+      "lineIndex": 1,
+      "text": "AM Dining Rm"
+    },
+    {
+      "lineIndex": 2,
+      "text": "ate: 09/08/2017 Time: 12:45:41 PM"
+    },
+    {
+      "lineIndex": 3,
+      "text": "check: 332114 Table: 42"
+    },
+    {
+      "lineIndex": 4,
+      "text": "overs: 2 Person#: 1"
+    },
+    {
+      "lineIndex": 5,
+      "text": "server #: 346 Opened: 12:13:00 PM"
+    },
+    {
+      "lineIndex": 6,
+      "text": "2.49"
+    },
+    {
+      "lineIndex": 7,
+      "text": "SODA 10.49"
+    },
+    {
+      "lineIndex": 8,
+      "text": "CHEESE STEAK 1.00"
+    },
+    {
+      "lineIndex": 9,
+      "text": "+AMERICAN CHS 0.75"
+    },
+    {
+      "lineIndex": 10,
+      "text": "+FRD ONION"
+    },
+    {
+      "lineIndex": 11,
+      "text": "Chix Cheesesteak 10.49"
+    },
+    {
+      "lineIndex": 12,
+      "text": "SUB-TOTAL 25.22"
+    },
+    {
+      "lineIndex": 13,
+      "text": "Food Tax 1.74"
+    },
+    {
+      "lineIndex": 14,
+      "text": "Liquor Tax 0.00"
+    },
+    {
+      "lineIndex": 15,
+      "text": "Other Taxes 0.00"
+    },
+    {
+      "lineIndex": 16,
+      "text": "Total Tax 1.74"
+    },
+    {
+      "lineIndex": 17,
+      "text": "TOTAL 26.96"
+    },
+    {
+      "lineIndex": 18,
+      "text": "THANK YOU!"
+    }
+  ],
+  "ledger": [
+    {
+      "amountId": "A1",
+      "wordId": "W29",
+      "lineIndex": 4,
+      "rawText": "1",
+      "value": 1,
+      "ocrConfidence": 0.97875005,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 302,
+            "y": 389
+          },
+          {
+            "x": 315,
+            "y": 389
+          },
+          {
+            "x": 316,
+            "y": 410
+          },
+          {
+            "x": 303,
+            "y": 410
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A2",
+      "wordId": "W38",
+      "lineIndex": 6,
+      "rawText": "2.49",
+      "value": 2.49,
+      "ocrConfidence": 0.99194723,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 482,
+            "y": 447
+          },
+          {
+            "x": 532,
+            "y": 441
+          },
+          {
+            "x": 534,
+            "y": 462
+          },
+          {
+            "x": 485,
+            "y": 469
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A3",
+      "wordId": "W40",
+      "lineIndex": 7,
+      "rawText": "10.49",
+      "value": 10.49,
+      "ocrConfidence": 0.9914638,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 474,
+            "y": 479
+          },
+          {
+            "x": 535,
+            "y": 470
+          },
+          {
+            "x": 539,
+            "y": 491
+          },
+          {
+            "x": 477,
+            "y": 501
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A4",
+      "wordId": "W43",
+      "lineIndex": 8,
+      "rawText": "1.00",
+      "value": 1,
+      "ocrConfidence": 0.99167573,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 488,
+            "y": 508
+          },
+          {
+            "x": 539,
+            "y": 503
+          },
+          {
+            "x": 541,
+            "y": 525
+          },
+          {
+            "x": 490,
+            "y": 530
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A5",
+      "wordId": "W50",
+      "lineIndex": 9,
+      "rawText": "0.75",
+      "value": 0.75,
+      "ocrConfidence": 0.9846625,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 490,
+            "y": 540
+          },
+          {
+            "x": 543,
+            "y": 533
+          },
+          {
+            "x": 545,
+            "y": 556
+          },
+          {
+            "x": 493,
+            "y": 563
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A6",
+      "wordId": "W53",
+      "lineIndex": 11,
+      "rawText": "10.49",
+      "value": 10.49,
+      "ocrConfidence": 0.9883854,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 480,
+            "y": 573
+          },
+          {
+            "x": 545,
+            "y": 567
+          },
+          {
+            "x": 547,
+            "y": 589
+          },
+          {
+            "x": 482,
+            "y": 596
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A7",
+      "wordId": "W57",
+      "lineIndex": 12,
+      "rawText": "25.22",
+      "value": 25.22,
+      "ocrConfidence": 0.99141073,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 482,
+            "y": 638
+          },
+          {
+            "x": 552,
+            "y": 634
+          },
+          {
+            "x": 553,
+            "y": 658
+          },
+          {
+            "x": 483,
+            "y": 662
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A8",
+      "wordId": "W60",
+      "lineIndex": 13,
+      "rawText": "1.74",
+      "value": 1.74,
+      "ocrConfidence": 0.9912376,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 501,
+            "y": 671
+          },
+          {
+            "x": 558,
+            "y": 669
+          },
+          {
+            "x": 559,
+            "y": 694
+          },
+          {
+            "x": 502,
+            "y": 696
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A9",
+      "wordId": "W63",
+      "lineIndex": 14,
+      "rawText": "0.00",
+      "value": 0,
+      "ocrConfidence": 0.992705,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 501,
+            "y": 706
+          },
+          {
+            "x": 559,
+            "y": 704
+          },
+          {
+            "x": 560,
+            "y": 730
+          },
+          {
+            "x": 502,
+            "y": 732
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A10",
+      "wordId": "W66",
+      "lineIndex": 15,
+      "rawText": "0.00",
+      "value": 0,
+      "ocrConfidence": 0.99221885,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 436,
+            "y": 747
+          },
+          {
+            "x": 493,
+            "y": 747
+          },
+          {
+            "x": 493,
+            "y": 772
+          },
+          {
+            "x": 436,
+            "y": 772
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A11",
+      "wordId": "W69",
+      "lineIndex": 16,
+      "rawText": "1.74",
+      "value": 1.74,
+      "ocrConfidence": 0.9903176,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 510,
+            "y": 782
+          },
+          {
+            "x": 566,
+            "y": 780
+          },
+          {
+            "x": 567,
+            "y": 806
+          },
+          {
+            "x": 511,
+            "y": 808
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A12",
+      "wordId": "W71",
+      "lineIndex": 17,
+      "rawText": "26.96",
+      "value": 26.96,
+      "ocrConfidence": 0.9903621,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 541,
+            "y": 821
+          },
+          {
+            "x": 698,
+            "y": 820
+          },
+          {
+            "x": 698,
+            "y": 873
+          },
+          {
+            "x": 541,
+            "y": 874
+          }
+        ]
+      }
+    }
+  ],
+  "summaryBlocks": [
+    {
+      "blockId": "b11",
+      "name": "SUB-TOTAL",
+      "lineIndices": [
+        12
+      ],
+      "amountId": "A7",
+      "value": 25.22
+    },
+    {
+      "blockId": "b12",
+      "name": "Food Tax",
+      "lineIndices": [
+        13
+      ],
+      "amountId": "A8",
+      "value": 1.74
+    },
+    {
+      "blockId": "b13",
+      "name": "Liquor Tax",
+      "lineIndices": [
+        14
+      ],
+      "amountId": "A9",
+      "value": 0
+    },
+    {
+      "blockId": "b14",
+      "name": "Other Taxes",
+      "lineIndices": [
+        15
+      ],
+      "amountId": null,
+      "value": null
+    },
+    {
+      "blockId": "b15",
+      "name": "Total Tax",
+      "lineIndices": [
+        16
+      ],
+      "amountId": "A11",
+      "value": 1.74
+    },
+    {
+      "blockId": "b16",
+      "name": "TOTAL",
+      "lineIndices": [
+        17
+      ],
+      "amountId": null,
+      "value": null
+    }
+  ],
+  "summaryRoleAssignments": [
+    {
+      "amountId": "A8",
+      "role": "TAX",
+      "value": 1.74
+    },
+    {
+      "amountId": "A9",
+      "role": "TAX",
+      "value": 0
+    },
+    {
+      "amountId": "A11",
+      "role": "TAX",
+      "value": 1.74
+    },
+    {
+      "amountId": "A7",
+      "role": "SUBTOTAL",
+      "value": 25.22
+    },
+    {
+      "amountId": "A12",
+      "role": "GRAND_TOTAL",
+      "value": 26.96
+    }
+  ],
+  "summaryCoverage": [
+    {
+      "amountId": "A7",
+      "lineIndex": 12,
+      "role": "SUBTOTAL",
+      "value": 25.22
+    },
+    {
+      "amountId": "A8",
+      "lineIndex": 13,
+      "role": "TAX",
+      "value": 1.74
+    },
+    {
+      "amountId": "A9",
+      "lineIndex": 14,
+      "role": "TAX",
+      "value": 0
+    },
+    {
+      "amountId": "A10",
+      "lineIndex": 15,
+      "role": "UNRESOLVED",
+      "value": 0
+    },
+    {
+      "amountId": "A11",
+      "lineIndex": 16,
+      "role": "TAX",
+      "value": 1.74
+    },
+    {
+      "amountId": "A12",
+      "lineIndex": 17,
+      "role": "GRAND_TOTAL",
+      "value": 26.96
+    }
+  ],
+  "summaryDuplicateRoles": [],
+  "summaryCoverageValid": false,
+  "summaryMonetaryObservationCount": 6,
+  "summaryClaimedAmountCount": 5,
+  "summaryUnresolvedAmountCount": 1,
+  "summaryDuplicateRoleAttemptCount": 0,
+  "validity": {
+    "valid": false,
+    "structuralGapCount": 0,
+    "echoExactCount": 0,
+    "echoMultiplicativeCount": 0,
+    "descriptiveNumberCount": 0,
+    "zeroValueCount": 0,
+    "rowQuantityProvenCount": 0,
+    "rowUnitPriceProvenCount": 0,
+    "itemsProvenNonAdditiveCount": 0,
+    "unresolvedLoadBearingCount": 0,
+    "duplicateOwnershipCount": 0,
+    "ownershipInvalidCount": 0,
+    "reconciles": false
+  },
+  "finalReconciles": false,
+  "structureAgreement": null,
+  "structureDisagreements": [],
+  "priceKindOverrideCount": 0,
+  "priceKindOverrides": [],
+  "crossingsDetected": 0,
+  "summaryBoundaryPenalties": 0,
+  "offsetFormDetected": true,
+  "offsetHypothesisAdopted": "H1",
+  "totalWitness": "label",
+  "totalWitnessAgreement": "agree",
+  "totalCandidatesFound": 1,
+  "totalChosenBy": "single",
+  "provenNonAdditiveCount": 0,
+  "provenNonAdditiveBlockedBy": "sum_mismatch",
+  "provenAdditiveCount": 0,
+  "additiveCorroboratedByRate": false,
+  "provenAdditiveBlockedBy": "no_closing_set",
+  "columnRolesDetected": {
+    "quantity": false,
+    "unitPrice": false,
+    "total": true
+  },
+  "rowsArithmeticallyProven": 0,
+  "itemsRegionSaturated": false,
+  "itemsRegionSaturationCount": 0,
+  "itemsRegionSaturationBlockedBy": "no_separate_total_band",
+  "partialNumberTokensRejected": 1,
+  "blocks": [
+    {
+      "blockId": "b0",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        0
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b0",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b1",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        1
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b1",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b2",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        2
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b2",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b3",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        3
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b3",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b4",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        4
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b4",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b5",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        5
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b5",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b6",
+      "kind": "ITEM",
+      "lineIndices": [
+        6
+      ],
+      "parentBlockId": null,
+      "name": "SODA",
+      "amountId": "A2",
+      "quantity": null,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b6",
+        "amountId": "A3",
+        "confident": true,
+        "anchorCorrected": true,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b7",
+      "kind": "ITEM",
+      "lineIndices": [
+        7
+      ],
+      "parentBlockId": null,
+      "name": "CHEESE STEAK",
+      "amountId": "A3",
+      "quantity": null,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A2",
+        "A3",
+        "A4",
+        "A5"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b7",
+        "amountId": "A4",
+        "confident": true,
+        "anchorCorrected": true,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b8",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        8
+      ],
+      "parentBlockId": "b7",
+      "name": "+AMERICAN CHS",
+      "amountId": "A4",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A2",
+        "A3",
+        "A4",
+        "A5"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b8",
+        "amountId": "A5",
+        "confident": true,
+        "anchorCorrected": true,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b9",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        9
+      ],
+      "parentBlockId": "b7",
+      "name": "+FRD ONION",
+      "amountId": "A5",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A3",
+        "A4",
+        "A5",
+        "A6"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b9",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": true,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b10",
+      "kind": "ITEM",
+      "lineIndices": [
+        11
+      ],
+      "parentBlockId": null,
+      "name": "Chix Cheesesteak",
+      "amountId": "A6",
+      "quantity": null,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A5",
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b10",
+        "amountId": "A6",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b11",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        12
+      ],
+      "parentBlockId": null,
+      "name": "SUB-TOTAL",
+      "amountId": "A7",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b11",
+        "amountId": "A7",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b12",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        13
+      ],
+      "parentBlockId": null,
+      "name": "Food Tax",
+      "amountId": "A8",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8",
+        "A9",
+        "A10"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b12",
+        "amountId": "A8",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b13",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        14
+      ],
+      "parentBlockId": null,
+      "name": "Liquor Tax",
+      "amountId": "A9",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A7",
+        "A8",
+        "A9",
+        "A10",
+        "A11"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b13",
+        "amountId": "A9",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b14",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        15
+      ],
+      "parentBlockId": null,
+      "name": "Other Taxes",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A8",
+        "A9",
+        "A10",
+        "A11",
+        "A12"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b14",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b15",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        16
+      ],
+      "parentBlockId": null,
+      "name": "Total Tax",
+      "amountId": "A11",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A9",
+        "A10",
+        "A11",
+        "A12"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b15",
+        "amountId": "A11",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b16",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        17
+      ],
+      "parentBlockId": null,
+      "name": "TOTAL",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A10",
+        "A11",
+        "A12"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b16",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b17",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        18
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A11",
+        "A12"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b17",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    }
+  ],
+  "finalItems": [
+    {
+      "itemInstanceId": "b6",
+      "name": "SODA",
+      "sourceLineIndex": 6,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 2.49
+    },
+    {
+      "itemInstanceId": "b7",
+      "name": "CHEESE STEAK",
+      "sourceLineIndex": 7,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b8",
+          "name": "+AMERICAN CHS",
+          "price": 1,
+          "kind": "paid"
+        },
+        {
+          "id": "b9",
+          "name": "+FRD ONION",
+          "price": 0.75,
+          "kind": "paid"
+        }
+      ],
+      "effectiveTotal": 12.24
+    },
+    {
+      "itemInstanceId": "b10",
+      "name": "Chix Cheesesteak",
+      "sourceLineIndex": 11,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 10.49
+    }
+  ],
+  "arithmetic": [
+    "item[0] \"SODA\" = lineTotal(2.49) = 2.49   [running sum = 2.49]",
+    "item[1] \"CHEESE STEAK\" = lineTotal(10.49) + modifiers(1.75) = 12.24   [running sum = 14.73]",
+    "item[2] \"Chix Cheesesteak\" = lineTotal(10.49) = 10.49   [running sum = 25.22]"
+  ],
+  "calculatedSubtotal": 25.22,
+  "printedSubtotal": 25.22,
+  "printedTotal": 26.96,
+  "subtotalDelta": 0,
+  "reconciles": false,
+  "arithmeticReconciles": true,
+  "expectedTotal": null,
+  "expectedDelta": null,
+  "orphanCount": 2,
+  "unresolvedLines": [
+    {
+      "id": "orphan_A1",
+      "amount": 1,
+      "text": "1",
+      "lineIndex": 4
+    },
+    {
+      "id": "orphan_A10",
+      "amount": 0,
+      "text": "0.00",
+      "lineIndex": 15
+    }
+  ],
+  "charges": [
+    {
+      "id": "b12",
+      "name": "Food Tax",
+      "amount": 1.74,
+      "kind": "tax"
+    },
+    {
+      "id": "b13",
+      "name": "Liquor Tax",
+      "amount": 0,
+      "kind": "tax"
+    },
+    {
+      "id": "b15",
+      "name": "Total Tax",
+      "amount": 1.74,
+      "kind": "tax"
+    }
+  ],
+  "suspectedPatterns": {
+    "subtotalCountedAsItem": [],
+    "totalCountedAsItem": [],
+    "taxCountedAsItem": [],
+    "amountClaimedByMultipleBlocks": [],
+    "duplicateWordIdsInLedger": [],
+    "overlappingItemLineIndices": [],
+    "itemBlocksAfterFirstSummaryLine": [],
+    "itemsWithQuantityAboveOne": []
+  },
+  "verificationRound1": null,
+  "verificationRound2": null,
+  "reconciliationRetried": false
+}

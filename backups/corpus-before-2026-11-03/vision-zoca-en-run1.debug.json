@@ -1,0 +1,1764 @@
+{
+  "imagePath": null,
+  "fixturePath": "supabase/functions/parse-receipt/__fixtures__/vision-zoca-en.json",
+  "verificationAvailable": false,
+  "merchant": "ZOCA RESTAURANT",
+  "date": "2019-07-30",
+  "currency": "USD",
+  "currencyRead": "USD",
+  "structureTimeMs": 7317,
+  "structureTokenUsage": {
+    "promptTokens": 1703,
+    "completionTokens": 1056,
+    "totalTokens": 2759
+  },
+  "structureRetryFired": false,
+  "structuralGapCountBeforeRetry": null,
+  "ocrLines": [
+    {
+      "lineIndex": 0,
+      "text": "ZOCA RESTAURANT"
+    },
+    {
+      "lineIndex": 1,
+      "text": "BETHANY 98 GARFIELD BEACH,PARKWAY DE 19930"
+    },
+    {
+      "lineIndex": 2,
+      "text": "(302) 616-2120"
+    },
+    {
+      "lineIndex": 3,
+      "text": "WWW.ZOCA.RESTAURANT"
+    },
+    {
+      "lineIndex": 4,
+      "text": "7/30/19"
+    },
+    {
+      "lineIndex": 5,
+      "text": "Table Server Check: #:31/2 :Madi 5033B Guests 7:53:PM5"
+    },
+    {
+      "lineIndex": 6,
+      "text": "1 Flying Dog Numero Uno BTL 8.00"
+    },
+    {
+      "lineIndex": 7,
+      "text": "1 House Recipe 12.00"
+    },
+    {
+      "lineIndex": 8,
+      "text": "2 Sandia Margarita (@13.00/ea) 26.00"
+    },
+    {
+      "lineIndex": 9,
+      "text": "1 Totem Honey Bee 11.00"
+    },
+    {
+      "lineIndex": 10,
+      "text": "1 Queso Fresco Guacamole 12.00"
+    },
+    {
+      "lineIndex": 11,
+      "text": "1 Queso Fundido Mexican Street Corn Dip 12.00"
+    },
+    {
+      "lineIndex": 12,
+      "text": "1 Salsa De Molcajete 8.00"
+    },
+    {
+      "lineIndex": 13,
+      "text": "2 Taquitos Carne Asada (@15.00/ea) 30.00"
+    },
+    {
+      "lineIndex": 14,
+      "text": "1 Taquitos Baja California Shrimp 14.00"
+    },
+    {
+      "lineIndex": 15,
+      "text": "1 Mole Enchilada 19.00"
+    },
+    {
+      "lineIndex": 16,
+      "text": "1 Quesadilla Chicken 12.00"
+    },
+    {
+      "lineIndex": 17,
+      "text": "Sub-total 164.00"
+    },
+    {
+      "lineIndex": 18,
+      "text": "COMPLIMENTARY"
+    },
+    {
+      "lineIndex": 19,
+      "text": "ITEM COMPS:"
+    },
+    {
+      "lineIndex": 20,
+      "text": "1 Queso Fundido Mexican Street Corn Dip"
+    },
+    {
+      "lineIndex": 21,
+      "text": "-12.00"
+    },
+    {
+      "lineIndex": 22,
+      "text": "Sub-total"
+    },
+    {
+      "lineIndex": 23,
+      "text": "Sales Tax 152.00"
+    },
+    {
+      "lineIndex": 24,
+      "text": "TOTAL 0.00"
+    }
+  ],
+  "ledger": [
+    {
+      "amountId": "A1",
+      "wordId": "W25",
+      "lineIndex": 5,
+      "rawText": "5",
+      "value": 5,
+      "ocrConfidence": 0.96231425,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 567,
+            "y": 192
+          },
+          {
+            "x": 619,
+            "y": 189
+          },
+          {
+            "x": 620,
+            "y": 211
+          },
+          {
+            "x": 568,
+            "y": 214
+          },
+          {
+            "x": 622,
+            "y": 217
+          },
+          {
+            "x": 631,
+            "y": 216
+          },
+          {
+            "x": 632,
+            "y": 238
+          },
+          {
+            "x": 623,
+            "y": 239
+          },
+          {
+            "x": 629,
+            "y": 189
+          },
+          {
+            "x": 658,
+            "y": 187
+          },
+          {
+            "x": 659,
+            "y": 209
+          },
+          {
+            "x": 630,
+            "y": 211
+          },
+          {
+            "x": 643,
+            "y": 215
+          },
+          {
+            "x": 660,
+            "y": 214
+          },
+          {
+            "x": 661,
+            "y": 236
+          },
+          {
+            "x": 644,
+            "y": 237
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A2",
+      "wordId": "W39",
+      "lineIndex": 6,
+      "rawText": "8.00",
+      "value": 8,
+      "ocrConfidence": 0.9907963,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 610,
+            "y": 272
+          },
+          {
+            "x": 662,
+            "y": 268
+          },
+          {
+            "x": 663,
+            "y": 288
+          },
+          {
+            "x": 611,
+            "y": 292
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A3",
+      "wordId": "W43",
+      "lineIndex": 7,
+      "rawText": "12.00",
+      "value": 12,
+      "ocrConfidence": 0.9921438,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 602,
+            "y": 299
+          },
+          {
+            "x": 665,
+            "y": 296
+          },
+          {
+            "x": 666,
+            "y": 318
+          },
+          {
+            "x": 603,
+            "y": 321
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A4",
+      "wordId": "W47",
+      "lineIndex": 8,
+      "rawText": "13.00",
+      "value": 13,
+      "ocrConfidence": 0.94030994,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 306,
+            "y": 342
+          },
+          {
+            "x": 316,
+            "y": 342
+          },
+          {
+            "x": 317,
+            "y": 366
+          },
+          {
+            "x": 307,
+            "y": 367
+          },
+          {
+            "x": 316,
+            "y": 342
+          },
+          {
+            "x": 330,
+            "y": 341
+          },
+          {
+            "x": 331,
+            "y": 366
+          },
+          {
+            "x": 317,
+            "y": 367
+          },
+          {
+            "x": 331,
+            "y": 340
+          },
+          {
+            "x": 390,
+            "y": 337
+          },
+          {
+            "x": 391,
+            "y": 363
+          },
+          {
+            "x": 332,
+            "y": 366
+          },
+          {
+            "x": 389,
+            "y": 338
+          },
+          {
+            "x": 403,
+            "y": 337
+          },
+          {
+            "x": 404,
+            "y": 362
+          },
+          {
+            "x": 390,
+            "y": 363
+          },
+          {
+            "x": 400,
+            "y": 338
+          },
+          {
+            "x": 428,
+            "y": 337
+          },
+          {
+            "x": 429,
+            "y": 362
+          },
+          {
+            "x": 401,
+            "y": 363
+          },
+          {
+            "x": 426,
+            "y": 336
+          },
+          {
+            "x": 438,
+            "y": 335
+          },
+          {
+            "x": 439,
+            "y": 360
+          },
+          {
+            "x": 427,
+            "y": 361
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A5",
+      "wordId": "W53",
+      "lineIndex": 8,
+      "rawText": "26.00",
+      "value": 26,
+      "ocrConfidence": 0.9916335,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 602,
+            "y": 328
+          },
+          {
+            "x": 668,
+            "y": 325
+          },
+          {
+            "x": 669,
+            "y": 348
+          },
+          {
+            "x": 603,
+            "y": 351
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A6",
+      "wordId": "W58",
+      "lineIndex": 9,
+      "rawText": "11.00",
+      "value": 11,
+      "ocrConfidence": 0.9921805,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 606,
+            "y": 357
+          },
+          {
+            "x": 670,
+            "y": 355
+          },
+          {
+            "x": 671,
+            "y": 378
+          },
+          {
+            "x": 607,
+            "y": 380
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A7",
+      "wordId": "W63",
+      "lineIndex": 10,
+      "rawText": "12.00",
+      "value": 12,
+      "ocrConfidence": 0.9915417,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 608,
+            "y": 387
+          },
+          {
+            "x": 673,
+            "y": 385
+          },
+          {
+            "x": 674,
+            "y": 408
+          },
+          {
+            "x": 609,
+            "y": 410
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A8",
+      "wordId": "W71",
+      "lineIndex": 11,
+      "rawText": "12.00",
+      "value": 12,
+      "ocrConfidence": 0.99096906,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 609,
+            "y": 418
+          },
+          {
+            "x": 674,
+            "y": 414
+          },
+          {
+            "x": 675,
+            "y": 436
+          },
+          {
+            "x": 610,
+            "y": 440
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A9",
+      "wordId": "W76",
+      "lineIndex": 12,
+      "rawText": "8.00",
+      "value": 8,
+      "ocrConfidence": 0.99063283,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 622,
+            "y": 448
+          },
+          {
+            "x": 677,
+            "y": 447
+          },
+          {
+            "x": 678,
+            "y": 468
+          },
+          {
+            "x": 623,
+            "y": 469
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A10",
+      "wordId": "W81",
+      "lineIndex": 13,
+      "rawText": "15.00",
+      "value": 15,
+      "ocrConfidence": 0.96457446,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 354,
+            "y": 484
+          },
+          {
+            "x": 364,
+            "y": 484
+          },
+          {
+            "x": 365,
+            "y": 512
+          },
+          {
+            "x": 355,
+            "y": 512
+          },
+          {
+            "x": 366,
+            "y": 484
+          },
+          {
+            "x": 379,
+            "y": 484
+          },
+          {
+            "x": 380,
+            "y": 512
+          },
+          {
+            "x": 367,
+            "y": 512
+          },
+          {
+            "x": 381,
+            "y": 483
+          },
+          {
+            "x": 443,
+            "y": 481
+          },
+          {
+            "x": 444,
+            "y": 510
+          },
+          {
+            "x": 382,
+            "y": 512
+          },
+          {
+            "x": 443,
+            "y": 482
+          },
+          {
+            "x": 457,
+            "y": 482
+          },
+          {
+            "x": 458,
+            "y": 510
+          },
+          {
+            "x": 444,
+            "y": 510
+          },
+          {
+            "x": 455,
+            "y": 481
+          },
+          {
+            "x": 481,
+            "y": 480
+          },
+          {
+            "x": 482,
+            "y": 509
+          },
+          {
+            "x": 456,
+            "y": 510
+          },
+          {
+            "x": 481,
+            "y": 481
+          },
+          {
+            "x": 492,
+            "y": 481
+          },
+          {
+            "x": 493,
+            "y": 509
+          },
+          {
+            "x": 482,
+            "y": 509
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A11",
+      "wordId": "W87",
+      "lineIndex": 13,
+      "rawText": "30.00",
+      "value": 30,
+      "ocrConfidence": 0.99027497,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 613,
+            "y": 476
+          },
+          {
+            "x": 681,
+            "y": 475
+          },
+          {
+            "x": 681,
+            "y": 499
+          },
+          {
+            "x": 613,
+            "y": 500
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A12",
+      "wordId": "W93",
+      "lineIndex": 14,
+      "rawText": "14.00",
+      "value": 14,
+      "ocrConfidence": 0.9933192,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 617,
+            "y": 509
+          },
+          {
+            "x": 684,
+            "y": 509
+          },
+          {
+            "x": 684,
+            "y": 532
+          },
+          {
+            "x": 617,
+            "y": 532
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A13",
+      "wordId": "W103",
+      "lineIndex": 15,
+      "rawText": "19.00",
+      "value": 19,
+      "ocrConfidence": 0.9924942,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 619,
+            "y": 542
+          },
+          {
+            "x": 688,
+            "y": 542
+          },
+          {
+            "x": 688,
+            "y": 565
+          },
+          {
+            "x": 619,
+            "y": 565
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A14",
+      "wordId": "W104",
+      "lineIndex": 16,
+      "rawText": "12.00",
+      "value": 12,
+      "ocrConfidence": 0.9904835,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 621,
+            "y": 573
+          },
+          {
+            "x": 689,
+            "y": 572
+          },
+          {
+            "x": 689,
+            "y": 597
+          },
+          {
+            "x": 621,
+            "y": 598
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A15",
+      "wordId": "W105",
+      "lineIndex": 17,
+      "rawText": "164.00",
+      "value": 164,
+      "ocrConfidence": 0.9927114,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 613,
+            "y": 639
+          },
+          {
+            "x": 696,
+            "y": 638
+          },
+          {
+            "x": 696,
+            "y": 664
+          },
+          {
+            "x": 613,
+            "y": 665
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A16",
+      "wordId": "W123",
+      "lineIndex": 21,
+      "rawText": "-12.00",
+      "value": -12,
+      "ocrConfidence": 0.9893572,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 582,
+            "y": 820
+          },
+          {
+            "x": 671,
+            "y": 820
+          },
+          {
+            "x": 671,
+            "y": 847
+          },
+          {
+            "x": 582,
+            "y": 847
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A17",
+      "wordId": "W124",
+      "lineIndex": 23,
+      "rawText": "152.00",
+      "value": 152,
+      "ocrConfidence": 0.9924369,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 632,
+            "y": 898
+          },
+          {
+            "x": 722,
+            "y": 898
+          },
+          {
+            "x": 722,
+            "y": 924
+          },
+          {
+            "x": 632,
+            "y": 924
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A18",
+      "wordId": "W125",
+      "lineIndex": 24,
+      "rawText": "0.00",
+      "value": 0,
+      "ocrConfidence": 0.9850758,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 661,
+            "y": 937
+          },
+          {
+            "x": 723,
+            "y": 937
+          },
+          {
+            "x": 723,
+            "y": 964
+          },
+          {
+            "x": 661,
+            "y": 964
+          }
+        ]
+      }
+    }
+  ],
+  "summaryBlocks": [
+    {
+      "blockId": "b17",
+      "name": "Sub-total",
+      "lineIndices": [
+        17
+      ],
+      "amountId": "A15",
+      "value": 164
+    },
+    {
+      "blockId": "b21",
+      "name": "Sub-total",
+      "lineIndices": [
+        22
+      ],
+      "amountId": null,
+      "value": null
+    },
+    {
+      "blockId": "b22",
+      "name": "Sales Tax",
+      "lineIndices": [
+        23
+      ],
+      "amountId": null,
+      "value": null
+    },
+    {
+      "blockId": "b23",
+      "name": "TOTAL",
+      "lineIndices": [
+        24
+      ],
+      "amountId": null,
+      "value": null
+    }
+  ],
+  "summaryRoleAssignments": [
+    {
+      "amountId": "A17",
+      "role": "SUBTOTAL",
+      "value": 152
+    },
+    {
+      "amountId": "A18",
+      "role": "GRAND_TOTAL",
+      "value": 0
+    }
+  ],
+  "summaryCoverage": [
+    {
+      "amountId": "A15",
+      "lineIndex": 17,
+      "role": "UNRESOLVED",
+      "value": 164
+    },
+    {
+      "amountId": "A16",
+      "lineIndex": 21,
+      "role": "UNRESOLVED",
+      "value": -12
+    },
+    {
+      "amountId": "A17",
+      "lineIndex": 23,
+      "role": "SUBTOTAL",
+      "value": 152
+    },
+    {
+      "amountId": "A18",
+      "lineIndex": 24,
+      "role": "GRAND_TOTAL",
+      "value": 0
+    }
+  ],
+  "summaryDuplicateRoles": [],
+  "summaryCoverageValid": false,
+  "summaryMonetaryObservationCount": 4,
+  "summaryClaimedAmountCount": 2,
+  "summaryUnresolvedAmountCount": 2,
+  "summaryDuplicateRoleAttemptCount": 0,
+  "validity": {
+    "valid": false,
+    "structuralGapCount": 0,
+    "echoExactCount": 0,
+    "echoMultiplicativeCount": 2,
+    "descriptiveNumberCount": 0,
+    "zeroValueCount": 0,
+    "rowQuantityProvenCount": 0,
+    "rowUnitPriceProvenCount": 0,
+    "itemsProvenNonAdditiveCount": 0,
+    "unresolvedLoadBearingCount": 0,
+    "duplicateOwnershipCount": 0,
+    "ownershipInvalidCount": 0,
+    "reconciles": false
+  },
+  "finalReconciles": false,
+  "structureAgreement": null,
+  "structureDisagreements": [],
+  "priceKindOverrideCount": 0,
+  "priceKindOverrides": [],
+  "crossingsDetected": 0,
+  "summaryBoundaryPenalties": 1,
+  "offsetFormDetected": false,
+  "offsetHypothesisAdopted": "H0",
+  "totalWitness": "label",
+  "totalWitnessAgreement": "label_only",
+  "totalCandidatesFound": 1,
+  "totalChosenBy": "single",
+  "provenNonAdditiveCount": 0,
+  "provenNonAdditiveBlockedBy": "sum_mismatch",
+  "provenAdditiveCount": 0,
+  "additiveCorroboratedByRate": false,
+  "provenAdditiveBlockedBy": "larger_unresolved_value",
+  "columnRolesDetected": {
+    "quantity": false,
+    "unitPrice": false,
+    "total": true
+  },
+  "rowsArithmeticallyProven": 0,
+  "itemsRegionSaturated": false,
+  "itemsRegionSaturationCount": 0,
+  "itemsRegionSaturationBlockedBy": "no_separate_total_band",
+  "partialNumberTokensRejected": 2,
+  "blocks": [
+    {
+      "blockId": "b0",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        0
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b0",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b1",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        1
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b1",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b2",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        2
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b2",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b3",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        3
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b3",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b4",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        4
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b4",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b5",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        5
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b5",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b6",
+      "kind": "ITEM",
+      "lineIndices": [
+        6
+      ],
+      "parentBlockId": null,
+      "name": "Flying Dog Numero Uno BTL",
+      "amountId": "A2",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b6",
+        "amountId": "A2",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b7",
+      "kind": "ITEM",
+      "lineIndices": [
+        7
+      ],
+      "parentBlockId": null,
+      "name": "House Recipe",
+      "amountId": "A3",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b7",
+        "amountId": "A3",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b8",
+      "kind": "ITEM",
+      "lineIndices": [
+        8
+      ],
+      "parentBlockId": null,
+      "name": "Sandia Margarita",
+      "amountId": "A5",
+      "quantity": 2,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b8",
+        "amountId": "A5",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b9",
+      "kind": "ITEM",
+      "lineIndices": [
+        9
+      ],
+      "parentBlockId": null,
+      "name": "Totem Honey Bee",
+      "amountId": "A6",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b9",
+        "amountId": "A6",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b10",
+      "kind": "ITEM",
+      "lineIndices": [
+        10
+      ],
+      "parentBlockId": null,
+      "name": "Queso Fresco Guacamole",
+      "amountId": "A7",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b10",
+        "amountId": "A7",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b11",
+      "kind": "ITEM",
+      "lineIndices": [
+        11
+      ],
+      "parentBlockId": null,
+      "name": "Queso Fundido Mexican Street Corn Dip",
+      "amountId": "A8",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8",
+        "A9",
+        "A10",
+        "A11"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b11",
+        "amountId": "A8",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b12",
+      "kind": "ITEM",
+      "lineIndices": [
+        12
+      ],
+      "parentBlockId": null,
+      "name": "Salsa De Molcajete",
+      "amountId": "A9",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A7",
+        "A8",
+        "A9",
+        "A10",
+        "A11",
+        "A12"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b12",
+        "amountId": "A9",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b13",
+      "kind": "ITEM",
+      "lineIndices": [
+        13
+      ],
+      "parentBlockId": null,
+      "name": "Taquitos Carne Asada",
+      "amountId": "A11",
+      "quantity": 2,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A8",
+        "A9",
+        "A10",
+        "A11",
+        "A12",
+        "A13"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b13",
+        "amountId": "A11",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b14",
+      "kind": "ITEM",
+      "lineIndices": [
+        14
+      ],
+      "parentBlockId": null,
+      "name": "Taquitos Baja California Shrimp",
+      "amountId": "A12",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A9",
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b14",
+        "amountId": "A12",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b15",
+      "kind": "ITEM",
+      "lineIndices": [
+        15
+      ],
+      "parentBlockId": null,
+      "name": "Mole Enchilada",
+      "amountId": "A13",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A15"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b15",
+        "amountId": "A13",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b16",
+      "kind": "ITEM",
+      "lineIndices": [
+        16
+      ],
+      "parentBlockId": null,
+      "name": "Quesadilla Chicken",
+      "amountId": "A14",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A12",
+        "A13",
+        "A14",
+        "A15"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b16",
+        "amountId": "A14",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b17",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        17
+      ],
+      "parentBlockId": null,
+      "name": "Sub-total",
+      "amountId": "A15",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A13",
+        "A14",
+        "A15"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b17",
+        "amountId": "A15",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b18",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        18
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A14",
+        "A15"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b18",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b19",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        19
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A15",
+        "A16"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b19",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b20",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        20,
+        21
+      ],
+      "parentBlockId": "b11",
+      "name": "Queso Fundido Mexican Street Corn Dip",
+      "amountId": "A16",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A16",
+        "A17"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b20",
+        "amountId": "A16",
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b21",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        22
+      ],
+      "parentBlockId": null,
+      "name": "Sub-total",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A16",
+        "A17",
+        "A18"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b21",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b22",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        23
+      ],
+      "parentBlockId": null,
+      "name": "Sales Tax",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A16",
+        "A17",
+        "A18"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b22",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b23",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        24
+      ],
+      "parentBlockId": null,
+      "name": "TOTAL",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A17",
+        "A18"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b23",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    }
+  ],
+  "finalItems": [
+    {
+      "itemInstanceId": "b6",
+      "name": "Flying Dog Numero Uno BTL",
+      "sourceLineIndex": 6,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 8
+    },
+    {
+      "itemInstanceId": "b7",
+      "name": "House Recipe",
+      "sourceLineIndex": 7,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 12
+    },
+    {
+      "itemInstanceId": "b8",
+      "name": "Sandia Margarita",
+      "sourceLineIndex": 8,
+      "priceTokenValue": null,
+      "quantity": 2,
+      "modifiers": [],
+      "effectiveTotal": 26
+    },
+    {
+      "itemInstanceId": "b9",
+      "name": "Totem Honey Bee",
+      "sourceLineIndex": 9,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 11
+    },
+    {
+      "itemInstanceId": "b10",
+      "name": "Queso Fresco Guacamole",
+      "sourceLineIndex": 10,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 12
+    },
+    {
+      "itemInstanceId": "b11",
+      "name": "Queso Fundido Mexican Street Corn Dip",
+      "sourceLineIndex": 11,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b20",
+          "name": "Queso Fundido Mexican Street Corn Dip",
+          "price": -12,
+          "kind": "paid"
+        }
+      ],
+      "effectiveTotal": 0
+    },
+    {
+      "itemInstanceId": "b12",
+      "name": "Salsa De Molcajete",
+      "sourceLineIndex": 12,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 8
+    },
+    {
+      "itemInstanceId": "b13",
+      "name": "Taquitos Carne Asada",
+      "sourceLineIndex": 13,
+      "priceTokenValue": null,
+      "quantity": 2,
+      "modifiers": [],
+      "effectiveTotal": 30
+    },
+    {
+      "itemInstanceId": "b14",
+      "name": "Taquitos Baja California Shrimp",
+      "sourceLineIndex": 14,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 14
+    },
+    {
+      "itemInstanceId": "b15",
+      "name": "Mole Enchilada",
+      "sourceLineIndex": 15,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 19
+    },
+    {
+      "itemInstanceId": "b16",
+      "name": "Quesadilla Chicken",
+      "sourceLineIndex": 16,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 12
+    }
+  ],
+  "arithmetic": [
+    "item[0] \"Flying Dog Numero Uno BTL\" = lineTotal(8) = 8   [running sum = 8]",
+    "item[1] \"House Recipe\" = lineTotal(12) = 12   [running sum = 20]",
+    "item[2] \"Sandia Margarita\" = lineTotal(26) = 26   [running sum = 46]",
+    "item[3] \"Totem Honey Bee\" = lineTotal(11) = 11   [running sum = 57]",
+    "item[4] \"Queso Fresco Guacamole\" = lineTotal(12) = 12   [running sum = 69]",
+    "item[5] \"Queso Fundido Mexican Street Corn Dip\" = lineTotal(12) + modifiers(-12) = 0   [running sum = 69]",
+    "item[6] \"Salsa De Molcajete\" = lineTotal(8) = 8   [running sum = 77]",
+    "item[7] \"Taquitos Carne Asada\" = lineTotal(30) = 30   [running sum = 107]",
+    "item[8] \"Taquitos Baja California Shrimp\" = lineTotal(14) = 14   [running sum = 121]",
+    "item[9] \"Mole Enchilada\" = lineTotal(19) = 19   [running sum = 140]",
+    "item[10] \"Quesadilla Chicken\" = lineTotal(12) = 12   [running sum = 152]"
+  ],
+  "calculatedSubtotal": 152,
+  "printedSubtotal": 152,
+  "printedTotal": 0,
+  "subtotalDelta": 0,
+  "reconciles": false,
+  "arithmeticReconciles": true,
+  "expectedTotal": null,
+  "expectedDelta": null,
+  "orphanCount": 3,
+  "unresolvedLines": [
+    {
+      "id": "unclassified_b17",
+      "amount": 164,
+      "text": "Sub-total 164.00",
+      "lineIndex": 17
+    },
+    {
+      "id": "orphan_A1",
+      "amount": 5,
+      "text": "5",
+      "lineIndex": 5
+    },
+    {
+      "id": "orphan_A4",
+      "amount": 13,
+      "text": "13.00",
+      "lineIndex": 8
+    },
+    {
+      "id": "orphan_A10",
+      "amount": 15,
+      "text": "15.00",
+      "lineIndex": 13
+    }
+  ],
+  "charges": [],
+  "suspectedPatterns": {
+    "subtotalCountedAsItem": [],
+    "totalCountedAsItem": [],
+    "taxCountedAsItem": [],
+    "amountClaimedByMultipleBlocks": [],
+    "duplicateWordIdsInLedger": [],
+    "overlappingItemLineIndices": [],
+    "itemBlocksAfterFirstSummaryLine": [],
+    "itemsWithQuantityAboveOne": [
+      {
+        "blockId": "b8",
+        "quantity": 2
+      },
+      {
+        "blockId": "b13",
+        "quantity": 2
+      }
+    ]
+  },
+  "verificationRound1": null,
+  "verificationRound2": null,
+  "reconciliationRetried": false
+}

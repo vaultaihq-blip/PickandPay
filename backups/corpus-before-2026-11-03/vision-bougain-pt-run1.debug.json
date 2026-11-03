@@ -1,0 +1,1498 @@
+{
+  "imagePath": null,
+  "fixturePath": "backups/corpus-vision-2026-11-03/vision-bougain-pt.json",
+  "verificationAvailable": false,
+  "merchant": "Bougain Avenida",
+  "date": "2026-10-31",
+  "currency": "EUR",
+  "currencyRead": "EUR",
+  "structureTimeMs": 7404,
+  "structureTokenUsage": {
+    "promptTokens": 1928,
+    "completionTokens": 826,
+    "totalTokens": 2754
+  },
+  "structureRetryFired": false,
+  "structuralGapCountBeforeRetry": null,
+  "ocrLines": [
+    {
+      "lineIndex": 0,
+      "text": "* CONTA"
+    },
+    {
+      "lineIndex": 1,
+      "text": "Bougain Avenida"
+    },
+    {
+      "lineIndex": 2,
+      "text": "Sao Bento Development, Lda"
+    },
+    {
+      "lineIndex": 3,
+      "text": "Rua de Sao Bento 212"
+    },
+    {
+      "lineIndex": 4,
+      "text": "Lisboa Cod. Postal: 1200-821"
+    },
+    {
+      "lineIndex": 5,
+      "text": "Telefone: 213971166"
+    },
+    {
+      "lineIndex": 6,
+      "text": "No. Contribuinte: 513064621"
+    },
+    {
+      "lineIndex": 7,
+      "text": "Registo na Cons . Lisboa n.513064621"
+    },
+    {
+      "lineIndex": 8,
+      "text": "Capital Social : 10.000,00 Euros"
+    },
+    {
+      "lineIndex": 9,
+      "text": "Consulta de mesa"
+    },
+    {
+      "lineIndex": 10,
+      "text": "Documento: DC 108/40510"
+    },
+    {
+      "lineIndex": 11,
+      "text": "Data: 2026-10-31 - 23:50:42"
+    },
+    {
+      "lineIndex": 12,
+      "text": "Local: Restaurante"
+    },
+    {
+      "lineIndex": 13,
+      "text": "6"
+    },
+    {
+      "lineIndex": 14,
+      "text": "Empregado: Steffen Junior"
+    },
+    {
+      "lineIndex": 15,
+      "text": "Nao Serve de Factura."
+    },
+    {
+      "lineIndex": 16,
+      "text": "Qt Artigo IV Total"
+    },
+    {
+      "lineIndex": 17,
+      "text": "2 Couvert 13 e 9.60"
+    },
+    {
+      "lineIndex": 18,
+      "text": "1 AGUA BOUGAIN 13 e 4.00"
+    },
+    {
+      "lineIndex": 19,
+      "text": "1 SPICY MARGARITA 23 e 13.00"
+    },
+    {
+      "lineIndex": 20,
+      "text": "1 Pina DESCOLADA 23 e 12.00"
+    },
+    {
+      "lineIndex": 21,
+      "text": "1 Ostras 6und 13 e 18.00"
+    },
+    {
+      "lineIndex": 22,
+      "text": "1 Tartar ATUM 13 e 22.00"
+    },
+    {
+      "lineIndex": 23,
+      "text": "1 Camarao Tigre 13 e 38.00"
+    },
+    {
+      "lineIndex": 24,
+      "text": "1 Steak Tartare 180GR 13 e 32.00"
+    },
+    {
+      "lineIndex": 25,
+      "text": "1 CP-SONHADOR 23 e 10.00"
+    },
+    {
+      "lineIndex": 26,
+      "text": "1 TIRAMISU 13 e 13.00"
+    },
+    {
+      "lineIndex": 27,
+      "text": "1 PROFITEROLES 13 e 14.00"
+    },
+    {
+      "lineIndex": 28,
+      "text": "Total sem gratificacao: e 185.60"
+    },
+    {
+      "lineIndex": 29,
+      "text": "Suggested Service Charge /"
+    },
+    {
+      "lineIndex": 30,
+      "text": "Gratificacao Sugerida (8%) : e 14.85"
+    },
+    {
+      "lineIndex": 31,
+      "text": "********* ****"
+    },
+    {
+      "lineIndex": 32,
+      "text": "Total com"
+    },
+    {
+      "lineIndex": 33,
+      "text": "gratificacao: e 200.45"
+    },
+    {
+      "lineIndex": 34,
+      "text": "***"
+    },
+    {
+      "lineIndex": 35,
+      "text": "Nome:"
+    },
+    {
+      "lineIndex": 36,
+      "text": "(Name)"
+    },
+    {
+      "lineIndex": 37,
+      "text": "N. Quarto:"
+    },
+    {
+      "lineIndex": 38,
+      "text": "(Room Number)"
+    },
+    {
+      "lineIndex": 39,
+      "text": "Assinatura:"
+    },
+    {
+      "lineIndex": 40,
+      "text": "(Signature)"
+    },
+    {
+      "lineIndex": 41,
+      "text": "******** **************"
+    },
+    {
+      "lineIndex": 42,
+      "text": "Se pretender incluir a gratificacao"
+    },
+    {
+      "lineIndex": 43,
+      "text": "sugerida, o valor sera entregue"
+    },
+    {
+      "lineIndex": 44,
+      "text": "à nossa equipa."
+    }
+  ],
+  "ledger": [
+    {
+      "amountId": "A1",
+      "wordId": "W14",
+      "lineIndex": 3,
+      "rawText": "212",
+      "value": 212,
+      "ocrConfidence": 0.98478657,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 469,
+            "y": 290
+          },
+          {
+            "x": 522,
+            "y": 291
+          },
+          {
+            "x": 522,
+            "y": 320
+          },
+          {
+            "x": 469,
+            "y": 319
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A2",
+      "wordId": "W20",
+      "lineIndex": 4,
+      "rawText": "-821",
+      "value": -821,
+      "ocrConfidence": 0.98978275,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 522,
+            "y": 330
+          },
+          {
+            "x": 654,
+            "y": 332
+          },
+          {
+            "x": 654,
+            "y": 363
+          },
+          {
+            "x": 522,
+            "y": 361
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A3",
+      "wordId": "W37",
+      "lineIndex": 8,
+      "rawText": "10.000,00",
+      "value": 10000,
+      "ocrConfidence": 0.988929,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 452,
+            "y": 496
+          },
+          {
+            "x": 604,
+            "y": 499
+          },
+          {
+            "x": 603,
+            "y": 531
+          },
+          {
+            "x": 451,
+            "y": 528
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A4",
+      "wordId": "W50",
+      "lineIndex": 11,
+      "rawText": "42",
+      "value": 42,
+      "ocrConfidence": 0.9915272,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 530,
+            "y": 623
+          },
+          {
+            "x": 667,
+            "y": 625
+          },
+          {
+            "x": 666,
+            "y": 656
+          },
+          {
+            "x": 529,
+            "y": 654
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A5",
+      "wordId": "W54",
+      "lineIndex": 13,
+      "rawText": "6",
+      "value": 6,
+      "ocrConfidence": 0.9461531,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 174,
+            "y": 786
+          },
+          {
+            "x": 207,
+            "y": 786
+          },
+          {
+            "x": 207,
+            "y": 812
+          },
+          {
+            "x": 174,
+            "y": 812
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A6",
+      "wordId": "W72",
+      "lineIndex": 17,
+      "rawText": "9.60",
+      "value": 9.6,
+      "ocrConfidence": 0.9910328,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 777,
+            "y": 1004
+          },
+          {
+            "x": 848,
+            "y": 1005
+          },
+          {
+            "x": 848,
+            "y": 1034
+          },
+          {
+            "x": 777,
+            "y": 1033
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A7",
+      "wordId": "W78",
+      "lineIndex": 18,
+      "rawText": "4.00",
+      "value": 4,
+      "ocrConfidence": 0.9905626,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 776,
+            "y": 1047
+          },
+          {
+            "x": 848,
+            "y": 1049
+          },
+          {
+            "x": 847,
+            "y": 1078
+          },
+          {
+            "x": 775,
+            "y": 1076
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A8",
+      "wordId": "W84",
+      "lineIndex": 19,
+      "rawText": "13.00",
+      "value": 13,
+      "ocrConfidence": 0.9912984,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 765,
+            "y": 1088
+          },
+          {
+            "x": 848,
+            "y": 1090
+          },
+          {
+            "x": 847,
+            "y": 1119
+          },
+          {
+            "x": 764,
+            "y": 1117
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A9",
+      "wordId": "W90",
+      "lineIndex": 20,
+      "rawText": "12.00",
+      "value": 12,
+      "ocrConfidence": 0.99139714,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 763,
+            "y": 1130
+          },
+          {
+            "x": 848,
+            "y": 1132
+          },
+          {
+            "x": 847,
+            "y": 1162
+          },
+          {
+            "x": 762,
+            "y": 1160
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A10",
+      "wordId": "W96",
+      "lineIndex": 21,
+      "rawText": "18.00",
+      "value": 18,
+      "ocrConfidence": 0.9901447,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 763,
+            "y": 1172
+          },
+          {
+            "x": 847,
+            "y": 1174
+          },
+          {
+            "x": 846,
+            "y": 1204
+          },
+          {
+            "x": 762,
+            "y": 1202
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A11",
+      "wordId": "W102",
+      "lineIndex": 22,
+      "rawText": "22.00",
+      "value": 22,
+      "ocrConfidence": 0.99228513,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 759,
+            "y": 1215
+          },
+          {
+            "x": 846,
+            "y": 1217
+          },
+          {
+            "x": 845,
+            "y": 1248
+          },
+          {
+            "x": 758,
+            "y": 1246
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A12",
+      "wordId": "W108",
+      "lineIndex": 23,
+      "rawText": "38.00",
+      "value": 38,
+      "ocrConfidence": 0.987019,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 760,
+            "y": 1258
+          },
+          {
+            "x": 846,
+            "y": 1260
+          },
+          {
+            "x": 845,
+            "y": 1289
+          },
+          {
+            "x": 759,
+            "y": 1287
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A13",
+      "wordId": "W115",
+      "lineIndex": 24,
+      "rawText": "32.00",
+      "value": 32,
+      "ocrConfidence": 0.99339265,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 758,
+            "y": 1299
+          },
+          {
+            "x": 847,
+            "y": 1301
+          },
+          {
+            "x": 846,
+            "y": 1333
+          },
+          {
+            "x": 757,
+            "y": 1331
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A14",
+      "wordId": "W122",
+      "lineIndex": 25,
+      "rawText": "10.00",
+      "value": 10,
+      "ocrConfidence": 0.99316627,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 762,
+            "y": 1342
+          },
+          {
+            "x": 847,
+            "y": 1344
+          },
+          {
+            "x": 846,
+            "y": 1376
+          },
+          {
+            "x": 761,
+            "y": 1374
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A15",
+      "wordId": "W127",
+      "lineIndex": 26,
+      "rawText": "13.00",
+      "value": 13,
+      "ocrConfidence": 0.99305254,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 761,
+            "y": 1386
+          },
+          {
+            "x": 846,
+            "y": 1388
+          },
+          {
+            "x": 845,
+            "y": 1417
+          },
+          {
+            "x": 760,
+            "y": 1415
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A16",
+      "wordId": "W132",
+      "lineIndex": 27,
+      "rawText": "14.00",
+      "value": 14,
+      "ocrConfidence": 0.99333,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 760,
+            "y": 1429
+          },
+          {
+            "x": 846,
+            "y": 1431
+          },
+          {
+            "x": 845,
+            "y": 1462
+          },
+          {
+            "x": 759,
+            "y": 1460
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A17",
+      "wordId": "W138",
+      "lineIndex": 28,
+      "rawText": "185.60",
+      "value": 185.6,
+      "ocrConfidence": 0.99119407,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 742,
+            "y": 1517
+          },
+          {
+            "x": 845,
+            "y": 1517
+          },
+          {
+            "x": 845,
+            "y": 1547
+          },
+          {
+            "x": 742,
+            "y": 1547
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A18",
+      "wordId": "W151",
+      "lineIndex": 30,
+      "rawText": "14.85",
+      "value": 14.85,
+      "ocrConfidence": 0.9921898,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 758,
+            "y": 1643
+          },
+          {
+            "x": 846,
+            "y": 1645
+          },
+          {
+            "x": 845,
+            "y": 1681
+          },
+          {
+            "x": 757,
+            "y": 1679
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A19",
+      "wordId": "W159",
+      "lineIndex": 33,
+      "rawText": "200.45",
+      "value": 200.45,
+      "ocrConfidence": 0.9898022,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 629,
+            "y": 1816
+          },
+          {
+            "x": 839,
+            "y": 1824
+          },
+          {
+            "x": 838,
+            "y": 1856
+          },
+          {
+            "x": 628,
+            "y": 1848
+          }
+        ]
+      }
+    }
+  ],
+  "summaryBlocks": [
+    {
+      "blockId": "b13",
+      "name": "Total sem gratificacao",
+      "lineIndices": [
+        28
+      ],
+      "amountId": "A17",
+      "value": 185.6
+    },
+    {
+      "blockId": "b14",
+      "name": "Gratificacao Sugerida (8%)",
+      "lineIndices": [
+        29,
+        30
+      ],
+      "amountId": "A18",
+      "value": 14.85
+    },
+    {
+      "blockId": "b15",
+      "name": "Total com gratificacao",
+      "lineIndices": [
+        31,
+        32,
+        33
+      ],
+      "amountId": "A19",
+      "value": 200.45
+    }
+  ],
+  "summaryRoleAssignments": [
+    {
+      "amountId": "A17",
+      "role": "GRAND_TOTAL",
+      "value": 185.6
+    }
+  ],
+  "summaryCoverage": [
+    {
+      "amountId": "A17",
+      "lineIndex": 28,
+      "role": "GRAND_TOTAL",
+      "value": 185.6
+    },
+    {
+      "amountId": "A18",
+      "lineIndex": 30,
+      "role": "UNRESOLVED",
+      "value": 14.85
+    },
+    {
+      "amountId": "A19",
+      "lineIndex": 33,
+      "role": "UNRESOLVED",
+      "value": 200.45
+    }
+  ],
+  "summaryDuplicateRoles": [],
+  "summaryCoverageValid": false,
+  "summaryMonetaryObservationCount": 3,
+  "summaryClaimedAmountCount": 1,
+  "summaryUnresolvedAmountCount": 2,
+  "summaryDuplicateRoleAttemptCount": 0,
+  "validity": {
+    "valid": false,
+    "structuralGapCount": 0,
+    "echoExactCount": 0,
+    "echoMultiplicativeCount": 0,
+    "descriptiveNumberCount": 0,
+    "zeroValueCount": 0,
+    "rowQuantityProvenCount": 0,
+    "rowUnitPriceProvenCount": 0,
+    "itemsProvenNonAdditiveCount": 0,
+    "unresolvedLoadBearingCount": 1,
+    "duplicateOwnershipCount": 0,
+    "ownershipInvalidCount": 0,
+    "reconciles": false
+  },
+  "finalReconciles": false,
+  "structureAgreement": null,
+  "structureDisagreements": [],
+  "priceKindOverrideCount": 0,
+  "priceKindOverrides": [],
+  "crossingsDetected": 0,
+  "summaryBoundaryPenalties": 0,
+  "offsetFormDetected": false,
+  "offsetHypothesisAdopted": "H0",
+  "totalWitness": "label",
+  "totalWitnessAgreement": "label_only",
+  "totalCandidatesFound": 1,
+  "totalChosenBy": "single",
+  "provenNonAdditiveCount": 0,
+  "provenNonAdditiveBlockedBy": "larger_unresolved_value",
+  "provenAdditiveCount": 0,
+  "additiveCorroboratedByRate": false,
+  "provenAdditiveBlockedBy": "items_region_unresolved",
+  "columnRolesDetected": {
+    "quantity": false,
+    "unitPrice": false,
+    "total": true
+  },
+  "rowsArithmeticallyProven": 0,
+  "itemsRegionSaturated": false,
+  "itemsRegionSaturationCount": 0,
+  "itemsRegionSaturationBlockedBy": "no_separate_total_band",
+  "partialNumberTokensRejected": 5,
+  "blocks": [
+    {
+      "blockId": "b0",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b0",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b1",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A3",
+        "A4",
+        "A5",
+        "A6"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b1",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b2",
+      "kind": "ITEM",
+      "lineIndices": [
+        17
+      ],
+      "parentBlockId": null,
+      "name": "Couvert",
+      "amountId": "A6",
+      "quantity": 2,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b2",
+        "amountId": "A6",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b3",
+      "kind": "ITEM",
+      "lineIndices": [
+        18
+      ],
+      "parentBlockId": null,
+      "name": "AGUA BOUGAIN",
+      "amountId": "A7",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b3",
+        "amountId": "A7",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b4",
+      "kind": "ITEM",
+      "lineIndices": [
+        19
+      ],
+      "parentBlockId": null,
+      "name": "SPICY MARGARITA",
+      "amountId": "A8",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8",
+        "A9",
+        "A10"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b4",
+        "amountId": "A8",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b5",
+      "kind": "ITEM",
+      "lineIndices": [
+        20
+      ],
+      "parentBlockId": null,
+      "name": "Pina DESCOLADA",
+      "amountId": "A9",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A7",
+        "A8",
+        "A9",
+        "A10",
+        "A11"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b5",
+        "amountId": "A9",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b6",
+      "kind": "ITEM",
+      "lineIndices": [
+        21
+      ],
+      "parentBlockId": null,
+      "name": "Ostras 6und",
+      "amountId": "A10",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A8",
+        "A9",
+        "A10",
+        "A11",
+        "A12"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b6",
+        "amountId": "A10",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b7",
+      "kind": "ITEM",
+      "lineIndices": [
+        22
+      ],
+      "parentBlockId": null,
+      "name": "Tartar ATUM",
+      "amountId": "A11",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A9",
+        "A10",
+        "A11",
+        "A12",
+        "A13"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b7",
+        "amountId": "A11",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b8",
+      "kind": "ITEM",
+      "lineIndices": [
+        23
+      ],
+      "parentBlockId": null,
+      "name": "Camarao Tigre",
+      "amountId": "A12",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b8",
+        "amountId": "A12",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b9",
+      "kind": "ITEM",
+      "lineIndices": [
+        24
+      ],
+      "parentBlockId": null,
+      "name": "Steak Tartare 180GR",
+      "amountId": "A13",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A15"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b9",
+        "amountId": "A13",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b10",
+      "kind": "ITEM",
+      "lineIndices": [
+        25
+      ],
+      "parentBlockId": null,
+      "name": "CP-SONHADOR",
+      "amountId": "A14",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A12",
+        "A13",
+        "A14",
+        "A15",
+        "A16"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b10",
+        "amountId": "A14",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b11",
+      "kind": "ITEM",
+      "lineIndices": [
+        26
+      ],
+      "parentBlockId": null,
+      "name": "TIRAMISU",
+      "amountId": "A15",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A13",
+        "A14",
+        "A15",
+        "A16",
+        "A17"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b11",
+        "amountId": "A15",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b12",
+      "kind": "ITEM",
+      "lineIndices": [
+        27
+      ],
+      "parentBlockId": null,
+      "name": "PROFITEROLES",
+      "amountId": "A16",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A14",
+        "A15",
+        "A16",
+        "A17"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b12",
+        "amountId": "A16",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b13",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        28
+      ],
+      "parentBlockId": null,
+      "name": "Total sem gratificacao",
+      "amountId": "A17",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A15",
+        "A16",
+        "A17",
+        "A18"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b13",
+        "amountId": "A17",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b14",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        29,
+        30
+      ],
+      "parentBlockId": null,
+      "name": "Gratificacao Sugerida (8%)",
+      "amountId": "A18",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A16",
+        "A17",
+        "A18"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b14",
+        "amountId": "A18",
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b15",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        31,
+        32,
+        33
+      ],
+      "parentBlockId": null,
+      "name": "Total com gratificacao",
+      "amountId": "A19",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A18",
+        "A19"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b15",
+        "amountId": "A19",
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b16",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A19"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b16",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    }
+  ],
+  "finalItems": [
+    {
+      "itemInstanceId": "b2",
+      "name": "Couvert",
+      "sourceLineIndex": 17,
+      "priceTokenValue": null,
+      "quantity": 2,
+      "modifiers": [],
+      "effectiveTotal": 9.6
+    },
+    {
+      "itemInstanceId": "b3",
+      "name": "AGUA BOUGAIN",
+      "sourceLineIndex": 18,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 4
+    },
+    {
+      "itemInstanceId": "b4",
+      "name": "SPICY MARGARITA",
+      "sourceLineIndex": 19,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 13
+    },
+    {
+      "itemInstanceId": "b5",
+      "name": "Pina DESCOLADA",
+      "sourceLineIndex": 20,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 12
+    },
+    {
+      "itemInstanceId": "b6",
+      "name": "Ostras 6und",
+      "sourceLineIndex": 21,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 18
+    },
+    {
+      "itemInstanceId": "b7",
+      "name": "Tartar ATUM",
+      "sourceLineIndex": 22,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 22
+    },
+    {
+      "itemInstanceId": "b8",
+      "name": "Camarao Tigre",
+      "sourceLineIndex": 23,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 38
+    },
+    {
+      "itemInstanceId": "b9",
+      "name": "Steak Tartare 180GR",
+      "sourceLineIndex": 24,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 32
+    },
+    {
+      "itemInstanceId": "b10",
+      "name": "CP-SONHADOR",
+      "sourceLineIndex": 25,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 10
+    },
+    {
+      "itemInstanceId": "b11",
+      "name": "TIRAMISU",
+      "sourceLineIndex": 26,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 13
+    },
+    {
+      "itemInstanceId": "b12",
+      "name": "PROFITEROLES",
+      "sourceLineIndex": 27,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 14
+    }
+  ],
+  "arithmetic": [
+    "item[0] \"Couvert\" = lineTotal(9.6) = 9.6   [running sum = 9.6]",
+    "item[1] \"AGUA BOUGAIN\" = lineTotal(4) = 4   [running sum = 13.6]",
+    "item[2] \"SPICY MARGARITA\" = lineTotal(13) = 13   [running sum = 26.6]",
+    "item[3] \"Pina DESCOLADA\" = lineTotal(12) = 12   [running sum = 38.6]",
+    "item[4] \"Ostras 6und\" = lineTotal(18) = 18   [running sum = 56.6]",
+    "item[5] \"Tartar ATUM\" = lineTotal(22) = 22   [running sum = 78.6]",
+    "item[6] \"Camarao Tigre\" = lineTotal(38) = 38   [running sum = 116.6]",
+    "item[7] \"Steak Tartare 180GR\" = lineTotal(32) = 32   [running sum = 148.6]",
+    "item[8] \"CP-SONHADOR\" = lineTotal(10) = 10   [running sum = 158.6]",
+    "item[9] \"TIRAMISU\" = lineTotal(13) = 13   [running sum = 171.6]",
+    "item[10] \"PROFITEROLES\" = lineTotal(14) = 14   [running sum = 185.6]"
+  ],
+  "calculatedSubtotal": 185.6,
+  "printedSubtotal": 185.6,
+  "printedTotal": 185.6,
+  "subtotalDelta": 0,
+  "reconciles": false,
+  "arithmeticReconciles": true,
+  "expectedTotal": null,
+  "expectedDelta": null,
+  "orphanCount": 5,
+  "unresolvedLines": [
+    {
+      "id": "unclassified_b14",
+      "amount": 14.85,
+      "text": "Suggested Service Charge /",
+      "lineIndex": 29
+    },
+    {
+      "id": "unclassified_b15",
+      "amount": 200.45,
+      "text": "********* ****",
+      "lineIndex": 31
+    },
+    {
+      "id": "orphan_A1",
+      "amount": 212,
+      "text": "212",
+      "lineIndex": 3
+    },
+    {
+      "id": "orphan_A2",
+      "amount": -821,
+      "text": "-821",
+      "lineIndex": 4
+    },
+    {
+      "id": "orphan_A3",
+      "amount": 10000,
+      "text": "10.000,00",
+      "lineIndex": 8
+    },
+    {
+      "id": "orphan_A4",
+      "amount": 42,
+      "text": "42",
+      "lineIndex": 11
+    },
+    {
+      "id": "orphan_A5",
+      "amount": 6,
+      "text": "6",
+      "lineIndex": 13
+    }
+  ],
+  "charges": [],
+  "suspectedPatterns": {
+    "subtotalCountedAsItem": [],
+    "totalCountedAsItem": [],
+    "taxCountedAsItem": [],
+    "amountClaimedByMultipleBlocks": [],
+    "duplicateWordIdsInLedger": [],
+    "overlappingItemLineIndices": [],
+    "itemBlocksAfterFirstSummaryLine": [],
+    "itemsWithQuantityAboveOne": [
+      {
+        "blockId": "b2",
+        "quantity": 2
+      }
+    ]
+  },
+  "verificationRound1": null,
+  "verificationRound2": null,
+  "reconciliationRetried": false
+}

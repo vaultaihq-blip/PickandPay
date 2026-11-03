@@ -1,0 +1,1740 @@
+{
+  "imagePath": null,
+  "fixturePath": "supabase/functions/parse-receipt/__fixtures__/vision-augustiner-de.json",
+  "verificationAvailable": false,
+  "merchant": "Augustiner",
+  "date": "2022-06-29",
+  "currency": "EUR",
+  "currencyRead": "EUR",
+  "structureTimeMs": 9400,
+  "structureTokenUsage": {
+    "promptTokens": 1790,
+    "completionTokens": 729,
+    "totalTokens": 2519
+  },
+  "structureRetryFired": false,
+  "structuralGapCountBeforeRetry": null,
+  "ocrLines": [
+    {
+      "lineIndex": 0,
+      "text": "Augustiner"
+    },
+    {
+      "lineIndex": 1,
+      "text": "St Tel Charlottenstr -Nr .:10117 .:03030/082/75157 am Berlin -Gendarmenmarkt 20454020 . 55"
+    },
+    {
+      "lineIndex": 2,
+      "text": "Rechnung"
+    },
+    {
+      "lineIndex": 3,
+      "text": "nabab 283513 Nr."
+    },
+    {
+      "lineIndex": 4,
+      "text": "pig Tisch"
+    },
+    {
+      "lineIndex": 5,
+      "text": "#304"
+    },
+    {
+      "lineIndex": 6,
+      "text": "15"
+    },
+    {
+      "lineIndex": 7,
+      "text": "8x4,20"
+    },
+    {
+      "lineIndex": 8,
+      "text": "HELLES 0,5L 33,60"
+    },
+    {
+      "lineIndex": 9,
+      "text": "3 x 11,50"
+    },
+    {
+      "lineIndex": 10,
+      "text": "Currywurst + Pommes 34,502"
+    },
+    {
+      "lineIndex": 11,
+      "text": "Leberkäs 11,50"
+    },
+    {
+      "lineIndex": 12,
+      "text": "Weisswürste 2 Stk. 7,50"
+    },
+    {
+      "lineIndex": 13,
+      "text": "Brez'n 2,50"
+    },
+    {
+      "lineIndex": 14,
+      "text": "Aqua Panna 0,75L 6,90"
+    },
+    {
+      "lineIndex": 15,
+      "text": "Total 96,50"
+    },
+    {
+      "lineIndex": 16,
+      "text": "Nettoumsatz 86,37"
+    },
+    {
+      "lineIndex": 17,
+      "text": "Umsatz 19% inkl. 40,50"
+    },
+    {
+      "lineIndex": 18,
+      "text": "MwSt 19% 6,47"
+    },
+    {
+      "lineIndex": 19,
+      "text": "Umsatz 7% inkl. 56,00"
+    },
+    {
+      "lineIndex": 20,
+      "text": "MwSt 7% 3,66"
+    },
+    {
+      "lineIndex": 21,
+      "text": "96,50"
+    },
+    {
+      "lineIndex": 22,
+      "text": "Bar"
+    },
+    {
+      "lineIndex": 23,
+      "text": "Beginn Seq. -Nr/Ende .: 58263 : 29.6.2022 | S/N: 2579495 14:07 |"
+    },
+    {
+      "lineIndex": 24,
+      "text": "29. 6. 2022 15:47"
+    },
+    {
+      "lineIndex": 25,
+      "text": "Transaktion: 43492 |"
+    },
+    {
+      "lineIndex": 26,
+      "text": "ON 3epen aS4ut Signaturzähler --kZINA NRp+G--U1YF5 1j7AP : 120590 --ATObR h2A6s--XroBx- UIxDJ-"
+    },
+    {
+      "lineIndex": 27,
+      "text": "iUVs2-YNtD+-p8XmV-15s3j-yUevY-"
+    },
+    {
+      "lineIndex": 28,
+      "text": "N9SKY-J04F0-DXY/7-5exVh-Awfaz-"
+    },
+    {
+      "lineIndex": 29,
+      "text": "Bm8u1-0Apdj-Ti3pY-KCCOU-MIMhI-"
+    },
+    {
+      "lineIndex": 30,
+      "text": "974"
+    },
+    {
+      "lineIndex": 31,
+      "text": "15:47 29.6.2022 1 BED. 1 283513"
+    },
+    {
+      "lineIndex": 32,
+      "text": "Ks2 Mob 71"
+    },
+    {
+      "lineIndex": 33,
+      "text": "TIP IS NOT"
+    },
+    {
+      "lineIndex": 34,
+      "text": "INCLUDED 29/06/2022 15:48"
+    }
+  ],
+  "ledger": [
+    {
+      "amountId": "A1",
+      "wordId": "W10",
+      "lineIndex": 1,
+      "rawText": "55",
+      "value": 55,
+      "ocrConfidence": 0.97957206,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1027,
+            "y": 914
+          },
+          {
+            "x": 1083,
+            "y": 917
+          },
+          {
+            "x": 1081,
+            "y": 955
+          },
+          {
+            "x": 1025,
+            "y": 952
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A2",
+      "wordId": "W28",
+      "lineIndex": 5,
+      "rawText": "304",
+      "value": 304,
+      "ocrConfidence": 0.9908838,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 739,
+            "y": 1370
+          },
+          {
+            "x": 774,
+            "y": 1376
+          },
+          {
+            "x": 759,
+            "y": 1466
+          },
+          {
+            "x": 724,
+            "y": 1460
+          },
+          {
+            "x": 794,
+            "y": 1379
+          },
+          {
+            "x": 934,
+            "y": 1403
+          },
+          {
+            "x": 918,
+            "y": 1494
+          },
+          {
+            "x": 779,
+            "y": 1470
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A3",
+      "wordId": "W4",
+      "lineIndex": 6,
+      "rawText": "15",
+      "value": 15,
+      "ocrConfidence": 0.5926631,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 48,
+            "y": 1456
+          },
+          {
+            "x": 106,
+            "y": 1490
+          },
+          {
+            "x": 50,
+            "y": 1585
+          },
+          {
+            "x": 0,
+            "y": 1551
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A4",
+      "wordId": "W30",
+      "lineIndex": 7,
+      "rawText": "4,20",
+      "value": 4.2,
+      "ocrConfidence": 0.8188275,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 423,
+            "y": 1534
+          },
+          {
+            "x": 451,
+            "y": 1540
+          },
+          {
+            "x": 442,
+            "y": 1582
+          },
+          {
+            "x": 414,
+            "y": 1576
+          },
+          {
+            "x": 468,
+            "y": 1543
+          },
+          {
+            "x": 505,
+            "y": 1551
+          },
+          {
+            "x": 496,
+            "y": 1593
+          },
+          {
+            "x": 459,
+            "y": 1585
+          },
+          {
+            "x": 520,
+            "y": 1554
+          },
+          {
+            "x": 625,
+            "y": 1576
+          },
+          {
+            "x": 616,
+            "y": 1619
+          },
+          {
+            "x": 511,
+            "y": 1597
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A5",
+      "wordId": "W34",
+      "lineIndex": 8,
+      "rawText": "0,5",
+      "value": 0.5,
+      "ocrConfidence": 0.98259145,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 593,
+            "y": 1630
+          },
+          {
+            "x": 699,
+            "y": 1651
+          },
+          {
+            "x": 691,
+            "y": 1693
+          },
+          {
+            "x": 585,
+            "y": 1672
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A6",
+      "wordId": "W38",
+      "lineIndex": 8,
+      "rawText": "33,60",
+      "value": 33.6,
+      "ocrConfidence": 0.97309715,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1069,
+            "y": 1648
+          },
+          {
+            "x": 1119,
+            "y": 1645
+          },
+          {
+            "x": 1122,
+            "y": 1690
+          },
+          {
+            "x": 1072,
+            "y": 1693
+          },
+          {
+            "x": 1120,
+            "y": 1644
+          },
+          {
+            "x": 1128,
+            "y": 1643
+          },
+          {
+            "x": 1131,
+            "y": 1688
+          },
+          {
+            "x": 1123,
+            "y": 1689
+          },
+          {
+            "x": 1147,
+            "y": 1642
+          },
+          {
+            "x": 1197,
+            "y": 1639
+          },
+          {
+            "x": 1200,
+            "y": 1685
+          },
+          {
+            "x": 1150,
+            "y": 1688
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A7",
+      "wordId": "W37",
+      "lineIndex": 9,
+      "rawText": "11,50",
+      "value": 11.5,
+      "ocrConfidence": 0.960863,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 517,
+            "y": 1739
+          },
+          {
+            "x": 641,
+            "y": 1760
+          },
+          {
+            "x": 634,
+            "y": 1806
+          },
+          {
+            "x": 509,
+            "y": 1785
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A8",
+      "wordId": "W44",
+      "lineIndex": 10,
+      "rawText": "34,502",
+      "value": 34502,
+      "ocrConfidence": 0.8424046,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1067,
+            "y": 1806
+          },
+          {
+            "x": 1296,
+            "y": 1819
+          },
+          {
+            "x": 1293,
+            "y": 1871
+          },
+          {
+            "x": 1064,
+            "y": 1858
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A9",
+      "wordId": "W46",
+      "lineIndex": 11,
+      "rawText": "11,50",
+      "value": 11.5,
+      "ocrConfidence": 0.993728,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1071,
+            "y": 1937
+          },
+          {
+            "x": 1195,
+            "y": 1929
+          },
+          {
+            "x": 1198,
+            "y": 1975
+          },
+          {
+            "x": 1074,
+            "y": 1983
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A10",
+      "wordId": "W51",
+      "lineIndex": 12,
+      "rawText": "7,50",
+      "value": 7.5,
+      "ocrConfidence": 0.99266386,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1095,
+            "y": 2062
+          },
+          {
+            "x": 1200,
+            "y": 2055
+          },
+          {
+            "x": 1203,
+            "y": 2101
+          },
+          {
+            "x": 1098,
+            "y": 2108
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A11",
+      "wordId": "W53",
+      "lineIndex": 13,
+      "rawText": "2,50",
+      "value": 2.5,
+      "ocrConfidence": 0.99157214,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1101,
+            "y": 2189
+          },
+          {
+            "x": 1205,
+            "y": 2183
+          },
+          {
+            "x": 1208,
+            "y": 2233
+          },
+          {
+            "x": 1104,
+            "y": 2239
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A12",
+      "wordId": "W56",
+      "lineIndex": 14,
+      "rawText": "0,75",
+      "value": 0.75,
+      "ocrConfidence": 0.95324033,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 679,
+            "y": 2331
+          },
+          {
+            "x": 815,
+            "y": 2333
+          },
+          {
+            "x": 814,
+            "y": 2384
+          },
+          {
+            "x": 678,
+            "y": 2382
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A13",
+      "wordId": "W57",
+      "lineIndex": 14,
+      "rawText": "6,90",
+      "value": 6.9,
+      "ocrConfidence": 0.9921309,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1103,
+            "y": 2319
+          },
+          {
+            "x": 1209,
+            "y": 2312
+          },
+          {
+            "x": 1212,
+            "y": 2357
+          },
+          {
+            "x": 1106,
+            "y": 2364
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A14",
+      "wordId": "W59",
+      "lineIndex": 15,
+      "rawText": "96,50",
+      "value": 96.5,
+      "ocrConfidence": 0.98807526,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1079,
+            "y": 2450
+          },
+          {
+            "x": 1218,
+            "y": 2445
+          },
+          {
+            "x": 1220,
+            "y": 2491
+          },
+          {
+            "x": 1081,
+            "y": 2496
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A15",
+      "wordId": "W61",
+      "lineIndex": 16,
+      "rawText": "86,37",
+      "value": 86.37,
+      "ocrConfidence": 0.9852869,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 924,
+            "y": 2525
+          },
+          {
+            "x": 1058,
+            "y": 2522
+          },
+          {
+            "x": 1059,
+            "y": 2572
+          },
+          {
+            "x": 925,
+            "y": 2575
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A16",
+      "wordId": "W67",
+      "lineIndex": 17,
+      "rawText": "40,50",
+      "value": 40.5,
+      "ocrConfidence": 0.98337436,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 917,
+            "y": 2591
+          },
+          {
+            "x": 1062,
+            "y": 2589
+          },
+          {
+            "x": 1063,
+            "y": 2640
+          },
+          {
+            "x": 918,
+            "y": 2642
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A17",
+      "wordId": "W71",
+      "lineIndex": 18,
+      "rawText": "6,47",
+      "value": 6.47,
+      "ocrConfidence": 0.98938656,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 953,
+            "y": 2660
+          },
+          {
+            "x": 1064,
+            "y": 2655
+          },
+          {
+            "x": 1066,
+            "y": 2702
+          },
+          {
+            "x": 955,
+            "y": 2707
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A18",
+      "wordId": "W77",
+      "lineIndex": 19,
+      "rawText": "56,00",
+      "value": 56,
+      "ocrConfidence": 0.98880714,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 926,
+            "y": 2728
+          },
+          {
+            "x": 1068,
+            "y": 2724
+          },
+          {
+            "x": 1069,
+            "y": 2769
+          },
+          {
+            "x": 927,
+            "y": 2773
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A19",
+      "wordId": "W81",
+      "lineIndex": 20,
+      "rawText": "3,66",
+      "value": 3.66,
+      "ocrConfidence": 0.9911014,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 960,
+            "y": 2793
+          },
+          {
+            "x": 1070,
+            "y": 2786
+          },
+          {
+            "x": 1073,
+            "y": 2835
+          },
+          {
+            "x": 963,
+            "y": 2842
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A20",
+      "wordId": "W83",
+      "lineIndex": 21,
+      "rawText": "96,50",
+      "value": 96.5,
+      "ocrConfidence": 0.9832399,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 933,
+            "y": 2868
+          },
+          {
+            "x": 1207,
+            "y": 2850
+          },
+          {
+            "x": 1214,
+            "y": 2944
+          },
+          {
+            "x": 939,
+            "y": 2963
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A21",
+      "wordId": "W105",
+      "lineIndex": 24,
+      "rawText": "47",
+      "value": 47,
+      "ocrConfidence": 0.9953144,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 650,
+            "y": 3203
+          },
+          {
+            "x": 793,
+            "y": 3194
+          },
+          {
+            "x": 796,
+            "y": 3248
+          },
+          {
+            "x": 653,
+            "y": 3257
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A22",
+      "wordId": "W158",
+      "lineIndex": 30,
+      "rawText": "974",
+      "value": 974,
+      "ocrConfidence": 0.9936777,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 323,
+            "y": 3862
+          },
+          {
+            "x": 420,
+            "y": 3860
+          },
+          {
+            "x": 421,
+            "y": 3918
+          },
+          {
+            "x": 324,
+            "y": 3920
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A23",
+      "wordId": "W165",
+      "lineIndex": 31,
+      "rawText": "513",
+      "value": 513,
+      "ocrConfidence": 0.99243677,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1162,
+            "y": 3997
+          },
+          {
+            "x": 1366,
+            "y": 3988
+          },
+          {
+            "x": 1369,
+            "y": 4048
+          },
+          {
+            "x": 1165,
+            "y": 4057
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A24",
+      "wordId": "W168",
+      "lineIndex": 32,
+      "rawText": "71",
+      "value": 71,
+      "ocrConfidence": 0.9908298,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 584,
+            "y": 4114
+          },
+          {
+            "x": 646,
+            "y": 4111
+          },
+          {
+            "x": 648,
+            "y": 4166
+          },
+          {
+            "x": 586,
+            "y": 4169
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A25",
+      "wordId": "W174",
+      "lineIndex": 34,
+      "rawText": "48",
+      "value": 48,
+      "ocrConfidence": 0.99637884,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1796,
+            "y": 4366
+          },
+          {
+            "x": 1929,
+            "y": 4365
+          },
+          {
+            "x": 1929,
+            "y": 4406
+          },
+          {
+            "x": 1796,
+            "y": 4407
+          }
+        ]
+      }
+    }
+  ],
+  "summaryBlocks": [
+    {
+      "blockId": "b11",
+      "name": "Total",
+      "lineIndices": [
+        15
+      ],
+      "amountId": "A14",
+      "value": 96.5
+    },
+    {
+      "blockId": "b12",
+      "name": null,
+      "lineIndices": [
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "amountId": null,
+      "value": null
+    },
+    {
+      "blockId": "b13",
+      "name": null,
+      "lineIndices": [
+        21
+      ],
+      "amountId": "A20",
+      "value": 96.5
+    }
+  ],
+  "summaryRoleAssignments": [
+    {
+      "amountId": "A14",
+      "role": "GRAND_TOTAL",
+      "value": 96.5
+    }
+  ],
+  "summaryCoverage": [
+    {
+      "amountId": "A14",
+      "lineIndex": 15,
+      "role": "GRAND_TOTAL",
+      "value": 96.5
+    },
+    {
+      "amountId": "A15",
+      "lineIndex": 16,
+      "role": "UNRESOLVED",
+      "value": 86.37
+    },
+    {
+      "amountId": "A16",
+      "lineIndex": 17,
+      "role": "UNRESOLVED",
+      "value": 40.5
+    },
+    {
+      "amountId": "A17",
+      "lineIndex": 18,
+      "role": "UNRESOLVED",
+      "value": 6.47
+    },
+    {
+      "amountId": "A18",
+      "lineIndex": 19,
+      "role": "UNRESOLVED",
+      "value": 56
+    },
+    {
+      "amountId": "A19",
+      "lineIndex": 20,
+      "role": "UNRESOLVED",
+      "value": 3.66
+    },
+    {
+      "amountId": "A20",
+      "lineIndex": 21,
+      "role": "UNRESOLVED",
+      "value": 96.5
+    }
+  ],
+  "summaryDuplicateRoles": [],
+  "summaryCoverageValid": false,
+  "summaryMonetaryObservationCount": 7,
+  "summaryClaimedAmountCount": 1,
+  "summaryUnresolvedAmountCount": 6,
+  "summaryDuplicateRoleAttemptCount": 0,
+  "validity": {
+    "valid": false,
+    "structuralGapCount": 0,
+    "echoExactCount": 0,
+    "echoMultiplicativeCount": 1,
+    "descriptiveNumberCount": 0,
+    "zeroValueCount": 0,
+    "rowQuantityProvenCount": 0,
+    "rowUnitPriceProvenCount": 0,
+    "itemsProvenNonAdditiveCount": 0,
+    "unresolvedLoadBearingCount": 2,
+    "duplicateOwnershipCount": 0,
+    "ownershipInvalidCount": 0,
+    "reconciles": false
+  },
+  "finalReconciles": false,
+  "structureAgreement": null,
+  "structureDisagreements": [],
+  "priceKindOverrideCount": 0,
+  "priceKindOverrides": [],
+  "crossingsDetected": 0,
+  "summaryBoundaryPenalties": 0,
+  "offsetFormDetected": false,
+  "offsetHypothesisAdopted": "H0",
+  "totalWitness": "label",
+  "totalWitnessAgreement": "label_only",
+  "totalCandidatesFound": 1,
+  "totalChosenBy": "single",
+  "provenNonAdditiveCount": 0,
+  "provenNonAdditiveBlockedBy": "sum_mismatch",
+  "provenAdditiveCount": 0,
+  "additiveCorroboratedByRate": false,
+  "provenAdditiveBlockedBy": "items_region_unresolved",
+  "columnRolesDetected": {
+    "quantity": false,
+    "unitPrice": false,
+    "total": true
+  },
+  "rowsArithmeticallyProven": 0,
+  "itemsRegionSaturated": false,
+  "itemsRegionSaturationCount": 0,
+  "itemsRegionSaturationBlockedBy": "no_separate_total_band",
+  "partialNumberTokensRejected": 10,
+  "blocks": [
+    {
+      "blockId": "b0",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        0
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b0",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b1",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        1
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b1",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b2",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        2
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b2",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b3",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        3,
+        4,
+        5
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b3",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b4",
+      "kind": "QUANTITY",
+      "lineIndices": [
+        6
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": 15,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b4",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b5",
+      "kind": "ITEM",
+      "lineIndices": [
+        7,
+        8
+      ],
+      "parentBlockId": null,
+      "name": "HELLES 0,5L",
+      "amountId": "A6",
+      "quantity": 8,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b5",
+        "amountId": "A6",
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b6",
+      "kind": "ITEM",
+      "lineIndices": [
+        9,
+        10
+      ],
+      "parentBlockId": null,
+      "name": "Currywurst + Pommes",
+      "amountId": null,
+      "quantity": 3,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8",
+        "A9",
+        "A10"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b6",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b7",
+      "kind": "ITEM",
+      "lineIndices": [
+        11
+      ],
+      "parentBlockId": null,
+      "name": "Leberkäs",
+      "amountId": "A9",
+      "quantity": 1,
+      "priceKind": "unit",
+      "eligibleAmountIds": [
+        "A7",
+        "A8",
+        "A9",
+        "A10",
+        "A11"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b7",
+        "amountId": "A9",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b8",
+      "kind": "ITEM",
+      "lineIndices": [
+        12
+      ],
+      "parentBlockId": null,
+      "name": "Weisswürste",
+      "amountId": "A10",
+      "quantity": 2,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A8",
+        "A9",
+        "A10",
+        "A11",
+        "A12",
+        "A13"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b8",
+        "amountId": "A10",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b9",
+      "kind": "ITEM",
+      "lineIndices": [
+        13
+      ],
+      "parentBlockId": null,
+      "name": "Brez'n",
+      "amountId": "A11",
+      "quantity": 1,
+      "priceKind": "unit",
+      "eligibleAmountIds": [
+        "A9",
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b9",
+        "amountId": "A11",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b10",
+      "kind": "ITEM",
+      "lineIndices": [
+        14
+      ],
+      "parentBlockId": null,
+      "name": "Aqua Panna 0,75L",
+      "amountId": "A13",
+      "quantity": 1,
+      "priceKind": "unit",
+      "eligibleAmountIds": [
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A15"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b10",
+        "amountId": "A13",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b11",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        15
+      ],
+      "parentBlockId": null,
+      "name": "Total",
+      "amountId": "A14",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A15",
+        "A16"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b11",
+        "amountId": "A14",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b12",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A12",
+        "A13",
+        "A14",
+        "A15",
+        "A16",
+        "A17",
+        "A18",
+        "A19",
+        "A20"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b12",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b13",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        21
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": "A20",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A18",
+        "A19",
+        "A20"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b13",
+        "amountId": "A20",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b14",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A19",
+        "A20",
+        "A21",
+        "A22",
+        "A23",
+        "A24",
+        "A25"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b14",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b15",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        33,
+        34
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A23",
+        "A24",
+        "A25"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b15",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    }
+  ],
+  "finalItems": [
+    {
+      "itemInstanceId": "b5",
+      "name": "HELLES 0,5L",
+      "sourceLineIndex": 7,
+      "priceTokenValue": null,
+      "quantity": 8,
+      "modifiers": [],
+      "effectiveTotal": 33.6
+    },
+    {
+      "itemInstanceId": "b6",
+      "name": "Currywurst + Pommes",
+      "sourceLineIndex": 9,
+      "priceTokenValue": null,
+      "quantity": 3,
+      "modifiers": [],
+      "effectiveTotal": 0
+    },
+    {
+      "itemInstanceId": "b7",
+      "name": "Leberkäs",
+      "sourceLineIndex": 11,
+      "priceTokenValue": 11.5,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 11.5
+    },
+    {
+      "itemInstanceId": "b8",
+      "name": "Weisswürste",
+      "sourceLineIndex": 12,
+      "priceTokenValue": null,
+      "quantity": 2,
+      "modifiers": [],
+      "effectiveTotal": 7.5
+    },
+    {
+      "itemInstanceId": "b9",
+      "name": "Brez'n",
+      "sourceLineIndex": 13,
+      "priceTokenValue": 2.5,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 2.5
+    },
+    {
+      "itemInstanceId": "b10",
+      "name": "Aqua Panna 0,75L",
+      "sourceLineIndex": 14,
+      "priceTokenValue": 6.9,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 6.9
+    }
+  ],
+  "arithmetic": [
+    "item[0] \"HELLES 0,5L\" = lineTotal(33.6) = 33.6   [running sum = 33.6]",
+    "item[1] \"Currywurst + Pommes\" = lineTotal(null) = 0   [running sum = 33.6]",
+    "item[2] \"Leberkäs\" = unit(11.5) * qty(1) = 11.5   [running sum = 45.1]",
+    "item[3] \"Weisswürste\" = lineTotal(7.5) = 7.5   [running sum = 52.6]",
+    "item[4] \"Brez'n\" = unit(2.5) * qty(1) = 2.5   [running sum = 55.1]",
+    "item[5] \"Aqua Panna 0,75L\" = unit(6.9) * qty(1) = 6.9   [running sum = 62]"
+  ],
+  "calculatedSubtotal": 62,
+  "printedSubtotal": null,
+  "printedTotal": 96.5,
+  "subtotalDelta": null,
+  "reconciles": false,
+  "arithmeticReconciles": false,
+  "expectedTotal": null,
+  "expectedDelta": null,
+  "orphanCount": 18,
+  "unresolvedLines": [
+    {
+      "id": "unclassified_b13",
+      "amount": 96.5,
+      "text": "96,50",
+      "lineIndex": 21
+    },
+    {
+      "id": "orphan_A1",
+      "amount": 55,
+      "text": "55",
+      "lineIndex": 1
+    },
+    {
+      "id": "orphan_A2",
+      "amount": 304,
+      "text": "304",
+      "lineIndex": 5
+    },
+    {
+      "id": "orphan_A3",
+      "amount": 15,
+      "text": "15",
+      "lineIndex": 6
+    },
+    {
+      "id": "orphan_A4",
+      "amount": 4.2,
+      "text": "4,20",
+      "lineIndex": 7
+    },
+    {
+      "id": "orphan_A5",
+      "amount": 0.5,
+      "text": "0,5",
+      "lineIndex": 8
+    },
+    {
+      "id": "orphan_A7",
+      "amount": 11.5,
+      "text": "11,50",
+      "lineIndex": 9
+    },
+    {
+      "id": "orphan_A8",
+      "amount": 34502,
+      "text": "34,502",
+      "lineIndex": 10
+    },
+    {
+      "id": "orphan_A12",
+      "amount": 0.75,
+      "text": "0,75",
+      "lineIndex": 14
+    },
+    {
+      "id": "orphan_A15",
+      "amount": 86.37,
+      "text": "86,37",
+      "lineIndex": 16
+    },
+    {
+      "id": "orphan_A16",
+      "amount": 40.5,
+      "text": "40,50",
+      "lineIndex": 17
+    },
+    {
+      "id": "orphan_A17",
+      "amount": 6.47,
+      "text": "6,47",
+      "lineIndex": 18
+    },
+    {
+      "id": "orphan_A18",
+      "amount": 56,
+      "text": "56,00",
+      "lineIndex": 19
+    },
+    {
+      "id": "orphan_A19",
+      "amount": 3.66,
+      "text": "3,66",
+      "lineIndex": 20
+    },
+    {
+      "id": "orphan_A21",
+      "amount": 47,
+      "text": "47",
+      "lineIndex": 24
+    },
+    {
+      "id": "orphan_A22",
+      "amount": 974,
+      "text": "974",
+      "lineIndex": 30
+    },
+    {
+      "id": "orphan_A23",
+      "amount": 513,
+      "text": "513",
+      "lineIndex": 31
+    },
+    {
+      "id": "orphan_A24",
+      "amount": 71,
+      "text": "71",
+      "lineIndex": 32
+    },
+    {
+      "id": "orphan_A25",
+      "amount": 48,
+      "text": "48",
+      "lineIndex": 34
+    }
+  ],
+  "charges": [],
+  "suspectedPatterns": {
+    "subtotalCountedAsItem": [],
+    "totalCountedAsItem": [],
+    "taxCountedAsItem": [],
+    "amountClaimedByMultipleBlocks": [],
+    "duplicateWordIdsInLedger": [],
+    "overlappingItemLineIndices": [],
+    "itemBlocksAfterFirstSummaryLine": [],
+    "itemsWithQuantityAboveOne": [
+      {
+        "blockId": "b5",
+        "quantity": 8
+      },
+      {
+        "blockId": "b6",
+        "quantity": 3
+      },
+      {
+        "blockId": "b8",
+        "quantity": 2
+      }
+    ]
+  },
+  "verificationRound1": null,
+  "verificationRound2": null,
+  "reconciliationRetried": false
+}

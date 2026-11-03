@@ -1,0 +1,17 @@
+Replaying frozen OCR fixture: supabase/functions/parse-receipt/__fixtures__/vision-augustiner-de.json (geometric reconstruction)
+OCR: 35 lines, 114 words
+Ledger: 25 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 9400ms, tokens prompt=1790 completion=729 total=2519
+Structure: 16 blocks (merchant=Augustiner, currency=EUR)
+Total witness: label -> 96.5 (agreement=label_only)
+Geometric ownership: 13/16 confident, 0 anchor-corrected
+Constant-offset arbitration: formDetected=false, hypothesisAdopted=H0
+Suspicious (round 1): 1
+Suspicious round 1 skipped (no image available under --fixture): 1 would have been checked
+Reconciliation (round 1): reconciles=false, calculatedSubtotal=62, printedSubtotal=null
+
+Full report written to: backups/corpus-before-2026-11-03/vision-augustiner-de-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=62, printedSubtotal=null, printedTotal=96.5, reconciles=false (arithmeticOnly=false), summaryCoverageValid=false, summaryUnresolved=6, summaryDuplicateRoles=0, structuralGap=0, echoExact=0, echoMult=1, genuineMiss=2, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=false, offsetHypothesisAdopted=H0, totalWitness=label, totalWitnessAgreement=label_only, provenNonAdditiveCount=0, provenNonAdditiveBlockedBy=sum_mismatch, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=items_region_unresolved, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null
