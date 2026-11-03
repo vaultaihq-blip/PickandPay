@@ -10,6 +10,7 @@
  * if the items are edited afterwards the gap changes and the question comes
  * back (see answerHolds).
  */
+import { Colors } from "@/constants/colors";
 import React, { useEffect, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,8 +29,10 @@ interface Props {
   onReviewItems: () => void;
 }
 
-const RED = { bg: "#FEF2F2", border: "#DC2626", text: "#7F1D1D" };
-const GREEN = { bg: "#F0FDF4", border: "#16A34A", text: "#14532D" };
+// The app's dark tokens (R10 colours, 03-11-2026): a dark red / green surface,
+// its border, and light text with contrast on it.
+const RED = { bg: Colors.errorBg, border: Colors.error, text: Colors.errorLight };
+const GREEN = { bg: Colors.successBg, border: Colors.success, text: Colors.successLight };
 
 export function PrintedTotalGapCard({ gap, answer, suggestion, formatMoney, onAnswer, onAddMissing, onReviewItems }: Props) {
   const { t } = useI18nStore();
@@ -114,8 +117,8 @@ export function PrintedTotalGapCard({ gap, answer, suggestion, formatMoney, onAn
           activeOpacity={0.8}
           accessibilityState={{ selected: open }}
         >
-          <Ionicons name={open ? "radio-button-on" : "radio-button-off"} size={18} color={open ? "#fff" : RED.text} />
-          <Text style={[styles.choiceText, { color: open ? "#fff" : RED.text }]}>
+          <Ionicons name={open ? "radio-button-on" : "radio-button-off"} size={18} color={open ? Colors.white : RED.text} />
+          <Text style={[styles.choiceText, { color: open ? Colors.white : RED.text }]}>
             {t(under ? "gap_is_charge" : "gap_is_discount")}
           </Text>
         </TouchableOpacity>
@@ -128,7 +131,7 @@ export function PrintedTotalGapCard({ gap, answer, suggestion, formatMoney, onAn
             value={name}
             onChangeText={setTypedName}
             placeholder={defaultName}
-            placeholderTextColor="#B91C1C99"
+            placeholderTextColor={Colors.textMutedDark}
             maxLength={40}
             style={[styles.input, { color: RED.text, borderColor: RED.border }]}
           />
@@ -160,9 +163,9 @@ const styles = StyleSheet.create({
   choiceText: { fontSize: 15, fontWeight: "600", flexShrink: 1 },
   nameBlock: { gap: 6 },
   label: { fontSize: 13, fontWeight: "600" },
-  input: { minHeight: 48, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, fontSize: 15, backgroundColor: "#fff" },
+  input: { minHeight: 48, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, fontSize: 15, backgroundColor: Colors.cardDark, color: Colors.textPrimaryDark },
   confirmBtn: { minHeight: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  confirmText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  confirmText: { color: Colors.white, fontSize: 16, fontWeight: "700" },
   linkBtn: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
   linkText: { fontSize: 14, fontWeight: "600", textDecorationLine: "underline" },
 });
