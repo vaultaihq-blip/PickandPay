@@ -118,7 +118,15 @@ export default function JoinSessionScreen() {
   const borderColor = JOIN_THEME.border;
   const cardColor = JOIN_THEME.card;
 
+  // B (04-11-2026): the camera can read the same QR several times in a row
+  // (6 on 03-11); only the first read of a session is handled.
+  const handlingSessionRef = useRef<string | null>(null);
+
   const fetchSessionPreview = async (sessionId: string) => {
+    if (handlingSessionRef.current === sessionId) {
+      console.log(`[join] already handling ${sessionId} — repeated read ignored`);
+      return;
+    }
     if (!profile) {
       showDialog(t("join_sign_in_required"), t("join_sign_in_body"), [
         { text: t("cancel"), style: "cancel" },
@@ -127,6 +135,7 @@ export default function JoinSessionScreen() {
       return;
     }
 
+    handlingSessionRef.current = sessionId;
     setLoading(true);
     try {
       // R7: the server says which entry screen this is (the QR opens at any balance).
@@ -180,11 +189,20 @@ export default function JoinSessionScreen() {
         setPreview(toEntry(sessionId, row, kind));
         return;
       }
+      // B: the row already exists (another read got there first): a rejoin.
+      if (err?.code === "23505") {
+        console.log(`[join] ${sessionId}: my row already exists (23505) — treated as a rejoin`);
+        const row = await readPreview(sessionId).catch(() => ({} as PreviewRow));
+        const kind = (row.result ?? "rejoin") as EntryKind;
+        setPreview(toEntry(sessionId, row, kind === "join" ? "rejoin" : kind));
+        return;
+      }
       console.error("[join] fetchSessionPreview error:", err);
       if (err instanceof WriteError) showWriteError(err, t);
-      else showDialog(t("error"), `${t("join_error_load")}\n\n${err?.message ?? ""}`.trim());
+      else showDialog(t("error"), t("join_error_load")); // never the database's own text
     } finally {
       setLoading(false);
+      handlingSessionRef.current = null;
     }
   };
 
@@ -411,7 +429,7 @@ export default function JoinSessionScreen() {
       }
     } catch (err: any) {
       console.error("[join] resolve_join_code error:", err);
-      setCodeError(`${t("join_error_load")}${err?.message ? `\n${err.message}` : ""}`);
+      setCodeError(t("join_error_load")); // never the database's own text
     } finally {
       setCodeBusy(false);
     }
@@ -420,7 +438,9 @@ export default function JoinSessionScreen() {
   const handleScan = (data: string) => {
     const sessionId = extractSessionIdFromQR(data);
     if (sessionId) {
-      fetchSessionPreview(sessionId);
+      // B: a read of the session already on screen changes nothing.
+      if (preview?.id === sessionId) return;
+      void fetchSessionPreview(sessionId);
     } else {
       console.log("[join] QR is not a Pick&Pay session");
       setPreview(toEntry("", {}, "invalid"));
