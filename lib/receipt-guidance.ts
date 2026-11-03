@@ -20,6 +20,7 @@
 
 import type { CanonicalReceipt, ReceiptIssue } from "@/lib/receipt";
 import { moneyToMajorNumber } from "@/lib/receipt";
+import { meaningfulOrphans } from "@/lib/receipt/orphans";
 
 export type ReceiptProblemKind =
   | "no_total"
@@ -98,7 +99,8 @@ export function attentionItemIds(input: GuidanceInput): string[] {
 
   const flagged = issueItemIds(canonical.validation.issues);
   const orphanTargets = new Set(
-    canonical.unresolvedMonetaryLines
+    // AV-1: explained values (no decimals, VAT breakdown) queue nothing.
+    meaningfulOrphans(canonical)
       .map((line) => line.nearestItemId)
       .filter((id): id is string => id !== undefined)
   );
@@ -136,7 +138,8 @@ export function attentionReasons(input: GuidanceInput): Record<string, string> {
   }
 
   const orphanTargets = new Set(
-    canonical.unresolvedMonetaryLines
+    // AV-1: explained values (no decimals, VAT breakdown) queue nothing.
+    meaningfulOrphans(canonical)
       .map((line) => line.nearestItemId)
       .filter((id): id is string => id !== undefined)
   );
@@ -195,7 +198,8 @@ export function receiptProblems(
     });
   }
 
-  const orphans = canonical?.unresolvedMonetaryLines ?? [];
+  // AV-1: explained values (no decimals, VAT breakdown) are not problems.
+  const orphans = canonical ? meaningfulOrphans(canonical) : [];
   if (orphans.length === 1) {
     problems.push({
       kind: "unexplained_values",

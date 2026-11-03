@@ -1,3 +1,4 @@
+import { explainedOrphanIds } from "@/lib/receipt/orphans";
 import { create } from "zustand";
 import {
   type CanonicalReceipt,
@@ -63,7 +64,15 @@ export const useCanonicalReceiptStore = create<CanonicalReceiptState>((set, get)
 export function visibleIssues(state: CanonicalReceiptState) {
   const receipt = state.receipt;
   if (receipt === null) return [];
+  // AV-1: an orphan-price issue about an explained value (no decimals, VAT
+  // breakdown — lib/receipt/orphans.ts) is not shown.
+  const explained = explainedOrphanIds(receipt);
+  const explainedTexts = new Set(
+    receipt.unresolvedMonetaryLines.filter((l) => explained.has(l.id) && l.text !== undefined).map((l) => l.text as string)
+  );
   return receipt.validation.issues.filter(
-    (issue) => !state.dismissedIssueIds.includes(issue.id)
+    (issue) =>
+      !state.dismissedIssueIds.includes(issue.id) &&
+      !(issue.type === "orphan_price" && issue.sourceLine !== undefined && explainedTexts.has(issue.sourceLine))
   );
 }

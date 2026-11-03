@@ -11,6 +11,7 @@ import "./printedTotalGap.test";
 import "./units.test";
 import "./currency.test";
 import "./evidence.test";
+import "./orphans.test";
 import { run } from "./harness";
 
 run();
