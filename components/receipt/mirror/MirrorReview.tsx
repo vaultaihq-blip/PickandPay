@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
@@ -63,6 +63,10 @@ export function MirrorReview(p: Props) {
   const [gapOpen, setGapOpen] = useState(false);
   const [totalOpen, setTotalOpen] = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
+  // C: where the rows are, so the button can take the user to the first red one.
+  const scrollRef = useRef<ScrollView>(null);
+  const paperY = useRef(0);
+  const rowY = useRef(new Map<string, number>());
 
   // Identical lines (same name, case and spaces ignored, and unit price) are one row here.
   const groups = useMemo<Group[]>(() => {
@@ -94,9 +98,23 @@ export function MirrorReview(p: Props) {
   const totalAddsUp = !noTotal && gapOk;
   const buttonLabel =
     redCount > 0 ? (redCount === 1 ? t("mirror_confirm_1") : t("mirror_confirm_n").replace("{n}", String(redCount)))
+    : !gapOk ? t("gap_continue_blocked")
     : !p.currencyOk ? t("currency_continue_blocked")
-    : noTotal ? t("mirror_total_missing")
-    : !gapOk ? t("gap_continue_blocked") : t("mirror_continue");
+    : noTotal ? t("mirror_total_missing") : t("mirror_continue");
+
+  // C: never a pop-up — the button takes the user to what is missing.
+  const goToPending = () => {
+    const firstRed = groups.find((g) => g.red);
+    if (firstRed) {
+      const y = paperY.current + (rowY.current.get(firstRed.key) ?? 0) - 16;
+      console.log(`[review-receipt] R10: ${redCount} line(s) to fix — scrolling to "${firstRed.name}"`);
+      scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+      return;
+    }
+    if (gapOpenLine) { setGapOpen(true); return; }
+    if (!p.currencyOk) { setCurrencyOpen(true); scrollRef.current?.scrollTo({ y: 0, animated: true }); return; }
+    if (noTotal) setTotalOpen(true);
+  };
 
   const open = (g: Group) => setPanel({ ids: g.ids, name: g.name, quantity: g.quantity, unitPrice: g.unitPrice, photoBox: g.photoBox });
   const showCurrency = !p.currencyOk || currencyOpen;
@@ -122,7 +140,7 @@ export function MirrorReview(p: Props) {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {showCurrency
           ? React.cloneElement(p.currencyCard, {
               startOpen: true,
@@ -130,13 +148,13 @@ export function MirrorReview(p: Props) {
             })
           : null}
 
-        <View style={styles.paper}>
+        <View style={styles.paper} onLayout={(e) => { paperY.current = e.nativeEvent.layout.y; }}>
           <Text style={styles.merchant}>{p.merchant.toUpperCase()}</Text>
           {p.date ? <Text style={styles.date}>{showDate(p.date)}</Text> : null}
           <View style={styles.dashed} />
 
           {groups.map((g) => (
-            <Pressable key={g.key} onPress={() => open(g)} style={[styles.line, g.red && styles.lineRed, !g.red && g.green && styles.lineGreen]} accessibilityRole="button">
+            <Pressable key={g.key} onPress={() => open(g)} onLayout={(e) => rowY.current.set(g.key, e.nativeEvent.layout.y)} style={[styles.line, g.red && styles.lineRed, !g.red && g.green && styles.lineGreen]} accessibilityRole="button">
               <View style={styles.lineMain}>
                 {g.red ? <Ionicons name="alert-circle-outline" size={22} color={Colors.errorLight} style={styles.icon} />
                   : g.green ? <Ionicons name="checkmark-circle-outline" size={22} color={Colors.successLight} style={styles.icon} /> : null}
@@ -198,8 +216,9 @@ export function MirrorReview(p: Props) {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={[styles.continueBtn, !canContinue && styles.continueOff]} disabled={!canContinue} onPress={p.onContinue} accessibilityRole="button" accessibilityState={{ disabled: !canContinue }}>
-          <Text style={[styles.continueText, !canContinue && { color: Colors.textMutedDark }]}>{buttonLabel}</Text>
+        {/* C: always in the accent; while something is missing it says what, and a tap goes there */}
+        <TouchableOpacity style={styles.continueBtn} onPress={canContinue ? p.onContinue : goToPending} accessibilityRole="button">
+          <Text style={styles.continueText}>{buttonLabel}</Text>
         </TouchableOpacity>
       </View>
 
@@ -277,7 +296,6 @@ const styles = StyleSheet.create({
   photoText: { color: Colors.textPrimaryDark, fontWeight: "600", fontSize: 15 },
   footer: { padding: 16, borderTopWidth: StyleSheet.hairlineWidth, borderColor: Colors.cardBorderDark, backgroundColor: Colors.bgDark },
   continueBtn: { minHeight: 52, borderRadius: 14, backgroundColor: Colors.primary, alignItems: "center", justifyContent: "center", paddingHorizontal: 12 },
-  continueOff: { backgroundColor: Colors.cardBorderDark },
   continueText: { color: Colors.white, fontWeight: "800", fontSize: 16, textAlign: "center" },
   backdrop: { flex: 1, backgroundColor: Colors.overlay },
   sheet: { position: "absolute", left: 0, right: 0, bottom: 0, backgroundColor: Colors.surfaceDark, borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: Colors.cardBorderDark, padding: 16, paddingBottom: 28, gap: 10 },
