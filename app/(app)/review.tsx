@@ -14,6 +14,10 @@ import {
   useWindowDimensions,
   BackHandler,
 } from "react-native";
+import { RECEIPT_MONO } from "@/constants/typography";
+import { MirrorReview } from "@/components/receipt/mirror/MirrorReview";
+import { CurrencyCard } from "@/components/receipt/CurrencyCard";
+import { printedTotalGap } from "@/lib/receipt/printedTotalGap";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
@@ -26,7 +30,7 @@ import { CategorySection } from "@/components/receipt/CategorySection";
 import { GlobalCostsSection } from "@/components/receipt/GlobalCosts";
 import { TipSelector } from "@/components/receipt/TipSelector";
 import { Card } from "@/components/ui/Card";
-import { formatCurrency } from "@/utils/formatter";
+import { formatCurrency, getCurrencySymbol } from "@/utils/formatter";
 import { supabase, saveOCRCorrection } from "@/lib/supabase";
 import { Session, ReceiptItem, ItemCategory, Currency, MenuGroup, ParsedReceipt } from "@/types";
 import { generateItemId } from "@/utils/parser";
@@ -36,6 +40,10 @@ import { isOfflineSessionId } from "@/constants/dev";
 import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
 import { showDialog } from "@/lib/dialog";
 import { isScanCharged, markScanCharged, useScanCreditGuard } from "@/lib/scanCredit";
+
+// D.5 step 2 (04-11-2026): manual entry draws the shared receipt screen; the old
+// list stays reachable only through this switch until it is deleted.
+const OLD_REVIEW_LIST = false as boolean;
 
 const ORDERED_CATEGORIES: ItemCategory[] = [
   "starters",
@@ -604,6 +612,130 @@ export default function ReviewScreen() {
     );
   }
 
+  // ── D.5 step 2 (owner, 04-11-2026) — manual entry and "Editar" from the
+  // lobby draw the same receipt screen as the review (manual mode): lines in
+  // groups, a red line for anything empty or without a price, the correction
+  // panel (with the group), the same confirm button. The total is the sum of
+  // what was typed. The old list below is no longer used (to delete later).
+  const manualRows = allItems.map((i) => ({
+    id: i.id,
+    category: i.category,
+    name: i.name,
+    quantity: i.quantity,
+    unitPrice: i.unitPrice,
+    totalPrice: i.totalPrice,
+    reviewed: i.reviewed,
+    qtyText: String(i.quantity),
+    unitPriceText: i.unitPrice.toFixed(2),
+    totalText: i.totalPrice.toFixed(2),
+    photoBox: i.photoBox,
+  }));
+  const manualCharges = Math.round(receipt.globalCosts.reduce((s, c) => s + c.amount, 0) * 100) / 100;
+  const manualAttention = new Set(
+    allItems.filter((i) => !i.reviewed && (i.name.trim() === "" || i.totalPrice === 0)).map((i) => i.id)
+  );
+  const saveManualLine = (ids: string[], v: { name: string; quantity: number; unitPrice: number; category?: string }) => {
+    const [first, ...rest] = ids;
+    const item = allItems.find((i) => i.id === first);
+    if (!item) return;
+    const totalPrice = Math.round(v.quantity * v.unitPrice * 100) / 100;
+    const updates = { name: v.name, quantity: v.quantity, unitPrice: v.unitPrice, totalPrice, reviewed: true };
+    console.log(`[review] manual line saved: "${v.name}" ${v.quantity} × ${v.unitPrice} (${ids.length} line(s))`);
+    rest.forEach((id) => removeItem(id));
+    const category = (v.category ?? item.category) as ItemCategory;
+    if (category !== item.category) {
+      removeItem(item.id);
+      addItem(category, { ...item, ...updates, category });
+    } else {
+      updateItem(item.category, item.id, updates);
+    }
+  };
+  const deleteManualLine = (ids: string[]) =>
+    showDialog(t("review_receipt_remove_title"), t("review_receipt_remove_msg"), [
+      { text: t("cancel"), style: "cancel" },
+      { text: t("review_receipt_remove_btn"), style: "destructive", onPress: () => ids.forEach((id) => removeItem(id)) },
+    ]);
+  const addManualLine = () =>
+    addItem("mains", {
+      id: `manual_${Date.now()}`,
+      name: "",
+      category: "mains",
+      quantity: 1,
+      unitPrice: 0,
+      totalPrice: 0,
+      type: "individual",
+    } as ReceiptItem);
+  const noGap = printedTotalGap(subtotal, manualCharges, null);
+
+  if (!OLD_REVIEW_LIST) return (
+    <SafeAreaView style={[styles.safe, { backgroundColor: Colors.bgDark }]}>
+      <Stack.Screen options={{ gestureEnabled: false }} />
+      <MirrorReview
+        mode="manual"
+        merchant={receipt.restaurant ?? ""}
+        date={receipt.date}
+        currencyLabel={`${receipt.currency} ${getCurrencySymbol(receipt.currency)}`}
+        items={manualRows}
+        attentionIds={manualAttention}
+        reasonFor={() => t("mirror_reason_unpriced")}
+        formatMoney={(v) => formatCurrency(v, receipt.currency)}
+        currencyCard={
+          <CurrencyCard
+            currency={receipt.currency}
+            ask={false}
+            onChoose={(code) => setReceipt({ ...receipt, currency: code })}
+            textColor={Colors.textPrimaryDark}
+            mutedColor={Colors.textSecondaryDark}
+            cardColor={Colors.cardDark}
+            borderColor={Colors.cardBorderDark}
+          />
+        }
+        photoUri={rawImageUri}
+        itemsSum={subtotal}
+        chargesSum={manualCharges}
+        tip={receipt.selectedTip ?? 0}
+        gap={noGap}
+        gapAnswer={null}
+        gapAnswered={false}
+        gapSuggestion={null}
+        onAnswerGap={() => undefined}
+        confirmedTotal={computedTotal}
+        confirmedTotalText={computedTotal.toFixed(2)}
+        onChangeTotal={() => undefined}
+        currencyOk
+        onSaveLine={saveManualLine}
+        onDeleteLine={deleteManualLine}
+        onAddItem={addManualLine}
+        onSeePhoto={rawImageUri ? () => setImageModalVisible(true) : undefined}
+        onContinue={() => { if (!creating) void handleConfirm(); }}
+        onBack={handleBack}
+        extraBelow={
+          <TipSelector
+            suggestedTips={receipt.suggestedTips}
+            currency={receipt.currency}
+            subtotal={subtotal}
+            currentTipStatus={receipt.tipStatus}
+            currentTipAmount={receipt.selectedTip}
+            currentTipMode={receipt.tipMode ?? "equal"}
+            onSelect={(status, amount, pct) => setTip(status, amount, pct)}
+            onTipModeChange={(mode) => {
+              setTipMode(mode);
+              if (mode === "individual") setTip("removed", 0);
+            }}
+          />
+        }
+      />
+      {rawImageUri && (
+        <Modal visible={imageModalVisible} transparent animationType="fade" onRequestClose={() => setImageModalVisible(false)}>
+          <TouchableOpacity style={{ flex: 1, backgroundColor: Colors.overlay, justifyContent: "center" }} activeOpacity={1} onPress={() => setImageModalVisible(false)}>
+            <Image source={{ uri: rawImageUri }} style={{ width: "100%", height: "90%" }} resizeMode="contain" />
+          </TouchableOpacity>
+        </Modal>
+      )}
+    </SafeAreaView>
+  );
+
+  // The old list (OLD_REVIEW_LIST, off) — to delete after the owner approves D.
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: bgColor }]}>
       <Stack.Screen options={{ gestureEnabled: false }} />
@@ -1468,7 +1600,7 @@ const styles = StyleSheet.create({
   },
   menuGroupChild: {
     fontSize: 12,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    fontFamily: RECEIPT_MONO,
   },
   menuActions: {
     gap: 8,
@@ -1508,7 +1640,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 12,
     fontSize: 11,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    fontFamily: RECEIPT_MONO,
     lineHeight: 16,
   },
 

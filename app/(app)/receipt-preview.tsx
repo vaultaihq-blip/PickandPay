@@ -132,7 +132,9 @@ export default function ReceiptPreviewScreen() {
       setIsAnalyzing(false);
 
       const validation = validateReceiptOCR(parsed);
-      const target = validation.isValid && !validation.isWarning ? "/(app)/review" : "/(app)/review-receipt";
+      // D (04-11-2026): one receipt screen — a valid scan opens the same mirror
+      // review, just with no red lines (the old review stays for manual entry).
+      const target = "/(app)/review-receipt";
       console.log(
         `[receipt-preview] validation: isValid=${validation.isValid} isWarning=${validation.isWarning} errors=${validation.errors.length} warnings=${validation.warnings.length} -> routing to ${target}`
       );

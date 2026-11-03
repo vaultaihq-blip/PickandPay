@@ -10,6 +10,8 @@ import {
   Modal,
   BackHandler,
 } from "react-native";
+import { ReceiptView, type ReceiptViewLine } from "@/components/receipt/ReceiptView/ReceiptView";
+import { StepperButton } from "@/components/ui/StepperButton";
 import { showDialog } from "@/lib/dialog";
 import { endSession, showEndSessionError } from "@/lib/endSession";
 import { SessionMissing } from "@/components/session/SessionMissing";
@@ -1033,48 +1035,61 @@ export default function SelectionScreen() {
     );
   };
 
-  const renderLive = (g: ItemGroup) => {
+  // D.4 (owner, 04-11-2026) — one line of "Pick your items" in the shared
+  // receipt: fixed height (nothing moves when selecting), the person's tint
+  // and circles at the end, − / + at the start for items with several units.
+  // The optimistic pick and pick_units are unchanged.
+  const liveLine = (g: ItemGroup): ReceiptViewLine => {
     const server = groupState(g.lineIds, g.units, liveHolders, myId);
-    // Point 1: while a pick is on its way, show what I asked for.
     const wanted = optimistic.get(g.lineIds[0]);
     const saving = wanted !== undefined;
-    const st = saving
-      ? {
-          ...server,
-          myUnits: wanted,
-          freeUnits: Math.max(0, server.freeUnits - (wanted - server.myUnits)),
-        }
-      : server;
+    const mine = saving ? wanted : server.myUnits;
+    const free = saving ? Math.max(0, server.freeUnits - (wanted - server.myUnits)) : server.freeUnits;
     const holderIds = server.holders.map((h) => h.userId).filter((uid) => !(saving && wanted === 0 && uid === myId));
     if (saving && wanted > 0 && myId && !holderIds.includes(myId)) holderIds.push(myId);
     const people = dotsFor(g, holderIds);
     const lineSet = new Set(g.lineIds);
     const askedMe = shareRequests.some((r) => r.status === "pending" && r.to_user === myId && lineSet.has(r.item_id));
-    return (
-      <SelectableItem
-        key={`live_${g.lineIds[0]}`}
-        item={g.item}
-        currency={receipt.currency}
-        selected={st.myUnits > 0}
-        selectionColor={accentColor}
-        hasPriceVariant={g.priceVariant}
-        quantitySelected={Math.max(st.myUnits, 1)}
-        claimableQty={st.myUnits + st.freeUnits}
-        hidePrices
-        live
-        busy={busyGroup === g.lineIds[0]}
-        saving={saving}
-        onToggle={() => void livePick(g, st.myUnits > 0 ? 0 : 1)}
-        onQuantityChange={g.units > 1 ? (delta) => void livePick(g, st.myUnits + delta) : undefined}
-        freeLabel={g.units > 1 ? t("units_free").replace("{free}", String(st.freeUnits)).replace("{total}", String(g.units)) : undefined}
-        dots={<PersonDots people={people} youLabel={t("you_short")} onPress={() => showNames(g, people)} />}
-        requestLabel={askedMe ? t("share_row_request") : undefined}
-        onRequestPress={() => useShareRequestsStore.getState().setSheetOpen(true)}
-        shareLabel={t("share_button")}
-        onSharePress={() => void openShare(g, st.myUnits)}
-      />
-    );
+    return {
+      key: `live_${g.lineIds[0]}`,
+      quantity: g.item.quantity,
+      name: g.item.name,
+      amount: g.item.totalPrice,
+      category: g.item.category,
+      photoBox: g.item.photoBox,
+      tint: mine > 0 ? `${accentColor}33` : undefined,
+      sub: askedMe
+        ? t("share_row_request")
+        : g.units > 1
+          ? t("units_free").replace("{free}", String(free)).replace("{total}", String(g.units))
+          : undefined,
+      left: g.units > 1 ? (
+        <View style={styles.selStepper}>
+          <StepperButton label="−" onPress={() => void livePick(g, mine - 1)} disabled={mine <= 0} color={accentColor} mutedColor={SEL_MUTED} accessibilityLabel={`−1 ${g.item.name}`} />
+          <Text style={[styles.selStepperCount, { color: mine > 0 ? accentColor : SEL_MUTED }]}>{mine}</Text>
+          <StepperButton label="+" onPress={() => void livePick(g, mine + 1)} disabled={mine >= mine + free} color={accentColor} mutedColor={SEL_MUTED} accessibilityLabel={`+1 ${g.item.name}`} />
+        </View>
+      ) : undefined,
+      right: (
+        <View style={{ opacity: saving ? 0.5 : 1 }}>
+          <PersonDots people={people} youLabel={t("you_short")} onPress={() => showNames(g, people)} />
+        </View>
+      ),
+      trailing: (
+        <TouchableOpacity
+          onPress={() => (askedMe ? useShareRequestsStore.getState().setSheetOpen(true) : void openShare(g, mine))}
+          style={styles.selShare}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={`${t("share_button")}: ${g.item.name}`}
+        >
+          <Ionicons name={askedMe ? "mail-unread-outline" : "people-outline"} size={18} color={askedMe ? Colors.warning : SEL_MUTED} />
+        </TouchableOpacity>
+      ),
+      onPress: () => void livePick(g, mine > 0 ? 0 : 1),
+    };
   };
+
 
   // The share window: everyone but me; on the item = on my unit (one-unit
   // items: holding it), or already asked.
@@ -1146,23 +1161,19 @@ export default function SelectionScreen() {
             : 110 + Math.max(insets.bottom, 16),
         }}
       >
-        <View style={[styles.receiptCard, { backgroundColor: SEL_CARD, borderColor: SEL_BORDER }]}>
+        {/* D.4: live picks in the shared receipt (select mode) */}
+        {live ? (
+          <ReceiptView
+            mode="select"
+            merchant={receipt.restaurant}
+            date={receipt.date}
+            formatMoney={(v) => formatCurrency(v, receipt.currency)}
+            lines={ORDERED_CATEGORIES.flatMap((cat) => (liveGroups[cat] ?? []).map(liveLine))}
+          />
+        ) : null}
+        <View style={[styles.receiptCard, { backgroundColor: SEL_CARD, borderColor: SEL_BORDER }, live && { display: "none" }]}>
           {ORDERED_CATEGORIES.map((cat) => {
-            if (live) {
-              const lg = liveGroups[cat] ?? [];
-              if (lg.length === 0) return null;
-              return (
-                <View key={cat}>
-                  <View style={[styles.catHeader, { borderColor: SEL_BORDER }]}>
-                    <Text style={[styles.catLabel, { color: SEL_MUTED }]}>
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                    </Text>
-                    <Ionicons name="chevron-down" size={14} color={SEL_MUTED} />
-                  </View>
-                  {lg.map(renderLive)}
-                </View>
-              );
-            }
+            if (live) return null; // D.4: drawn by ReceiptView (select) above
             const groups = groupedCategories[cat] ?? [];
             if (groups.length === 0) return null;
             return (
@@ -1518,6 +1529,10 @@ export default function SelectionScreen() {
 }
 
 const styles = StyleSheet.create({
+  // D.4 select-mode line pieces
+  selStepper: { flexDirection: "row", alignItems: "center", gap: 4 },
+  selStepperCount: { minWidth: 16, textAlign: "center", fontWeight: "800", fontSize: 15 },
+  selShare: { width: 32, height: 32, alignItems: "center", justifyContent: "center", marginLeft: 4 },
   safe: { flex: 1 },
 
   // ── New selection header ──────────────────────────────────────────────────────

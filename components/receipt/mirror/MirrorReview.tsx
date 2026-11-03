@@ -7,6 +7,8 @@ import type { EditableRow } from "@/lib/receipt-validator";
 import type { GapAnswer, GapSuggestion, PrintedTotalGap } from "@/lib/receipt/printedTotalGap";
 import { PrintedTotalGapCard } from "@/components/receipt/PrintedTotalGapCard";
 import { MirrorLinePanel, type PanelLine } from "./MirrorLinePanel";
+import { ReceiptView } from "@/components/receipt/ReceiptView/ReceiptView";
+import { RECEIPT_MONO } from "@/constants/typography";
 
 // R10 (owner, 03-11-2026) — the receipt review as a mirror of the paper, in
 // the app's own colours (design: docs/design/revisao-espelho-app.png): the
@@ -17,9 +19,11 @@ import { MirrorLinePanel, type PanelLine } from "./MirrorLinePanel";
 // receipt; the R2 question as a red line at the end; Continuar only with no
 // red lines. Colours come from constants/colors.ts only.
 
-type Group = { key: string; ids: string[]; name: string; quantity: number; unitPrice: number; total: number; red: boolean; green: boolean; reason?: string; photoBox?: PanelLine["photoBox"] };
+type Group = { key: string; ids: string[]; name: string; quantity: number; unitPrice: number; total: number; red: boolean; green: boolean; reason?: string; photoBox?: PanelLine["photoBox"]; category?: string };
 
 type Props = {
+  /** D: "review" (a scan) or "manual" (typed by hand) — the same screen. */
+  mode?: "review" | "manual";
   merchant: string;
   date?: string;
   currencyLabel: string;
@@ -41,15 +45,20 @@ type Props = {
   confirmedTotalText: string;
   onChangeTotal: (raw: string) => void;
   currencyOk: boolean;
-  onSaveLine: (ids: string[], v: { name: string; quantity: number; unitPrice: number }) => void;
+  onSaveLine: (ids: string[], v: { name: string; quantity: number; unitPrice: number; category?: string }) => void;
   onDeleteLine: (ids: string[]) => void;
   onAddItem: () => void;
-  onSeePhoto: () => void;
+  /** Hidden when there is no photo (manual entry). */
+  onSeePhoto?: () => void;
+  /** The tip, as a summary row when there is one. */
+  tip?: number;
+  /** Below the card (manual entry: the tip selector). */
+  extraBelow?: React.ReactNode;
   onContinue: () => void;
   onBack: () => void;
 };
 
-const MONO = Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" });
+const MONO = RECEIPT_MONO;
 
 // "2026-10-07" → "07/10/2026"; anything else as it came.
 const showDate = (d?: string) => {
@@ -83,7 +92,7 @@ export function MirrorReview(p: Props) {
         g.green = g.green && !!it.reviewed;
         if (red && !g.reason) g.reason = p.reasonFor(it.id);
       } else {
-        map.set(key, { key, ids: [it.id], name: it.name, quantity: it.quantity, unitPrice: it.unitPrice, total: it.totalPrice, red, green: !!it.reviewed, reason: red ? p.reasonFor(it.id) : undefined, photoBox: it.photoBox });
+        map.set(key, { key, ids: [it.id], name: it.name, quantity: it.quantity, unitPrice: it.unitPrice, total: it.totalPrice, red, green: !!it.reviewed, reason: red ? p.reasonFor(it.id) : undefined, photoBox: it.photoBox, category: it.category });
       }
     }
     return [...map.values()];
@@ -96,8 +105,10 @@ export function MirrorReview(p: Props) {
   const canContinue = redCount === 0 && gapOk && p.currencyOk && !noTotal;
   const answeredSigned = p.gapAnswered && p.gapAnswer ? (p.gapAnswer.answer === "charge" ? p.gapAnswer.amount : -p.gapAnswer.amount) : 0;
   const totalAddsUp = !noTotal && gapOk;
+  const empty = p.mode === "manual" && p.items.length === 0;
   const buttonLabel =
-    redCount > 0 ? (redCount === 1 ? t("mirror_confirm_1") : t("mirror_confirm_n").replace("{n}", String(redCount)))
+    empty ? t("mirror_add_item")
+    : redCount > 0 ? (redCount === 1 ? t("mirror_confirm_1") : t("mirror_confirm_n").replace("{n}", String(redCount)))
     : !gapOk ? t("gap_continue_blocked")
     : !p.currencyOk ? t("currency_continue_blocked")
     : noTotal ? t("mirror_total_missing") : t("mirror_continue");
@@ -116,7 +127,7 @@ export function MirrorReview(p: Props) {
     if (noTotal) setTotalOpen(true);
   };
 
-  const open = (g: Group) => setPanel({ ids: g.ids, name: g.name, quantity: g.quantity, unitPrice: g.unitPrice, photoBox: g.photoBox });
+  const open = (g: Group) => setPanel({ ids: g.ids, name: g.name, quantity: g.quantity, unitPrice: g.unitPrice, photoBox: g.photoBox, category: g.category });
   const showCurrency = !p.currencyOk || currencyOpen;
 
   return (
@@ -148,24 +159,25 @@ export function MirrorReview(p: Props) {
             })
           : null}
 
-        <View style={styles.paper} onLayout={(e) => { paperY.current = e.nativeEvent.layout.y; }}>
-          <Text style={styles.merchant}>{p.merchant.toUpperCase()}</Text>
-          {p.date ? <Text style={styles.date}>{showDate(p.date)}</Text> : null}
-          <View style={styles.dashed} />
-
-          {groups.map((g) => (
-            <Pressable key={g.key} onPress={() => open(g)} onLayout={(e) => rowY.current.set(g.key, e.nativeEvent.layout.y)} style={[styles.line, g.red && styles.lineRed, !g.red && g.green && styles.lineGreen]} accessibilityRole="button">
-              <View style={styles.lineMain}>
-                {g.red ? <Ionicons name="alert-circle-outline" size={22} color={Colors.errorLight} style={styles.icon} />
-                  : g.green ? <Ionicons name="checkmark-circle-outline" size={22} color={Colors.successLight} style={styles.icon} /> : null}
-                <Text style={styles.lineName} numberOfLines={2}>{g.quantity} × {g.name || "—"}</Text>
-                <Text style={styles.lineAmount}>{p.formatMoney(g.total)}</Text>
-              </View>
-              {g.red && g.reason ? <Text style={styles.reason}>{g.reason}</Text> : null}
-            </Pressable>
-          ))}
-
-          {gapOpenLine && (
+        <ReceiptView
+          mode={p.mode ?? "review"}
+          merchant={p.merchant}
+          date={p.date}
+          formatMoney={p.formatMoney}
+          onLayout={(y) => { paperY.current = y; }}
+          lines={groups.map((g) => ({
+            key: g.key,
+            quantity: g.quantity,
+            name: g.name,
+            amount: g.total,
+            category: g.category,
+            photoBox: g.photoBox,
+            state: g.red ? "red" : g.green ? "green" : undefined,
+            reason: g.reason,
+            onPress: () => open(g),
+            onLayout: (y) => rowY.current.set(g.key, y),
+          }))}
+          afterLines={gapOpenLine ? (
             <Pressable style={[styles.line, styles.lineRed]} onPress={() => setGapOpen(true)} accessibilityRole="button">
               <View style={styles.lineMain}>
                 <Ionicons name="alert-circle-outline" size={22} color={Colors.errorLight} style={styles.icon} />
@@ -173,35 +185,30 @@ export function MirrorReview(p: Props) {
                 <Text style={styles.lineAmount}>{p.formatMoney(p.gap.amount)}</Text>
               </View>
             </Pressable>
-          )}
-
-          <View style={styles.dashed} />
-          <View style={styles.sumRow}>
-            <Text style={styles.sumLabel}>{t("mirror_items_sum")}</Text>
-            <Text style={styles.sumValue}>{p.formatMoney(p.itemsSum)}</Text>
-          </View>
-          {p.chargesSum !== 0 && (
-            <View style={styles.sumRow}>
-              <Text style={styles.sumLabel}>+ {t("mirror_charges")}</Text>
-              <Text style={styles.sumValue}>{p.formatMoney(p.chargesSum)}</Text>
-            </View>
-          )}
-          {p.gapAnswered && p.gapAnswer && (
-            <Pressable style={styles.sumRow} onPress={() => setGapOpen(true)} accessibilityRole="button">
-              <Text style={styles.sumLabel}>
-                {answeredSigned >= 0 ? "+" : "−"} {p.gapAnswer.name || (answeredSigned >= 0 ? t("mirror_unlined") : t("mirror_discount"))}
-              </Text>
-              <Text style={styles.sumValue}>{p.formatMoney(Math.abs(answeredSigned))}</Text>
-            </Pressable>
-          )}
-          <Pressable style={[styles.sumRow, noTotal && styles.lineRed]} onPress={() => setTotalOpen(true)} accessibilityRole="button">
-            <Text style={[styles.totalLabel, totalAddsUp && { color: Colors.successLight }]}>{t("mirror_printed_total")} {totalAddsUp ? "✓" : ""}</Text>
-            <Text style={[styles.totalValue, totalAddsUp && { color: Colors.successLight }]}>{noTotal ? "—" : p.formatMoney(p.confirmedTotal)}</Text>
-          </Pressable>
-          {p.gapAnswered && p.gapAnswer?.answer === "charge" && (
-            <Text style={styles.note}>{t("mirror_proportional").replace("{amount}", p.formatMoney(p.gapAnswer.amount))}</Text>
-          )}
-        </View>
+          ) : null}
+          summary={[
+            { key: "items", label: t("mirror_items_sum"), value: p.formatMoney(p.itemsSum) },
+            ...(p.chargesSum !== 0 ? [{ key: "charges", label: `+ ${t("mirror_charges")}`, value: p.formatMoney(p.chargesSum) }] : []),
+            ...(p.gapAnswered && p.gapAnswer
+              ? [{
+                  key: "gap",
+                  label: `${answeredSigned >= 0 ? "+" : "−"} ${p.gapAnswer.name || (answeredSigned >= 0 ? t("mirror_unlined") : t("mirror_discount"))}`,
+                  value: p.formatMoney(Math.abs(answeredSigned)),
+                  onPress: () => setGapOpen(true),
+                }]
+              : []),
+            ...(p.tip ? [{ key: "tip", label: `+ ${t("mirror_tip")}`, value: p.formatMoney(p.tip) }] : []),
+            {
+              key: "total",
+              label: t("mirror_printed_total"),
+              value: noTotal ? "—" : p.formatMoney(p.confirmedTotal),
+              tone: noTotal ? ("red" as const) : totalAddsUp ? ("total-ok" as const) : ("total" as const),
+              // manual entry: the total is the sum of what was typed — nothing to edit
+              onPress: p.mode === "manual" ? undefined : () => setTotalOpen(true),
+            },
+          ]}
+          note={p.gapAnswered && p.gapAnswer?.answer === "charge" ? t("mirror_proportional").replace("{amount}", p.formatMoney(p.gapAnswer.amount)) : undefined}
+        />
 
         <Text style={styles.legend}>{t("mirror_legend")}</Text>
 
@@ -209,15 +216,18 @@ export function MirrorReview(p: Props) {
           <TouchableOpacity onPress={p.onAddItem} style={styles.addBtn} accessibilityRole="button">
             <Text style={styles.addText}>+ {t("mirror_add_missing")}</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={p.onSeePhoto} style={styles.photoBtn} accessibilityRole="button">
-            <Text style={styles.photoText}>{t("mirror_see_photo")}</Text>
-          </TouchableOpacity>
+          {p.onSeePhoto ? (
+            <TouchableOpacity onPress={p.onSeePhoto} style={styles.photoBtn} accessibilityRole="button">
+              <Text style={styles.photoText}>{t("mirror_see_photo")}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
+        {p.extraBelow}
       </ScrollView>
 
       <View style={styles.footer}>
         {/* C: always in the accent; while something is missing it says what, and a tap goes there */}
-        <TouchableOpacity style={styles.continueBtn} onPress={canContinue ? p.onContinue : goToPending} accessibilityRole="button">
+        <TouchableOpacity style={styles.continueBtn} onPress={empty ? p.onAddItem : canContinue ? p.onContinue : goToPending} accessibilityRole="button">
           <Text style={styles.continueText}>{buttonLabel}</Text>
         </TouchableOpacity>
       </View>
@@ -270,24 +280,12 @@ const styles = StyleSheet.create({
   stepBar: { flexDirection: "row", gap: 6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 },
   stepLine: { flex: 1, height: 4, borderRadius: 2, backgroundColor: Colors.cardBorderDark },
   body: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 },
-  paper: { backgroundColor: Colors.cardDark, borderRadius: 16, borderWidth: 1, borderColor: Colors.cardBorderDark, paddingVertical: 16, paddingHorizontal: 12 },
-  merchant: { fontFamily: MONO, fontSize: 16, fontWeight: "800", color: Colors.textPrimaryDark, textAlign: "center", letterSpacing: 1 },
-  date: { fontFamily: MONO, fontSize: 14, color: Colors.textSecondaryDark, textAlign: "center", marginTop: 6 },
-  dashed: { borderTopWidth: 1, borderStyle: "dashed", borderColor: Colors.cardBorderDark, marginVertical: 12, marginHorizontal: 4 },
   line: { paddingVertical: 8, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: "transparent", marginVertical: 2 },
   lineRed: { backgroundColor: Colors.errorBg, borderColor: Colors.error },
-  lineGreen: { backgroundColor: Colors.successBg, borderColor: Colors.success },
   lineMain: { flexDirection: "row", alignItems: "center" },
   icon: { marginRight: 8 },
   lineName: { flex: 1, fontFamily: MONO, fontSize: 15, color: Colors.textPrimaryDark },
   lineAmount: { fontFamily: MONO, fontSize: 15, color: Colors.textPrimaryDark, marginLeft: 8 },
-  reason: { fontSize: 12, color: Colors.errorLight, marginLeft: 30, marginTop: 4 },
-  sumRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8 },
-  sumLabel: { fontFamily: MONO, fontSize: 15, color: Colors.textPrimaryDark },
-  sumValue: { fontFamily: MONO, fontSize: 15, color: Colors.textPrimaryDark },
-  totalLabel: { fontFamily: MONO, fontSize: 16, fontWeight: "800", color: Colors.textPrimaryDark },
-  totalValue: { fontFamily: MONO, fontSize: 16, fontWeight: "800", color: Colors.textPrimaryDark },
-  note: { fontSize: 13, color: Colors.textSecondaryDark, paddingHorizontal: 8, marginTop: 6, lineHeight: 19 },
   legend: { fontSize: 14, color: Colors.textSecondaryDark, textAlign: "center", lineHeight: 20, paddingHorizontal: 8 },
   actions: { flexDirection: "row", gap: 12 },
   addBtn: { flex: 1, minHeight: 52, borderRadius: 14, borderWidth: 1.5, borderStyle: "dashed", borderColor: Colors.primary, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },

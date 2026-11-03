@@ -13,6 +13,7 @@ import {
   AppState,
   Platform,
 } from "react-native";
+import { RECEIPT_MONO } from "@/constants/typography";
 import { showDialog } from "@/lib/dialog";
 import { endSession, showEndSessionError } from "@/lib/endSession";
 import { checkSessionGone, leaveGoneSession } from "@/lib/sessionGone";
@@ -2267,24 +2268,9 @@ ${tr("host_now_you_all_picked")}`, [
                   myId={myId || undefined}
                   requests={shareRequests}
                   initials={initials}
+                  total={receiptTotal}
                   t={t}
                 />
-                {receipt.globalCosts.map((cost) => (
-                  <View key={cost.id ?? cost.name} style={styles.itemRow}>
-                    <Text style={styles.itemName}>{cost.name}</Text>
-                    <Text style={styles.itemPrice}>
-                      {formatCurrency(cost.amount, receipt.currency)}
-                    </Text>
-                  </View>
-                ))}
-                {(receipt.selectedTip ?? 0) > 0 && (
-                  <View style={styles.itemRow}>
-                    <Text style={styles.itemName}>{t("review_tip")}</Text>
-                    <Text style={styles.itemPrice}>
-                      {formatCurrency(receipt.selectedTip!, receipt.currency)}
-                    </Text>
-                  </View>
-                )}
               </View>
             )}
           </View>
@@ -2886,7 +2872,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 2,
     color: HOME_THEME.text,
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    fontFamily: RECEIPT_MONO,
   },
   joinCodeCopy: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 6, paddingHorizontal: 8 },
   qrModalCode: {
@@ -2896,7 +2882,7 @@ const styles = StyleSheet.create({
     color: "#111",
     marginTop: 12,
     textAlign: "center",
-    fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
+    fontFamily: RECEIPT_MONO,
   },
   shareLink: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
   shareLinkText: { fontSize: 12, fontWeight: "600", color: HOME_THEME.primary },
@@ -2926,19 +2912,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: HOME_THEME.secondary,
   },
-  itemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: HOME_THEME.border,
-    gap: 8,
-  },
   itemRowUnassigned: { backgroundColor: "#FF950012" },
-  itemName: { fontSize: 13, fontWeight: "500", color: HOME_THEME.text, flex: 1 },
   itemAvail: { fontSize: 11, fontStyle: "italic", marginTop: 1, color: HOME_THEME.secondary },
-  itemPrice: { fontSize: 13, fontWeight: "600", color: HOME_THEME.text },
 
   // ── Section label ─────────────────────────────────────────────────────────────
   sectionLabel: {

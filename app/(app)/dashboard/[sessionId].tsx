@@ -24,6 +24,7 @@ import { useAuthStore } from "@/store/authStore";
 import { BarChart } from "@/components/dashboard/BarChart";
 import { BreakdownCard } from "@/components/dashboard/BreakdownCard";
 import { SessionMissing } from "@/components/session/SessionMissing";
+import { ReceiptView } from "@/components/receipt/ReceiptView/ReceiptView";
 import { SummaryShare } from "@/components/dashboard/SummaryShare";
 import { CentRoulette } from "@/components/roulette/CentRoulette";
 import { Avatar } from "@/components/ui/Avatar";
@@ -936,57 +937,48 @@ ${t("host_now_you_payments")}`
               </View>
 
               <Text style={styles.itemsSheetLabel}>ITEMS CHOSEN</Text>
-              <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
-                {(viewItemsSplitResult?.itemBreakdown.length ?? 0) > 0 ? (
-                  viewItemsSplitResult!.itemBreakdown.map((entry) => (
-                    <View key={entry.itemId} style={styles.itemRow}>
-                      <Text style={styles.itemRowName} numberOfLines={3}>
-                        {entry.itemName}
-                        {/* R12 — "(partilhado com Bruno)" */}
-                        {entry.sharedWith && entry.sharedWith.length > 0
-                          ? ` (${t("split_shared_with").replace(
-                              "{names}",
-                              entry.sharedWith.map((uid) => session?.participants.find((p) => p.userId === uid)?.profile.name ?? "?").join(", ")
-                            )})`
-                          : ""}
-                      </Text>
-                      <View style={{ alignItems: "flex-end" }}>
-                        <Text style={[styles.itemRowAmount, { color: viewItemsParticipant.profile.color ?? C.primary }]}>
-                          {formatCurrency(entry.amount, receipt.currency)}
-                        </Text>
-                        {entry.splitCount > 1 ? (
-                          <Text style={styles.itemRowSplit}>÷{entry.splitCount} of {formatCurrency(entry.itemTotal, receipt.currency)}</Text>
-                        ) : (entry.units ?? 1) > 1 && entry.unitPrice !== undefined ? (
-                          <Text style={styles.itemRowSplit}>{entry.units} × {formatCurrency(entry.unitPrice, receipt.currency)}</Text>
-                        ) : null}
-                      </View>
-                    </View>
-                  ))
-                ) : (
+              <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
+                {/* D (04-11-2026): this person's part, in the shared receipt (readonly) */}
+                {(viewItemsSplitResult?.itemBreakdown.length ?? 0) > 0 ? (() => {
+                  const r = viewItemsSplitResult!;
+                  const allItems = Object.values(receipt.categories).flat();
+                  const nameOf = (uid: string) => session?.participants.find((p) => p.userId === uid)?.profile.name ?? "?";
+                  const money = (v: number) => formatCurrency(v, receipt.currency);
+                  return (
+                    <ReceiptView
+                      mode="readonly"
+                      formatMoney={money}
+                      lines={r.itemBreakdown.map((entry) => {
+                        const item = allItems.find((i) => i.id === entry.itemId);
+                        return {
+                          key: entry.itemId,
+                          quantity: entry.units ?? 1,
+                          name: entry.itemName,
+                          amount: entry.amount,
+                          category: item?.category,
+                          photoBox: item?.photoBox,
+                          sub: entry.sharedWith && entry.sharedWith.length > 0
+                            ? t("split_shared_with").replace("{names}", entry.sharedWith.map(nameOf).join(", "))
+                            : entry.splitCount > 1
+                              ? `÷${entry.splitCount} · ${money(entry.itemTotal)}`
+                              : (entry.units ?? 1) > 1 && entry.unitPrice !== undefined
+                                ? `${entry.units} × ${money(entry.unitPrice)}`
+                                : undefined,
+                        };
+                      })}
+                      summary={[
+                        ...(r.globalCostsShare !== 0
+                          ? r.costBreakdown?.length
+                            ? r.costBreakdown.map((c) => ({ key: `cost_${c.costId}`, label: `${c.amount < 0 ? "−" : "+"} ${c.name}`, value: money(Math.abs(c.amount)) }))
+                            : [{ key: "costs", label: `+ ${t("mirror_charges")}`, value: money(r.globalCostsShare) }]
+                          : []),
+                        ...(r.tipShare > 0 ? [{ key: "tip", label: `+ ${t("mirror_tip")}`, value: money(r.tipShare) }] : []),
+                        { key: "total", label: "TOTAL", value: money(viewItemsParticipant.totalOwed), tone: "total" as const },
+                      ]}
+                    />
+                  );
+                })() : (
                   <Text style={styles.itemRowEmpty}>No individual items — bill split equally</Text>
-                )}
-                {/* R2 — each charge under its own name; a discount shows as a minus. */}
-                {(viewItemsSplitResult?.globalCostsShare ?? 0) !== 0 &&
-                  (viewItemsSplitResult!.costBreakdown?.length ? (
-                    viewItemsSplitResult!.costBreakdown.map((c) => (
-                      <View key={c.costId} style={styles.itemRow}>
-                        <Text style={styles.itemRowName}>{c.name}</Text>
-                        <Text style={[styles.itemRowAmount, { color: MUTED }]}>
-                          {c.amount < 0 ? "−" : "+"}{formatCurrency(Math.abs(c.amount), receipt.currency)}
-                        </Text>
-                      </View>
-                    ))
-                  ) : (
-                    <View style={styles.itemRow}>
-                      <Text style={styles.itemRowName}>Tax & fees share</Text>
-                      <Text style={[styles.itemRowAmount, { color: MUTED }]}>+{formatCurrency(viewItemsSplitResult!.globalCostsShare, receipt.currency)}</Text>
-                    </View>
-                  ))}
-                {(viewItemsSplitResult?.tipShare ?? 0) > 0 && (
-                  <View style={styles.itemRow}>
-                    <Text style={styles.itemRowName}>Tip share</Text>
-                    <Text style={[styles.itemRowAmount, { color: C.success }]}>+{formatCurrency(viewItemsSplitResult!.tipShare, receipt.currency)}</Text>
-                  </View>
                 )}
               </ScrollView>
 
@@ -1177,10 +1169,6 @@ const styles = StyleSheet.create({
   itemsSheetAmount: { fontSize: 14, fontWeight: "600", marginTop: 2 },
   itemsSheetStatusBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   itemsSheetLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 0.8, color: MUTED },
-  itemRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: BORDER },
-  itemRowName: { flex: 1, fontSize: 14, color: TEXT, fontWeight: "500", marginRight: 10 },
-  itemRowAmount: { fontSize: 14, fontWeight: "700" },
-  itemRowSplit: { fontSize: 11, color: MUTED, marginTop: 2 },
   itemRowEmpty: { fontSize: 14, color: MUTED, textAlign: "center", paddingVertical: 24 },
   itemsSheetFooter: { flexDirection: "row", gap: 10, marginTop: 4 },
   remindSheetBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12 },

@@ -14,6 +14,8 @@ import {
 import { Colors } from "@/constants/colors";
 import { StepperButton } from "@/components/ui/StepperButton";
 import { useI18nStore } from "@/store/i18nStore";
+import { categoryForGroup, groupKindOf, type GroupKind } from "@/components/receipt/ReceiptView/groups";
+import { GroupIcon } from "@/components/receipt/ReceiptView/GroupIcon";
 
 // R10 — the correction panel (bottom sheet) for one line of the mirror: the
 // crop of the photo where the line is (the parser's per-line position),
@@ -25,13 +27,15 @@ export type PanelLine = {
   quantity: number;
   unitPrice: number;
   photoBox?: readonly [number, number, number, number];
+  /** D.3: the line's category (starters, mains, drinks, desserts, others). */
+  category?: string;
 };
 
 type Props = {
   line: PanelLine | null;
   photoUri: string | null;
   formatMoney: (v: number) => string;
-  onSave: (ids: string[], v: { name: string; quantity: number; unitPrice: number }) => void;
+  onSave: (ids: string[], v: { name: string; quantity: number; unitPrice: number; category?: string }) => void;
   onDelete: (ids: string[]) => void;
   onClose: () => void;
 };
@@ -68,12 +72,14 @@ export function MirrorLinePanel({ line, photoUri, formatMoney, onSave, onDelete,
   const [qty, setQty] = useState(1);
   const [unitText, setUnitText] = useState("");
   const [cropWidth, setCropWidth] = useState(0);
+  const [group, setGroup] = useState<GroupKind>("food");
 
   useEffect(() => {
     if (!line) return;
     setName(line.name);
     setQty(line.quantity);
     setUnitText(line.unitPrice > 0 ? line.unitPrice.toFixed(2) : "");
+    setGroup(groupKindOf(line.category));
   }, [line]);
 
   const unit = parseAmount(unitText);
@@ -91,6 +97,25 @@ export function MirrorLinePanel({ line, photoUri, formatMoney, onSave, onDelete,
 
           <Text style={styles.label}>{t("mirror_panel_name")}</Text>
           <TextInput value={name} onChangeText={setName} style={styles.input} placeholder={t("mirror_panel_name")} placeholderTextColor={Colors.textMutedDark} />
+
+          {/* D.3: the group, in the same panel */}
+          <Text style={styles.label}>{t("mirror_panel_group")}</Text>
+          <View style={styles.groupRow}>
+            {(["food", "drinks", "others"] as GroupKind[]).map((k) => (
+              <TouchableOpacity
+                key={k}
+                onPress={() => setGroup(k)}
+                style={[styles.groupBtn, group === k && styles.groupBtnOn]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: group === k }}
+              >
+                <GroupIcon kind={k} color={group === k ? Colors.textPrimaryDark : Colors.textMutedDark} />
+                <Text style={[styles.groupText, group === k && { color: Colors.textPrimaryDark }]}>
+                  {t(k === "food" ? "receipt_group_pick_food" : k === "drinks" ? "receipt_group_pick_drinks" : "receipt_group_pick_others")}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
@@ -119,7 +144,7 @@ export function MirrorLinePanel({ line, photoUri, formatMoney, onSave, onDelete,
             <TouchableOpacity
               style={[styles.saveBtn, !canSave && { opacity: 0.45 }]}
               disabled={!canSave}
-              onPress={() => line && unit !== null && onSave(line.ids, { name: name.trim(), quantity: qty, unitPrice: unit })}
+              onPress={() => line && unit !== null && onSave(line.ids, { name: name.trim(), quantity: qty, unitPrice: unit, category: categoryForGroup(group, line.category) })}
               accessibilityRole="button"
             >
               <Text style={styles.saveText}>{t("mirror_save")}</Text>
@@ -140,6 +165,10 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, color: Colors.textSecondaryDark, fontWeight: "600" },
   input: { borderWidth: 1, borderColor: Colors.cardBorderDark, backgroundColor: Colors.cardDark, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: Colors.textPrimaryDark },
   amount: { textAlign: "right" },
+  groupRow: { flexDirection: "row", gap: 8 },
+  groupBtn: { flex: 1, minHeight: 48, borderRadius: 10, borderWidth: 1, borderColor: Colors.cardBorderDark, backgroundColor: Colors.cardDark, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 },
+  groupBtnOn: { borderColor: Colors.primary, backgroundColor: Colors.primaryTintDark },
+  groupText: { color: Colors.textMutedDark, fontWeight: "600", fontSize: 14 },
   row: { flexDirection: "row", gap: 12, alignItems: "flex-end" },
   qtyRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48 },
   qty: { fontSize: 18, fontWeight: "800", minWidth: 24, textAlign: "center", color: Colors.textPrimaryDark },

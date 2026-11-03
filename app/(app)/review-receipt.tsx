@@ -557,7 +557,7 @@ export default function ReviewReceiptScreen() {
     const photoBoxById = new Map(
       Object.values(receipt.categories).flat().filter((i) => i.photoBox).map((i) => [i.id, i.photoBox])
     );
-    const saveLine = (ids: string[], v: { name: string; quantity: number; unitPrice: number }) => {
+    const saveLine = (ids: string[], v: { name: string; quantity: number; unitPrice: number; category?: string }) => {
       const [first, ...rest] = ids;
       const total = Math.round(v.quantity * v.unitPrice * 100) / 100;
       console.log(`[review-receipt] R10 line saved: "${v.name}" ${v.quantity} × ${v.unitPrice} (${ids.length} line(s))`);
@@ -567,7 +567,8 @@ export default function ReviewReceiptScreen() {
           .map((i) =>
             i.id === first
               ? { ...i, name: v.name, quantity: v.quantity, unitPrice: v.unitPrice, totalPrice: total,
-                  qtyText: String(v.quantity), unitPriceText: v.unitPrice.toFixed(2), totalText: total.toFixed(2), reviewed: true }
+                  qtyText: String(v.quantity), unitPriceText: v.unitPrice.toFixed(2), totalText: total.toFixed(2), reviewed: true,
+                  ...(v.category ? { category: v.category as ItemCategory } : {}) }
               : i
           )
       );
