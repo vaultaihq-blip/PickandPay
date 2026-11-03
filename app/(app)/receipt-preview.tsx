@@ -114,7 +114,9 @@ export default function ReceiptPreviewScreen() {
       const itemCount = Object.values(parsed.categories).flat().length;
       if (itemCount === 0) {
         setIsAnalyzing(false);
-        showDialog(t("scan_no_items_title"), t("scan_no_items_msg"), [
+        // A2: read and charged (200), but no items: the same plain message as a
+        // photo with no receipt, saying the credit was used.
+        showDialog(t("scan_no_receipt_title"), t("scan_no_receipt_msg"), [
           { text: t("scan_try_again"), style: "cancel", onPress: () => router.back() },
           {
             text: t("scan_enter_manually"),

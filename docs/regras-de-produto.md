@@ -92,6 +92,8 @@ Pedida pelo dono a 01-11-2026. Substitui a parte da R7 sobre "quem saiu antes de
 | **Confirmação antes de retirar no lobby:** "Os itens de <nome> ficam sem dono e vão ser divididos pelos outros. <nome> pode voltar à sessão." | O anfitrião sabe o que acontece aos itens. |
 | **Quem é retirado por ausência:** o mesmo que no "Retirar da divisão" (não é cobrado, os itens ficam livres, recebe o aviso), mas o aviso é "O anfitrião retirou-te desta divisão porque estiveste ausente.". Pode voltar **com qualquer saldo se já tiver pago esta sessão**; senão, com pelo menos 1 crédito. | O motivo é a ausência, não a falta de créditos. |
 | **Os 3 minutos** deste "Retirar" são independentes dos 5 minutos da troca de anfitrião (R6b). | São regras diferentes, com tempos diferentes. |
+| **O anfitrião pode retirar qualquer pessoa** (pedido pelo dono a 04-11-2026): no lobby, só o **anfitrião atual** vê "Retirar da sessão" junto de cada participante presente (nunca de si próprio), **sem esperar** pelos 3 minutos. Antes de retirar, a confirmação "Os itens de <nome> ficam sem dono e vão ser divididos pelos outros.". A pessoa vê "O anfitrião retirou-te desta sessão." e vai para o início. Se a pessoa estiver desligada há mais de 3 minutos, o mesmo botão retira-a por ausência (com o aviso "porque estiveste ausente"). | O anfitrião decide quem fica na divisão. |
+| **Depois de uma troca de anfitrião (R6b)**, o botão passa para o novo anfitrião e o antigo deixa de o ter. O servidor só aceita o pedido do anfitrião atual. Quem foi retirado assim volta com qualquer saldo se já pagou esta sessão; senão, com pelo menos 1 crédito (R11). | Só quem gere a sessão pode retirar alguém. |
 
 ## R12 — Unidades, seleção ao vivo e partilhas com confirmação
 

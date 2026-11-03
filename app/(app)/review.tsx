@@ -35,7 +35,6 @@ import { TranslationKey } from "@/constants/translations";
 import { isOfflineSessionId } from "@/constants/dev";
 import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
 import { showDialog } from "@/lib/dialog";
-import { endSession, showEndSessionError } from "@/lib/endSession";
 import { isScanCharged, markScanCharged, useScanCreditGuard } from "@/lib/scanCredit";
 
 const ORDERED_CATEGORIES: ItemCategory[] = [
@@ -130,36 +129,21 @@ export default function ReviewScreen() {
       router.back(); // after a paid scan the guard asks "Continuar / Fazer novo scan"
       return;
     }
-    showDialog(
-      "Cancelar scan?",
-      "Voltar atrás irá cancelar o scan atual. Terás de digitalizar novamente.",
-      [
-        { text: "Continuar", style: "cancel" },
-        {
-          text: "Cancelar scan",
-          style: "destructive",
-          onPress: async () => {
-            if (
-              currentSession &&
-              !currentSession.id.startsWith("session_") &&
-              !currentSession.id.startsWith("dev_session_")
-            ) {
-              // D.5 — checked; on failure the session is still open, so stay here.
-              try {
-                await endSession("review: cancel scan", currentSession.id);
-              } catch (err) {
-                showEndSessionError(err, t);
-                return;
-              }
-            }
-            clearReceipt();
-            clearSession();
-            router.replace("/(app)");
-          },
+    // A1 (04-11-2026): the same dialog as the mirror review (title, buttons);
+    // with no paid scan behind it the message says what is really lost.
+    showDialog(t("scan_credit_back_title"), t("scan_manual_back_msg"), [
+      { text: t("scan_credit_keep"), style: "cancel" },
+      {
+        text: t("scan_credit_new_scan"),
+        style: "destructive",
+        onPress: () => {
+          console.log("[review] manual entry: back to a new scan");
+          clearReceipt();
+          router.dismissTo("/(app)/scan");
         },
-      ]
-    );
-  }, [clearReceipt, clearSession, currentSession, isFromLobby, t]);
+      },
+    ]);
+  }, [clearReceipt, isFromLobby, t]);
 
   useFocusEffect(
     useCallback(() => {

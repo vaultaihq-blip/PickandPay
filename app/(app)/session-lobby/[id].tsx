@@ -1237,7 +1237,8 @@ ${tr("host_now_you_all_picked")}`, [
         if (!uid) return;
         // R11: the host removed me from the split — home, with the reason.
         if (status === "removed" && uid === myId) {
-          const why = payload.new?.removed_reason === "absent" ? "removed_absent" : "removed";
+          const r = payload.new?.removed_reason;
+          const why = r === "absent" ? "removed_absent" : r === "removed_by_host" ? "removed_by_host" : "removed";
           leaveGoneSession("lobby: removed by the host", String(id), why, useI18nStore.getState().t);
           return;
         }
@@ -1696,35 +1697,40 @@ ${tr("host_now_you_all_picked")}`, [
     router.push(`/(app)/selection/${id}?userId=${myId}&returnTo=lobby`);
   };
 
-  // R11 (lobby, owner 02-11-2026): the current host removes someone
-  // disconnected for more than 3 minutes. The server checks the 3 minutes on
-  // the heartbeat (STILL_CONNECTED otherwise); independent of R6b's 5 minutes.
-  const handleRemoveAbsent = useCallback((uid: string, name: string) => {
+  // R11 + A4 (owner, 04-11-2026): the current host removes anyone from the
+  // session. Away for 3+ minutes → reason 'absent' ("porque estiveste
+  // ausente"; the server checks the heartbeat); otherwise 'removed_by_host'
+  // (no wait). The server also checks that the caller is the current host.
+  const handleRemoveFromSession = useCallback((uid: string, name: string, away: boolean) => {
     if (!id) return;
+    const reason = away ? "absent" : "removed_by_host";
+    console.log(`[session-lobby] remove tapped: ${uid} (${name}), reason ${reason}`);
     const remove = async () => {
+      console.log(`[session-lobby] remove confirmed: ${uid} (${reason})`);
       try {
         const [res] = await expectRows<{ result?: string; status?: string; reason?: string }>(
-          `lobby: remove ${uid} (absent)`,
-          supabase.rpc("remove_participant", { p_session_id: id, p_user_id: uid, p_reason: "absent" })
+          `lobby: remove ${uid} (${reason})`,
+          supabase.rpc("remove_participant", { p_session_id: id, p_user_id: uid, p_reason: reason })
         );
         if (res?.result !== "removed" || res.status !== "removed") {
           throw new Error(`remove_participant: ${res?.result} (${res?.status})`);
         }
-        console.log(`[session-lobby] removed ${uid} (${name}) from the split: away for 3+ minutes`);
+        console.log(`[session-lobby] removed ${uid} (${name}) from the session: ${reason}`);
         clearDisconnected(uid);
         setLeftParticipantIds((prev) => new Set([...prev, uid]));
       } catch (err) {
-        if (/STILL_CONNECTED/.test(String((err as { message?: string })?.message ?? err))) {
-          console.log(`[session-lobby] remove ${uid} refused: still connected on the server`);
+        const msg = String((err as { message?: string })?.message ?? err);
+        console.log(`[session-lobby] remove ${uid} refused: ${msg}`);
+        if (/STILL_CONNECTED/.test(msg)) {
           showDialog(t("error"), t("lobby_remove_still_connected").replace(/\{name\}/g, name));
           return;
         }
         showWriteError(err, t);
       }
     };
-    showDialog(t("lobby_remove_title"), t("lobby_remove_msg").replace(/\{name\}/g, name), [
+    showDialog(t("lobby_remove_session_title"), t("lobby_remove_session_msg").replace(/\{name\}/g, name), [
       { text: t("cancel_ready_back"), style: "cancel" },
-      { text: t("lobby_remove_btn"), style: "destructive", onPress: () => void remove() },
+      { text: t("lobby_remove_session_btn"), style: "destructive", onPress: () => void remove() },
     ]);
   }, [clearDisconnected, id, t]);
 
@@ -2507,6 +2513,25 @@ ${tr("host_now_you_all_picked")}`, [
                 )}
               </View>
 
+              {/* A4: "Retirar da sessão" — current host only, every present participant but the host */}
+              {isCreator && !isMe && !isLeft && p.userId !== session.creatorId && (
+                <TouchableOpacity
+                  onPress={() =>
+                    handleRemoveFromSession(
+                      p.userId,
+                      p.profile.name,
+                      isDisconnected && Date.now() - (disconnectedAt.get(p.userId) ?? Date.now()) + 30_000 >= REMOVE_ABSENT_MS
+                    )
+                  }
+                  style={styles.removeBtn}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${t("lobby_remove_session_btn")}: ${p.profile.name}`}
+                >
+                  <Ionicons name="person-remove-outline" size={20} color={HOME_THEME.secondary} />
+                </TouchableOpacity>
+              )}
+
               {/* Right-side actions */}
               {isLeft ? (
                 hasSelectionsAfterLeaving ? (
@@ -2538,19 +2563,6 @@ ${tr("host_now_you_all_picked")}`, [
                       activeOpacity={0.7}
                     >
                       <Text style={styles.takeoverBtnText}>🤝 {t("lobby_take_over_short")}</Text>
-                    </TouchableOpacity>
-                  )}
-                  {/* R11: away for more than 3 minutes (30 s grace + time marked), current host only */}
-                  {isCreator && !isMe &&
-                    Date.now() - (disconnectedAt.get(p.userId) ?? Date.now()) + 30_000 >= REMOVE_ABSENT_MS && (
-                    <TouchableOpacity
-                      style={[styles.skipBtn, { borderColor: HOME_THEME.error }]}
-                      onPress={() => handleRemoveAbsent(p.userId, p.profile.name)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.skipBtnText, { color: HOME_THEME.error }]}>
-                        {t("lobby_remove_btn")}
-                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -2981,6 +2993,8 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: "500", color: HOME_THEME.secondary },
   doneRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   actionCol: { gap: 6, alignItems: "flex-end" },
+  // A4: 36 + 6 px hit slop all round = 48×48 to touch
+  removeBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
 
   // ── In-card action buttons ────────────────────────────────────────────────────
   selectBtn: {

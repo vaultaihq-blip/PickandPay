@@ -11,8 +11,9 @@ import { useSessionStore } from "@/store/sessionStore";
 // says why, with OK only. The reason comes from join_preview's
 // 'closed_reason' (session_closures is server only).
 // "removed": R11, the host removed this person from the split (no credits);
-// "removed_absent": R11 (lobby), removed for being away for 3+ minutes.
-export type SessionState = "open" | "closed_host" | "closed_inactive" | "closed" | "not_found" | "removed" | "removed_absent";
+// "removed_absent": R11 (lobby), removed for being away for 3+ minutes;
+// "removed_by_host": A4, the host removed this person from the session.
+export type SessionState = "open" | "closed_host" | "closed_inactive" | "closed" | "not_found" | "removed" | "removed_absent" | "removed_by_host";
 
 // Throws on a failed or late read (10 s): the caller decides what to show.
 export async function readSessionState(label: string, sessionId: string): Promise<SessionState> {
@@ -28,7 +29,7 @@ export async function readSessionState(label: string, sessionId: string): Promis
   if (!p || p.result === "not_found") return "not_found";
   if (p.result !== "closed") {
     if (p.my_status !== "removed") return "open";
-    return p.removed_reason === "absent" ? "removed_absent" : "removed";
+    return p.removed_reason === "absent" ? "removed_absent" : p.removed_reason === "removed_by_host" ? "removed_by_host" : "removed";
   }
   if (p.closed_reason === "host") return "closed_host";
   if (p.closed_reason === "inactive") return "closed_inactive";
@@ -63,13 +64,14 @@ export function leaveGoneSession(
   if (endedHere.has(sessionId)) return;
   const message =
     state === "removed_absent" ? t("session_removed_absent_msg")
+    : state === "removed_by_host" ? t("session_removed_by_host_msg")
     : state === "removed" ? t("session_removed_msg")
     : state === "not_found" ? t("session_gone_not_found_msg")
     : state === "closed_host" ? t("session_gone_host_msg")
     : state === "closed_inactive" ? t("session_gone_inactive_msg")
     : t("join_closed_msg");
   showDialog(
-    state === "removed" || state === "removed_absent" ? t("session_removed_title")
+    state === "removed" || state === "removed_absent" || state === "removed_by_host" ? t("session_removed_title")
     : state === "not_found" ? t("join_not_found_title") : t("join_closed_title"),
     message,
     [{ text: t("ok") }],
