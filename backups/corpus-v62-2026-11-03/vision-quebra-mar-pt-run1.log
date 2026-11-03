@@ -1,0 +1,17 @@
+Replaying frozen OCR fixture: supabase/functions/parse-receipt/__fixtures__/vision-quebra-mar-pt.json (geometric reconstruction)
+OCR: 53 lines, 200 words
+Ledger: 39 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 11121ms, tokens prompt=2222 completion=1700 total=3922
+Structure: 40 blocks (merchant=RESTAURANTE QUEBRA MAR, currency=EUR)
+Total witness: label -> 300.25 (agreement=agree)
+Geometric ownership: 39/40 confident, 0 anchor-corrected
+Constant-offset arbitration: formDetected=false, hypothesisAdopted=H0
+Suspicious (round 1): 1
+Suspicious round 1 skipped (no image available under --fixture): 1 would have been checked
+Reconciliation (round 1): reconciles=true, calculatedSubtotal=300.25, printedSubtotal=300.25
+
+Full report written to: backups/corpus-v62-2026-11-03/vision-quebra-mar-pt-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=300.25, printedSubtotal=300.25, printedTotal=300.25, reconciles=true (arithmeticOnly=true), summaryCoverageValid=true, summaryUnresolved=0, summaryDuplicateRoles=0, structuralGap=0, echoExact=5, echoMult=9, genuineMiss=0, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=false, offsetHypothesisAdopted=H0, totalWitness=label, totalWitnessAgreement=agree, provenNonAdditiveCount=6, provenNonAdditiveBlockedBy=null, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=no_deficit, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null

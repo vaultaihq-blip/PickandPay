@@ -1,0 +1,925 @@
+{
+  "imagePath": null,
+  "fixturePath": "supabase/functions/parse-receipt/__fixtures__/vision-mademoiselle-en.json",
+  "verificationAvailable": false,
+  "merchant": "Mademoiselle Raw Bar & Grill",
+  "date": "2026-05-24",
+  "currency": "CAD",
+  "currencyRead": "CAD",
+  "structureTimeMs": 2920,
+  "structureTokenUsage": {
+    "promptTokens": 1352,
+    "completionTokens": 377,
+    "totalTokens": 1729
+  },
+  "structureRetryFired": false,
+  "structuralGapCountBeforeRetry": null,
+  "ocrLines": [
+    {
+      "lineIndex": 0,
+      "text": "mademoiselle"
+    },
+    {
+      "lineIndex": 1,
+      "text": "RAW BAR"
+    },
+    {
+      "lineIndex": 2,
+      "text": "Mademoiselle Raw Bar & Grill"
+    },
+    {
+      "lineIndex": 3,
+      "text": "563 King St W"
+    },
+    {
+      "lineIndex": 4,
+      "text": "Toronto ON M5V 1M1"
+    },
+    {
+      "lineIndex": 5,
+      "text": "Server Main Bar"
+    },
+    {
+      "lineIndex": 6,
+      "text": "Printed By: Main Bar"
+    },
+    {
+      "lineIndex": 7,
+      "text": "Station Main Bar2"
+    },
+    {
+      "lineIndex": 8,
+      "text": "$1"
+    },
+    {
+      "lineIndex": 9,
+      "text": "ID 523528 #1 May 24,26 1:21 am"
+    },
+    {
+      "lineIndex": 10,
+      "text": "3 Belvedere $3600"
+    },
+    {
+      "lineIndex": 11,
+      "text": "1 Peroni[w/Glass] $ 9.00"
+    },
+    {
+      "lineIndex": 12,
+      "text": "Total Number of items 4"
+    },
+    {
+      "lineIndex": 13,
+      "text": "Subtotal $45.00"
+    },
+    {
+      "lineIndex": 14,
+      "text": "HST $5.85"
+    },
+    {
+      "lineIndex": 15,
+      "text": "Total $ 50.85"
+    },
+    {
+      "lineIndex": 16,
+      "text": "Thank you for dining with us!"
+    }
+  ],
+  "ledger": [
+    {
+      "amountId": "A1",
+      "wordId": "W16",
+      "lineIndex": 4,
+      "rawText": "1",
+      "value": 1,
+      "ocrConfidence": 0.988961,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1557,
+            "y": 833
+          },
+          {
+            "x": 1558,
+            "y": 737
+          },
+          {
+            "x": 1597,
+            "y": 737
+          },
+          {
+            "x": 1596,
+            "y": 833
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A2",
+      "wordId": "W27",
+      "lineIndex": 7,
+      "rawText": "2",
+      "value": 2,
+      "ocrConfidence": 0.9794065,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1820,
+            "y": 1250
+          },
+          {
+            "x": 1821,
+            "y": 1177
+          },
+          {
+            "x": 1854,
+            "y": 1178
+          },
+          {
+            "x": 1853,
+            "y": 1251
+          },
+          {
+            "x": 1822,
+            "y": 1173
+          },
+          {
+            "x": 1823,
+            "y": 1147
+          },
+          {
+            "x": 1855,
+            "y": 1148
+          },
+          {
+            "x": 1854,
+            "y": 1174
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A3",
+      "wordId": "W29",
+      "lineIndex": 8,
+      "rawText": "1",
+      "value": 1,
+      "ocrConfidence": 0.49900815,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1893,
+            "y": 522
+          },
+          {
+            "x": 1893,
+            "y": 497
+          },
+          {
+            "x": 1924,
+            "y": 497
+          },
+          {
+            "x": 1924,
+            "y": 522
+          },
+          {
+            "x": 1892,
+            "y": 493
+          },
+          {
+            "x": 1892,
+            "y": 473
+          },
+          {
+            "x": 1923,
+            "y": 473
+          },
+          {
+            "x": 1923,
+            "y": 493
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A4",
+      "wordId": "W32",
+      "lineIndex": 9,
+      "rawText": "24,26",
+      "value": 24.26,
+      "ocrConfidence": 0.8746327,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1944,
+            "y": 769
+          },
+          {
+            "x": 1945,
+            "y": 719
+          },
+          {
+            "x": 1991,
+            "y": 720
+          },
+          {
+            "x": 1990,
+            "y": 770
+          },
+          {
+            "x": 1945,
+            "y": 724
+          },
+          {
+            "x": 1945,
+            "y": 704
+          },
+          {
+            "x": 1991,
+            "y": 705
+          },
+          {
+            "x": 1991,
+            "y": 725
+          },
+          {
+            "x": 1945,
+            "y": 700
+          },
+          {
+            "x": 1946,
+            "y": 642
+          },
+          {
+            "x": 1992,
+            "y": 643
+          },
+          {
+            "x": 1991,
+            "y": 701
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A5",
+      "wordId": "W55",
+      "lineIndex": 10,
+      "rawText": "3600",
+      "value": 3600,
+      "ocrConfidence": 0.98471844,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2066,
+            "y": 647
+          },
+          {
+            "x": 2066,
+            "y": 615
+          },
+          {
+            "x": 2112,
+            "y": 615
+          },
+          {
+            "x": 2112,
+            "y": 647
+          },
+          {
+            "x": 2065,
+            "y": 614
+          },
+          {
+            "x": 2066,
+            "y": 466
+          },
+          {
+            "x": 2113,
+            "y": 466
+          },
+          {
+            "x": 2112,
+            "y": 614
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A6",
+      "wordId": "W58",
+      "lineIndex": 11,
+      "rawText": "9.00",
+      "value": 9,
+      "ocrConfidence": 0.9292159,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2143,
+            "y": 583
+          },
+          {
+            "x": 2144,
+            "y": 466
+          },
+          {
+            "x": 2188,
+            "y": 466
+          },
+          {
+            "x": 2187,
+            "y": 583
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A7",
+      "wordId": "W54",
+      "lineIndex": 12,
+      "rawText": "4",
+      "value": 4,
+      "ocrConfidence": 0.9840113,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2270,
+            "y": 1036
+          },
+          {
+            "x": 2271,
+            "y": 1006
+          },
+          {
+            "x": 2310,
+            "y": 1007
+          },
+          {
+            "x": 2309,
+            "y": 1037
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A8",
+      "wordId": "W61",
+      "lineIndex": 13,
+      "rawText": "45.00",
+      "value": 45,
+      "ocrConfidence": 0.96573806,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2407,
+            "y": 647
+          },
+          {
+            "x": 2408,
+            "y": 619
+          },
+          {
+            "x": 2456,
+            "y": 621
+          },
+          {
+            "x": 2455,
+            "y": 648
+          },
+          {
+            "x": 2407,
+            "y": 614
+          },
+          {
+            "x": 2412,
+            "y": 460
+          },
+          {
+            "x": 2461,
+            "y": 462
+          },
+          {
+            "x": 2456,
+            "y": 616
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A9",
+      "wordId": "W63",
+      "lineIndex": 14,
+      "rawText": "5.85",
+      "value": 5.85,
+      "ocrConfidence": 0.56337357,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2491,
+            "y": 615
+          },
+          {
+            "x": 2493,
+            "y": 582
+          },
+          {
+            "x": 2540,
+            "y": 585
+          },
+          {
+            "x": 2538,
+            "y": 618
+          },
+          {
+            "x": 2492,
+            "y": 581
+          },
+          {
+            "x": 2499,
+            "y": 459
+          },
+          {
+            "x": 2546,
+            "y": 462
+          },
+          {
+            "x": 2539,
+            "y": 584
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A10",
+      "wordId": "W67",
+      "lineIndex": 15,
+      "rawText": "50.85",
+      "value": 50.85,
+      "ocrConfidence": 0.9924272,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2577,
+            "y": 694
+          },
+          {
+            "x": 2589,
+            "y": 460
+          },
+          {
+            "x": 2662,
+            "y": 464
+          },
+          {
+            "x": 2650,
+            "y": 698
+          }
+        ]
+      }
+    }
+  ],
+  "summaryBlocks": [
+    {
+      "blockId": "b3",
+      "name": "Total Number of items",
+      "lineIndices": [
+        12
+      ],
+      "amountId": null,
+      "value": null
+    },
+    {
+      "blockId": "b4",
+      "name": "Subtotal",
+      "lineIndices": [
+        13
+      ],
+      "amountId": "A8",
+      "value": 45
+    },
+    {
+      "blockId": "b5",
+      "name": "HST",
+      "lineIndices": [
+        14
+      ],
+      "amountId": "A9",
+      "value": 5.85
+    },
+    {
+      "blockId": "b6",
+      "name": "Total",
+      "lineIndices": [
+        15
+      ],
+      "amountId": "A10",
+      "value": 50.85
+    }
+  ],
+  "summaryRoleAssignments": [
+    {
+      "amountId": "A9",
+      "role": "TAX",
+      "value": 5.85
+    },
+    {
+      "amountId": "A10",
+      "role": "GRAND_TOTAL",
+      "value": 50.85
+    }
+  ],
+  "summaryCoverage": [
+    {
+      "amountId": "A8",
+      "lineIndex": 13,
+      "role": "UNRESOLVED",
+      "value": 45
+    },
+    {
+      "amountId": "A9",
+      "lineIndex": 14,
+      "role": "TAX",
+      "value": 5.85
+    },
+    {
+      "amountId": "A10",
+      "lineIndex": 15,
+      "role": "GRAND_TOTAL",
+      "value": 50.85
+    }
+  ],
+  "summaryDuplicateRoles": [],
+  "summaryCoverageValid": false,
+  "summaryMonetaryObservationCount": 3,
+  "summaryClaimedAmountCount": 2,
+  "summaryUnresolvedAmountCount": 1,
+  "summaryDuplicateRoleAttemptCount": 0,
+  "validity": {
+    "valid": false,
+    "structuralGapCount": 0,
+    "echoExactCount": 0,
+    "echoMultiplicativeCount": 0,
+    "descriptiveNumberCount": 0,
+    "zeroValueCount": 0,
+    "rowQuantityProvenCount": 0,
+    "rowUnitPriceProvenCount": 0,
+    "itemsProvenNonAdditiveCount": 0,
+    "unresolvedLoadBearingCount": 1,
+    "duplicateOwnershipCount": 0,
+    "ownershipInvalidCount": 0,
+    "reconciles": false
+  },
+  "finalReconciles": false,
+  "structureAgreement": null,
+  "structureDisagreements": [],
+  "priceKindOverrideCount": 0,
+  "priceKindOverrides": [],
+  "crossingsDetected": 0,
+  "summaryBoundaryPenalties": 0,
+  "offsetFormDetected": false,
+  "offsetHypothesisAdopted": "H0",
+  "totalWitness": "label",
+  "totalWitnessAgreement": "agree",
+  "totalCandidatesFound": 1,
+  "totalChosenBy": "single",
+  "provenNonAdditiveCount": 0,
+  "provenNonAdditiveBlockedBy": "sum_mismatch",
+  "provenAdditiveCount": 0,
+  "additiveCorroboratedByRate": false,
+  "provenAdditiveBlockedBy": "items_region_unresolved",
+  "columnRolesDetected": {
+    "quantity": false,
+    "unitPrice": false,
+    "total": true
+  },
+  "rowsArithmeticallyProven": 0,
+  "itemsRegionSaturated": false,
+  "itemsRegionSaturationCount": 0,
+  "itemsRegionSaturationBlockedBy": "no_separate_total_band",
+  "partialNumberTokensRejected": 1,
+  "blocks": [
+    {
+      "blockId": "b0",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b0",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b1",
+      "kind": "ITEM",
+      "lineIndices": [
+        10
+      ],
+      "parentBlockId": null,
+      "name": "Belvedere",
+      "amountId": null,
+      "quantity": 3,
+      "priceKind": "unit",
+      "eligibleAmountIds": [
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b1",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b2",
+      "kind": "ITEM",
+      "lineIndices": [
+        11
+      ],
+      "parentBlockId": null,
+      "name": "Peroni[w/Glass]",
+      "amountId": "A6",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b2",
+        "amountId": "A6",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b3",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        12
+      ],
+      "parentBlockId": null,
+      "name": "Total Number of items",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A5",
+        "A6",
+        "A7",
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b3",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b4",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        13
+      ],
+      "parentBlockId": null,
+      "name": "Subtotal",
+      "amountId": "A8",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8",
+        "A9",
+        "A10"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b4",
+        "amountId": "A8",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b5",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        14
+      ],
+      "parentBlockId": null,
+      "name": "HST",
+      "amountId": "A9",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A7",
+        "A8",
+        "A9",
+        "A10"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b5",
+        "amountId": "A9",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b6",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        15
+      ],
+      "parentBlockId": null,
+      "name": "Total",
+      "amountId": "A10",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A8",
+        "A9",
+        "A10"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b6",
+        "amountId": "A10",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b7",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        16
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A9",
+        "A10"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b7",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    }
+  ],
+  "finalItems": [
+    {
+      "itemInstanceId": "b1",
+      "name": "Belvedere",
+      "sourceLineIndex": 10,
+      "priceTokenValue": null,
+      "quantity": 3,
+      "modifiers": [],
+      "effectiveTotal": 0
+    },
+    {
+      "itemInstanceId": "b2",
+      "name": "Peroni[w/Glass]",
+      "sourceLineIndex": 11,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 9
+    }
+  ],
+  "arithmetic": [
+    "item[0] \"Belvedere\" = lineTotal(null) = 0   [running sum = 0]",
+    "item[1] \"Peroni[w/Glass]\" = lineTotal(9) = 9   [running sum = 9]"
+  ],
+  "calculatedSubtotal": 9,
+  "printedSubtotal": null,
+  "printedTotal": 50.85,
+  "subtotalDelta": null,
+  "reconciles": false,
+  "arithmeticReconciles": false,
+  "expectedTotal": null,
+  "expectedDelta": null,
+  "orphanCount": 6,
+  "unresolvedLines": [
+    {
+      "id": "unclassified_b4",
+      "amount": 45,
+      "text": "Subtotal $45.00",
+      "lineIndex": 13
+    },
+    {
+      "id": "orphan_A1",
+      "amount": 1,
+      "text": "1",
+      "lineIndex": 4
+    },
+    {
+      "id": "orphan_A2",
+      "amount": 2,
+      "text": "2",
+      "lineIndex": 7
+    },
+    {
+      "id": "orphan_A3",
+      "amount": 1,
+      "text": "1",
+      "lineIndex": 8
+    },
+    {
+      "id": "orphan_A4",
+      "amount": 24.26,
+      "text": "24,26",
+      "lineIndex": 9
+    },
+    {
+      "id": "orphan_A5",
+      "amount": 3600,
+      "text": "3600",
+      "lineIndex": 10
+    },
+    {
+      "id": "orphan_A7",
+      "amount": 4,
+      "text": "4",
+      "lineIndex": 12
+    }
+  ],
+  "charges": [
+    {
+      "id": "b5",
+      "name": "HST",
+      "amount": 5.85,
+      "kind": "tax"
+    }
+  ],
+  "suspectedPatterns": {
+    "subtotalCountedAsItem": [],
+    "totalCountedAsItem": [],
+    "taxCountedAsItem": [],
+    "amountClaimedByMultipleBlocks": [],
+    "duplicateWordIdsInLedger": [],
+    "overlappingItemLineIndices": [],
+    "itemBlocksAfterFirstSummaryLine": [],
+    "itemsWithQuantityAboveOne": [
+      {
+        "blockId": "b1",
+        "quantity": 3
+      }
+    ]
+  },
+  "verificationRound1": null,
+  "verificationRound2": null,
+  "reconciliationRetried": false
+}

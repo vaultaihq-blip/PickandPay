@@ -6,7 +6,7 @@
 set -u
 out="$1"
 mkdir -p "$out"
-fixtures=(supabase/functions/parse-receipt/__fixtures__/vision-*.json backups/corpus-vision-2026-11-03/vision-*.json)
+fixtures=(supabase/functions/parse-receipt/__fixtures__/vision-*.json backups/corpus-vision-2026-11-03/vision-*.json corpus/*.vision.json)
 for f in "${fixtures[@]}"; do
   name=$(basename "$f" .json)
   runs=1

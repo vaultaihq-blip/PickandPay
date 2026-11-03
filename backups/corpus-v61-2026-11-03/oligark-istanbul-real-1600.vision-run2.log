@@ -1,0 +1,16 @@
+Replaying frozen OCR fixture: corpus/oligark-istanbul-real-1600.vision.json (geometric reconstruction)
+OCR: 17 lines, 59 words
+Ledger: 11 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 2804ms, tokens prompt=1453 completion=389 total=1842
+Structure: 8 blocks (merchant=OLIGARK ISTANBUL, currency=TRY)
+Total witness: typography -> 6700 (agreement=typography_only)
+Geometric ownership: 7/8 confident, 0 anchor-corrected
+Constant-offset arbitration: formDetected=false, hypothesisAdopted=H0
+Suspicious (round 1): 0
+Reconciliation (round 1): reconciles=false, calculatedSubtotal=6100, printedSubtotal=null
+
+Full report written to: backups/corpus-v61-2026-11-03/oligark-istanbul-real-1600.vision-run2.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=6100, printedSubtotal=null, printedTotal=6700, reconciles=false (arithmeticOnly=false), summaryCoverageValid=false, summaryUnresolved=2, summaryDuplicateRoles=0, structuralGap=0, echoExact=0, echoMult=0, genuineMiss=0, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=false, offsetHypothesisAdopted=H0, totalWitness=typography, totalWitnessAgreement=typography_only, provenNonAdditiveCount=0, provenNonAdditiveBlockedBy=sum_mismatch, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=no_closing_set, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null

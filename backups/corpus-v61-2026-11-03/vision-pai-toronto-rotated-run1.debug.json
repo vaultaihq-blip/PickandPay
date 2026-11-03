@@ -1,0 +1,2950 @@
+{
+  "imagePath": null,
+  "fixturePath": "supabase/functions/parse-receipt/__fixtures__/vision-pai-toronto-rotated.json",
+  "verificationAvailable": false,
+  "merchant": "Pai Northern thai Kitchen- Uptown",
+  "date": "2025-11-29",
+  "currency": "CAD",
+  "currencyRead": "CAD",
+  "structureTimeMs": 10040,
+  "structureTokenUsage": {
+    "promptTokens": 2125,
+    "completionTokens": 1510,
+    "totalTokens": 3635
+  },
+  "structureRetryFired": false,
+  "structuralGapCountBeforeRetry": null,
+  "ocrLines": [
+    {
+      "lineIndex": 0,
+      "text": "PAI อ .ปาย"
+    },
+    {
+      "lineIndex": 1,
+      "text": "Pai Northern thai Kitchen- Uptown"
+    },
+    {
+      "lineIndex": 2,
+      "text": "2335 Yonge Street"
+    },
+    {
+      "lineIndex": 3,
+      "text": "Toronto, CN M4P 2E6"
+    },
+    {
+      "lineIndex": 4,
+      "text": "Server: Kevin K"
+    },
+    {
+      "lineIndex": 5,
+      "text": "Check #567 Table P6"
+    },
+    {
+      "lineIndex": 6,
+      "text": "Guest Count : 10"
+    },
+    {
+      "lineIndex": 7,
+      "text": "Seats 1, 3, 4, 5,6,7,8"
+    },
+    {
+      "lineIndex": 8,
+      "text": "Ordered: 2025-11-29 9:13 p.m."
+    },
+    {
+      "lineIndex": 9,
+      "text": "1 Thai Chicken Wings $13.50"
+    },
+    {
+      "lineIndex": 10,
+      "text": "10 $10.50"
+    },
+    {
+      "lineIndex": 11,
+      "text": "1 Pad Gra Prow $23.00"
+    },
+    {
+      "lineIndex": 12,
+      "text": "PGP Chicken"
+    },
+    {
+      "lineIndex": 13,
+      "text": "Mild"
+    },
+    {
+      "lineIndex": 14,
+      "text": "1 Chef Nuit Pad Thai $23.75"
+    },
+    {
+      "lineIndex": 15,
+      "text": "PT Shrimp $2.00"
+    },
+    {
+      "lineIndex": 16,
+      "text": "No Spice"
+    },
+    {
+      "lineIndex": 17,
+      "text": "1 Spring Rolls $14.00"
+    },
+    {
+      "lineIndex": 18,
+      "text": "1 Khao Soi $23.75"
+    },
+    {
+      "lineIndex": 19,
+      "text": "KS Shrimp $2.00"
+    },
+    {
+      "lineIndex": 20,
+      "text": "1 Sleeman Honey Lager $9.00"
+    },
+    {
+      "lineIndex": 21,
+      "text": "1 Chef Nuit Pad Thai $23.75"
+    },
+    {
+      "lineIndex": 22,
+      "text": "PT Chicken"
+    },
+    {
+      "lineIndex": 23,
+      "text": "Medium"
+    },
+    {
+      "lineIndex": 24,
+      "text": "1 Green Curry $25.00"
+    },
+    {
+      "lineIndex": 25,
+      "text": "GC Shrimp $2.00"
+    },
+    {
+      "lineIndex": 26,
+      "text": "Jasmine"
+    },
+    {
+      "lineIndex": 27,
+      "text": "Add Shrimp $6.00"
+    },
+    {
+      "lineIndex": 28,
+      "text": "1 BTL Campo Viejo Tempranillo $48.00"
+    },
+    {
+      "lineIndex": 29,
+      "text": "4 Glasses"
+    },
+    {
+      "lineIndex": 30,
+      "text": "1 BTL Campo Viejo Tempranillo $48.00"
+    },
+    {
+      "lineIndex": 31,
+      "text": "4 Glasses"
+    },
+    {
+      "lineIndex": 32,
+      "text": "1 Khao Soi $23.75"
+    },
+    {
+      "lineIndex": 33,
+      "text": "KS Chicken"
+    },
+    {
+      "lineIndex": 34,
+      "text": "1 Garlic Shrimp $17.00"
+    },
+    {
+      "lineIndex": 35,
+      "text": "1 Pad See Ew $24.25"
+    },
+    {
+      "lineIndex": 36,
+      "text": "PSE Beef"
+    },
+    {
+      "lineIndex": 37,
+      "text": "1 Lowry $15.00"
+    },
+    {
+      "lineIndex": 38,
+      "text": "1 Gai Satay $20.00"
+    },
+    {
+      "lineIndex": 39,
+      "text": "Subtotal $374.25"
+    },
+    {
+      "lineIndex": 40,
+      "text": "Service (18.00%) $67.36"
+    },
+    {
+      "lineIndex": 41,
+      "text": "Tax $57.42"
+    },
+    {
+      "lineIndex": 42,
+      "text": "Total $499.03"
+    },
+    {
+      "lineIndex": 43,
+      "text": "Khop Khun Kha"
+    },
+    {
+      "lineIndex": 44,
+      "text": "HST: 707577110"
+    }
+  ],
+  "ledger": [
+    {
+      "amountId": "A1",
+      "wordId": "W17",
+      "lineIndex": 3,
+      "rawText": "6",
+      "value": 6,
+      "ocrConfidence": 0.98770654,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 691,
+            "y": 513
+          },
+          {
+            "x": 692,
+            "y": 454
+          },
+          {
+            "x": 729,
+            "y": 454
+          },
+          {
+            "x": 728,
+            "y": 513
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A2",
+      "wordId": "W26",
+      "lineIndex": 5,
+      "rawText": "6",
+      "value": 6,
+      "ocrConfidence": 0.7572406,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 855,
+            "y": 286
+          },
+          {
+            "x": 858,
+            "y": 248
+          },
+          {
+            "x": 890,
+            "y": 250
+          },
+          {
+            "x": 887,
+            "y": 288
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A3",
+      "wordId": "W30",
+      "lineIndex": 6,
+      "rawText": "10",
+      "value": 10,
+      "ocrConfidence": 0.9906858,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 894,
+            "y": 794
+          },
+          {
+            "x": 895,
+            "y": 760
+          },
+          {
+            "x": 928,
+            "y": 761
+          },
+          {
+            "x": 927,
+            "y": 795
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A4",
+      "wordId": "W38",
+      "lineIndex": 7,
+      "rawText": "5,6",
+      "value": 5.6,
+      "ocrConfidence": 0.9317648,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 944,
+            "y": 764
+          },
+          {
+            "x": 945,
+            "y": 743
+          },
+          {
+            "x": 984,
+            "y": 744
+          },
+          {
+            "x": 983,
+            "y": 765
+          },
+          {
+            "x": 945,
+            "y": 740
+          },
+          {
+            "x": 945,
+            "y": 727
+          },
+          {
+            "x": 984,
+            "y": 728
+          },
+          {
+            "x": 984,
+            "y": 741
+          },
+          {
+            "x": 946,
+            "y": 707
+          },
+          {
+            "x": 947,
+            "y": 685
+          },
+          {
+            "x": 986,
+            "y": 686
+          },
+          {
+            "x": 985,
+            "y": 708
+          },
+          {
+            "x": 946,
+            "y": 683
+          },
+          {
+            "x": 946,
+            "y": 668
+          },
+          {
+            "x": 985,
+            "y": 669
+          },
+          {
+            "x": 985,
+            "y": 684
+          },
+          {
+            "x": 947,
+            "y": 652
+          },
+          {
+            "x": 948,
+            "y": 628
+          },
+          {
+            "x": 987,
+            "y": 629
+          },
+          {
+            "x": 986,
+            "y": 653
+          },
+          {
+            "x": 948,
+            "y": 627
+          },
+          {
+            "x": 948,
+            "y": 613
+          },
+          {
+            "x": 987,
+            "y": 614
+          },
+          {
+            "x": 987,
+            "y": 628
+          },
+          {
+            "x": 949,
+            "y": 594
+          },
+          {
+            "x": 949,
+            "y": 574
+          },
+          {
+            "x": 988,
+            "y": 575
+          },
+          {
+            "x": 988,
+            "y": 595
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A5",
+      "wordId": "W38",
+      "lineIndex": 7,
+      "rawText": "7,8",
+      "value": 7.8,
+      "ocrConfidence": 0.9317648,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 944,
+            "y": 764
+          },
+          {
+            "x": 945,
+            "y": 743
+          },
+          {
+            "x": 984,
+            "y": 744
+          },
+          {
+            "x": 983,
+            "y": 765
+          },
+          {
+            "x": 945,
+            "y": 740
+          },
+          {
+            "x": 945,
+            "y": 727
+          },
+          {
+            "x": 984,
+            "y": 728
+          },
+          {
+            "x": 984,
+            "y": 741
+          },
+          {
+            "x": 946,
+            "y": 707
+          },
+          {
+            "x": 947,
+            "y": 685
+          },
+          {
+            "x": 986,
+            "y": 686
+          },
+          {
+            "x": 985,
+            "y": 708
+          },
+          {
+            "x": 946,
+            "y": 683
+          },
+          {
+            "x": 946,
+            "y": 668
+          },
+          {
+            "x": 985,
+            "y": 669
+          },
+          {
+            "x": 985,
+            "y": 684
+          },
+          {
+            "x": 947,
+            "y": 652
+          },
+          {
+            "x": 948,
+            "y": 628
+          },
+          {
+            "x": 987,
+            "y": 629
+          },
+          {
+            "x": 986,
+            "y": 653
+          },
+          {
+            "x": 948,
+            "y": 627
+          },
+          {
+            "x": 948,
+            "y": 613
+          },
+          {
+            "x": 987,
+            "y": 614
+          },
+          {
+            "x": 987,
+            "y": 628
+          },
+          {
+            "x": 949,
+            "y": 594
+          },
+          {
+            "x": 949,
+            "y": 574
+          },
+          {
+            "x": 988,
+            "y": 575
+          },
+          {
+            "x": 988,
+            "y": 595
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A6",
+      "wordId": "W54",
+      "lineIndex": 9,
+      "rawText": "13.50",
+      "value": 13.5,
+      "ocrConfidence": 0.97105664,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1114,
+            "y": 369
+          },
+          {
+            "x": 1114,
+            "y": 351
+          },
+          {
+            "x": 1147,
+            "y": 352
+          },
+          {
+            "x": 1147,
+            "y": 370
+          },
+          {
+            "x": 1114,
+            "y": 345
+          },
+          {
+            "x": 1116,
+            "y": 253
+          },
+          {
+            "x": 1149,
+            "y": 254
+          },
+          {
+            "x": 1147,
+            "y": 346
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A7",
+      "wordId": "W56",
+      "lineIndex": 10,
+      "rawText": "10",
+      "value": 10,
+      "ocrConfidence": 0.9904803,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1148,
+            "y": 1032
+          },
+          {
+            "x": 1150,
+            "y": 993
+          },
+          {
+            "x": 1181,
+            "y": 995
+          },
+          {
+            "x": 1179,
+            "y": 1034
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A8",
+      "wordId": "W57",
+      "lineIndex": 10,
+      "rawText": "10.50",
+      "value": 10.5,
+      "ocrConfidence": 0.9764399,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1167,
+            "y": 369
+          },
+          {
+            "x": 1168,
+            "y": 353
+          },
+          {
+            "x": 1199,
+            "y": 354
+          },
+          {
+            "x": 1199,
+            "y": 370
+          },
+          {
+            "x": 1167,
+            "y": 347
+          },
+          {
+            "x": 1170,
+            "y": 254
+          },
+          {
+            "x": 1203,
+            "y": 255
+          },
+          {
+            "x": 1200,
+            "y": 348
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A9",
+      "wordId": "W63",
+      "lineIndex": 11,
+      "rawText": "23.00",
+      "value": 23,
+      "ocrConfidence": 0.9769283,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1218,
+            "y": 370
+          },
+          {
+            "x": 1219,
+            "y": 354
+          },
+          {
+            "x": 1251,
+            "y": 355
+          },
+          {
+            "x": 1250,
+            "y": 371
+          },
+          {
+            "x": 1218,
+            "y": 351
+          },
+          {
+            "x": 1221,
+            "y": 254
+          },
+          {
+            "x": 1253,
+            "y": 255
+          },
+          {
+            "x": 1250,
+            "y": 352
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A10",
+      "wordId": "W73",
+      "lineIndex": 14,
+      "rawText": "23.75",
+      "value": 23.75,
+      "ocrConfidence": 0.9808437,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1378,
+            "y": 375
+          },
+          {
+            "x": 1378,
+            "y": 358
+          },
+          {
+            "x": 1410,
+            "y": 359
+          },
+          {
+            "x": 1410,
+            "y": 376
+          },
+          {
+            "x": 1377,
+            "y": 357
+          },
+          {
+            "x": 1379,
+            "y": 260
+          },
+          {
+            "x": 1412,
+            "y": 261
+          },
+          {
+            "x": 1410,
+            "y": 358
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A11",
+      "wordId": "W77",
+      "lineIndex": 15,
+      "rawText": "2.00",
+      "value": 2,
+      "ocrConfidence": 0.97947294,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1432,
+            "y": 358
+          },
+          {
+            "x": 1432,
+            "y": 340
+          },
+          {
+            "x": 1463,
+            "y": 340
+          },
+          {
+            "x": 1463,
+            "y": 358
+          },
+          {
+            "x": 1431,
+            "y": 340
+          },
+          {
+            "x": 1432,
+            "y": 261
+          },
+          {
+            "x": 1464,
+            "y": 261
+          },
+          {
+            "x": 1463,
+            "y": 340
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A12",
+      "wordId": "W84",
+      "lineIndex": 17,
+      "rawText": "14.00",
+      "value": 14,
+      "ocrConfidence": 0.97643596,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1536,
+            "y": 380
+          },
+          {
+            "x": 1537,
+            "y": 363
+          },
+          {
+            "x": 1571,
+            "y": 364
+          },
+          {
+            "x": 1570,
+            "y": 381
+          },
+          {
+            "x": 1536,
+            "y": 357
+          },
+          {
+            "x": 1539,
+            "y": 263
+          },
+          {
+            "x": 1574,
+            "y": 264
+          },
+          {
+            "x": 1571,
+            "y": 358
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A13",
+      "wordId": "W89",
+      "lineIndex": 18,
+      "rawText": "23.75",
+      "value": 23.75,
+      "ocrConfidence": 0.9789821,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1593,
+            "y": 380
+          },
+          {
+            "x": 1593,
+            "y": 364
+          },
+          {
+            "x": 1626,
+            "y": 364
+          },
+          {
+            "x": 1626,
+            "y": 380
+          },
+          {
+            "x": 1593,
+            "y": 362
+          },
+          {
+            "x": 1593,
+            "y": 264
+          },
+          {
+            "x": 1626,
+            "y": 264
+          },
+          {
+            "x": 1626,
+            "y": 362
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A14",
+      "wordId": "W93",
+      "lineIndex": 19,
+      "rawText": "2.00",
+      "value": 2,
+      "ocrConfidence": 0.97932476,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1647,
+            "y": 363
+          },
+          {
+            "x": 1647,
+            "y": 344
+          },
+          {
+            "x": 1680,
+            "y": 344
+          },
+          {
+            "x": 1680,
+            "y": 363
+          },
+          {
+            "x": 1647,
+            "y": 344
+          },
+          {
+            "x": 1648,
+            "y": 264
+          },
+          {
+            "x": 1681,
+            "y": 264
+          },
+          {
+            "x": 1680,
+            "y": 344
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A15",
+      "wordId": "W99",
+      "lineIndex": 20,
+      "rawText": "9.00",
+      "value": 9,
+      "ocrConfidence": 0.97166175,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1701,
+            "y": 365
+          },
+          {
+            "x": 1701,
+            "y": 347
+          },
+          {
+            "x": 1733,
+            "y": 347
+          },
+          {
+            "x": 1733,
+            "y": 365
+          },
+          {
+            "x": 1700,
+            "y": 346
+          },
+          {
+            "x": 1699,
+            "y": 266
+          },
+          {
+            "x": 1732,
+            "y": 266
+          },
+          {
+            "x": 1733,
+            "y": 346
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A16",
+      "wordId": "W106",
+      "lineIndex": 21,
+      "rawText": "23.75",
+      "value": 23.75,
+      "ocrConfidence": 0.97889155,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1753,
+            "y": 385
+          },
+          {
+            "x": 1753,
+            "y": 368
+          },
+          {
+            "x": 1787,
+            "y": 368
+          },
+          {
+            "x": 1787,
+            "y": 385
+          },
+          {
+            "x": 1752,
+            "y": 366
+          },
+          {
+            "x": 1753,
+            "y": 266
+          },
+          {
+            "x": 1788,
+            "y": 266
+          },
+          {
+            "x": 1787,
+            "y": 366
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A17",
+      "wordId": "W114",
+      "lineIndex": 24,
+      "rawText": "25.00",
+      "value": 25,
+      "ocrConfidence": 0.98000336,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1916,
+            "y": 390
+          },
+          {
+            "x": 1916,
+            "y": 373
+          },
+          {
+            "x": 1949,
+            "y": 374
+          },
+          {
+            "x": 1949,
+            "y": 391
+          },
+          {
+            "x": 1916,
+            "y": 369
+          },
+          {
+            "x": 1918,
+            "y": 268
+          },
+          {
+            "x": 1952,
+            "y": 269
+          },
+          {
+            "x": 1950,
+            "y": 370
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A18",
+      "wordId": "W118",
+      "lineIndex": 25,
+      "rawText": "2.00",
+      "value": 2,
+      "ocrConfidence": 0.9756235,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1973,
+            "y": 372
+          },
+          {
+            "x": 1973,
+            "y": 354
+          },
+          {
+            "x": 2006,
+            "y": 354
+          },
+          {
+            "x": 2006,
+            "y": 372
+          },
+          {
+            "x": 1972,
+            "y": 353
+          },
+          {
+            "x": 1973,
+            "y": 270
+          },
+          {
+            "x": 2007,
+            "y": 270
+          },
+          {
+            "x": 2006,
+            "y": 353
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A19",
+      "wordId": "W123",
+      "lineIndex": 27,
+      "rawText": "6.00",
+      "value": 6,
+      "ocrConfidence": 0.97102183,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2083,
+            "y": 373
+          },
+          {
+            "x": 2083,
+            "y": 355
+          },
+          {
+            "x": 2117,
+            "y": 356
+          },
+          {
+            "x": 2117,
+            "y": 374
+          },
+          {
+            "x": 2083,
+            "y": 353
+          },
+          {
+            "x": 2085,
+            "y": 274
+          },
+          {
+            "x": 2119,
+            "y": 275
+          },
+          {
+            "x": 2117,
+            "y": 354
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A20",
+      "wordId": "W132",
+      "lineIndex": 28,
+      "rawText": "48.00",
+      "value": 48,
+      "ocrConfidence": 0.97559315,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2138,
+            "y": 393
+          },
+          {
+            "x": 2138,
+            "y": 375
+          },
+          {
+            "x": 2172,
+            "y": 376
+          },
+          {
+            "x": 2172,
+            "y": 394
+          },
+          {
+            "x": 2138,
+            "y": 375
+          },
+          {
+            "x": 2140,
+            "y": 273
+          },
+          {
+            "x": 2174,
+            "y": 274
+          },
+          {
+            "x": 2172,
+            "y": 376
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A21",
+      "wordId": "W139",
+      "lineIndex": 30,
+      "rawText": "48.00",
+      "value": 48,
+      "ocrConfidence": 0.97671056,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2251,
+            "y": 398
+          },
+          {
+            "x": 2251,
+            "y": 378
+          },
+          {
+            "x": 2285,
+            "y": 378
+          },
+          {
+            "x": 2285,
+            "y": 398
+          },
+          {
+            "x": 2251,
+            "y": 378
+          },
+          {
+            "x": 2252,
+            "y": 275
+          },
+          {
+            "x": 2286,
+            "y": 275
+          },
+          {
+            "x": 2285,
+            "y": 378
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A22",
+      "wordId": "W146",
+      "lineIndex": 32,
+      "rawText": "23.75",
+      "value": 23.75,
+      "ocrConfidence": 0.9799853,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2363,
+            "y": 397
+          },
+          {
+            "x": 2364,
+            "y": 378
+          },
+          {
+            "x": 2400,
+            "y": 379
+          },
+          {
+            "x": 2399,
+            "y": 398
+          },
+          {
+            "x": 2363,
+            "y": 377
+          },
+          {
+            "x": 2366,
+            "y": 274
+          },
+          {
+            "x": 2402,
+            "y": 275
+          },
+          {
+            "x": 2399,
+            "y": 378
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A23",
+      "wordId": "W159",
+      "lineIndex": 34,
+      "rawText": "17.00",
+      "value": 17,
+      "ocrConfidence": 0.9765218,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2478,
+            "y": 397
+          },
+          {
+            "x": 2478,
+            "y": 379
+          },
+          {
+            "x": 2515,
+            "y": 380
+          },
+          {
+            "x": 2515,
+            "y": 398
+          },
+          {
+            "x": 2478,
+            "y": 374
+          },
+          {
+            "x": 2480,
+            "y": 275
+          },
+          {
+            "x": 2517,
+            "y": 276
+          },
+          {
+            "x": 2515,
+            "y": 375
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A24",
+      "wordId": "W161",
+      "lineIndex": 35,
+      "rawText": "24.25",
+      "value": 24.25,
+      "ocrConfidence": 0.9788766,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2536,
+            "y": 398
+          },
+          {
+            "x": 2536,
+            "y": 379
+          },
+          {
+            "x": 2576,
+            "y": 380
+          },
+          {
+            "x": 2576,
+            "y": 399
+          },
+          {
+            "x": 2535,
+            "y": 381
+          },
+          {
+            "x": 2536,
+            "y": 276
+          },
+          {
+            "x": 2577,
+            "y": 277
+          },
+          {
+            "x": 2576,
+            "y": 382
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A25",
+      "wordId": "W165",
+      "lineIndex": 37,
+      "rawText": "15.00",
+      "value": 15,
+      "ocrConfidence": 0.97931975,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2655,
+            "y": 402
+          },
+          {
+            "x": 2656,
+            "y": 382
+          },
+          {
+            "x": 2693,
+            "y": 383
+          },
+          {
+            "x": 2693,
+            "y": 403
+          },
+          {
+            "x": 2655,
+            "y": 377
+          },
+          {
+            "x": 2658,
+            "y": 275
+          },
+          {
+            "x": 2697,
+            "y": 276
+          },
+          {
+            "x": 2694,
+            "y": 378
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A26",
+      "wordId": "W170",
+      "lineIndex": 38,
+      "rawText": "20.00",
+      "value": 20,
+      "ocrConfidence": 0.97979516,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2716,
+            "y": 402
+          },
+          {
+            "x": 2716,
+            "y": 381
+          },
+          {
+            "x": 2756,
+            "y": 381
+          },
+          {
+            "x": 2756,
+            "y": 402
+          },
+          {
+            "x": 2715,
+            "y": 382
+          },
+          {
+            "x": 2716,
+            "y": 276
+          },
+          {
+            "x": 2757,
+            "y": 276
+          },
+          {
+            "x": 2756,
+            "y": 382
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A27",
+      "wordId": "W173",
+      "lineIndex": 39,
+      "rawText": "374.25",
+      "value": 374.25,
+      "ocrConfidence": 0.9747191,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2835,
+            "y": 424
+          },
+          {
+            "x": 2835,
+            "y": 406
+          },
+          {
+            "x": 2872,
+            "y": 407
+          },
+          {
+            "x": 2872,
+            "y": 425
+          },
+          {
+            "x": 2835,
+            "y": 402
+          },
+          {
+            "x": 2837,
+            "y": 282
+          },
+          {
+            "x": 2874,
+            "y": 283
+          },
+          {
+            "x": 2872,
+            "y": 403
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A28",
+      "wordId": "W180",
+      "lineIndex": 40,
+      "rawText": "67.36",
+      "value": 67.36,
+      "ocrConfidence": 0.9718182,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2897,
+            "y": 404
+          },
+          {
+            "x": 2897,
+            "y": 385
+          },
+          {
+            "x": 2936,
+            "y": 386
+          },
+          {
+            "x": 2936,
+            "y": 405
+          },
+          {
+            "x": 2897,
+            "y": 383
+          },
+          {
+            "x": 2899,
+            "y": 282
+          },
+          {
+            "x": 2938,
+            "y": 283
+          },
+          {
+            "x": 2936,
+            "y": 384
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A29",
+      "wordId": "W183",
+      "lineIndex": 41,
+      "rawText": "57.42",
+      "value": 57.42,
+      "ocrConfidence": 0.9805656,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2958,
+            "y": 406
+          },
+          {
+            "x": 2958,
+            "y": 388
+          },
+          {
+            "x": 2996,
+            "y": 389
+          },
+          {
+            "x": 2996,
+            "y": 407
+          },
+          {
+            "x": 2958,
+            "y": 385
+          },
+          {
+            "x": 2960,
+            "y": 284
+          },
+          {
+            "x": 2998,
+            "y": 285
+          },
+          {
+            "x": 2996,
+            "y": 386
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A30",
+      "wordId": "W186",
+      "lineIndex": 42,
+      "rawText": "499.03",
+      "value": 499.03,
+      "ocrConfidence": 0.9774279,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 3020,
+            "y": 426
+          },
+          {
+            "x": 3020,
+            "y": 407
+          },
+          {
+            "x": 3058,
+            "y": 407
+          },
+          {
+            "x": 3058,
+            "y": 426
+          },
+          {
+            "x": 3019,
+            "y": 408
+          },
+          {
+            "x": 3020,
+            "y": 282
+          },
+          {
+            "x": 3059,
+            "y": 282
+          },
+          {
+            "x": 3058,
+            "y": 408
+          }
+        ]
+      }
+    }
+  ],
+  "summaryBlocks": [
+    {
+      "blockId": "b29",
+      "name": "Subtotal",
+      "lineIndices": [
+        39
+      ],
+      "amountId": "A27",
+      "value": 374.25
+    },
+    {
+      "blockId": "b30",
+      "name": "Service (18.00%)",
+      "lineIndices": [
+        40
+      ],
+      "amountId": "A28",
+      "value": 67.36
+    },
+    {
+      "blockId": "b31",
+      "name": "Tax",
+      "lineIndices": [
+        41
+      ],
+      "amountId": "A29",
+      "value": 57.42
+    },
+    {
+      "blockId": "b32",
+      "name": "Total",
+      "lineIndices": [
+        42
+      ],
+      "amountId": "A30",
+      "value": 499.03
+    }
+  ],
+  "summaryRoleAssignments": [
+    {
+      "amountId": "A28",
+      "role": "SERVICE_CHARGE",
+      "value": 67.36
+    },
+    {
+      "amountId": "A29",
+      "role": "TAX",
+      "value": 57.42
+    },
+    {
+      "amountId": "A27",
+      "role": "SUBTOTAL",
+      "value": 374.25
+    },
+    {
+      "amountId": "A30",
+      "role": "GRAND_TOTAL",
+      "value": 499.03
+    }
+  ],
+  "summaryCoverage": [
+    {
+      "amountId": "A27",
+      "lineIndex": 39,
+      "role": "SUBTOTAL",
+      "value": 374.25
+    },
+    {
+      "amountId": "A28",
+      "lineIndex": 40,
+      "role": "SERVICE_CHARGE",
+      "value": 67.36
+    },
+    {
+      "amountId": "A29",
+      "lineIndex": 41,
+      "role": "TAX",
+      "value": 57.42
+    },
+    {
+      "amountId": "A30",
+      "lineIndex": 42,
+      "role": "GRAND_TOTAL",
+      "value": 499.03
+    }
+  ],
+  "summaryDuplicateRoles": [],
+  "summaryCoverageValid": true,
+  "summaryMonetaryObservationCount": 4,
+  "summaryClaimedAmountCount": 4,
+  "summaryUnresolvedAmountCount": 0,
+  "summaryDuplicateRoleAttemptCount": 0,
+  "validity": {
+    "valid": true,
+    "structuralGapCount": 0,
+    "echoExactCount": 0,
+    "echoMultiplicativeCount": 0,
+    "descriptiveNumberCount": 0,
+    "zeroValueCount": 0,
+    "rowQuantityProvenCount": 0,
+    "rowUnitPriceProvenCount": 0,
+    "itemsProvenNonAdditiveCount": 0,
+    "unresolvedLoadBearingCount": 0,
+    "duplicateOwnershipCount": 0,
+    "ownershipInvalidCount": 0,
+    "reconciles": true
+  },
+  "finalReconciles": true,
+  "structureAgreement": null,
+  "structureDisagreements": [],
+  "priceKindOverrideCount": 0,
+  "priceKindOverrides": [],
+  "crossingsDetected": 0,
+  "summaryBoundaryPenalties": 0,
+  "offsetFormDetected": true,
+  "offsetHypothesisAdopted": "H0",
+  "totalWitness": "label",
+  "totalWitnessAgreement": "disagree",
+  "totalCandidatesFound": 1,
+  "totalChosenBy": "single",
+  "provenNonAdditiveCount": 0,
+  "provenNonAdditiveBlockedBy": null,
+  "provenAdditiveCount": 0,
+  "additiveCorroboratedByRate": false,
+  "provenAdditiveBlockedBy": "no_deficit",
+  "columnRolesDetected": {
+    "quantity": false,
+    "unitPrice": false,
+    "total": true
+  },
+  "rowsArithmeticallyProven": 0,
+  "itemsRegionSaturated": false,
+  "itemsRegionSaturationCount": 0,
+  "itemsRegionSaturationBlockedBy": "no_separate_total_band",
+  "partialNumberTokensRejected": 2,
+  "blocks": [
+    {
+      "blockId": "b0",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        0
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b0",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b1",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        1,
+        2,
+        3
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b1",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b2",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b2",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b3",
+      "kind": "ITEM",
+      "lineIndices": [
+        9
+      ],
+      "parentBlockId": null,
+      "name": "Thai Chicken Wings",
+      "amountId": "A6",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b3",
+        "amountId": "A6",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b4",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        10
+      ],
+      "parentBlockId": "b3",
+      "name": null,
+      "amountId": "A8",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b4",
+        "amountId": "A8",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b5",
+      "kind": "ITEM",
+      "lineIndices": [
+        11
+      ],
+      "parentBlockId": null,
+      "name": "Pad Gra Prow",
+      "amountId": "A9",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b5",
+        "amountId": "A9",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b6",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        12,
+        13
+      ],
+      "parentBlockId": "b5",
+      "name": "PGP Chicken, Mild",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A7",
+        "A8",
+        "A9",
+        "A10",
+        "A11"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b6",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b7",
+      "kind": "ITEM",
+      "lineIndices": [
+        14
+      ],
+      "parentBlockId": null,
+      "name": "Chef Nuit Pad Thai",
+      "amountId": "A10",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A10",
+        "A11"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b7",
+        "amountId": "A10",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b8",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        15,
+        16
+      ],
+      "parentBlockId": "b7",
+      "name": "PT Shrimp, No Spice",
+      "amountId": "A11",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A10",
+        "A11",
+        "A12",
+        "A13"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b8",
+        "amountId": "A11",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b9",
+      "kind": "ITEM",
+      "lineIndices": [
+        17
+      ],
+      "parentBlockId": null,
+      "name": "Spring Rolls",
+      "amountId": "A12",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A11",
+        "A12",
+        "A13",
+        "A14"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b9",
+        "amountId": "A12",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b10",
+      "kind": "ITEM",
+      "lineIndices": [
+        18
+      ],
+      "parentBlockId": null,
+      "name": "Khao Soi",
+      "amountId": "A13",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A12",
+        "A13",
+        "A14",
+        "A15"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b10",
+        "amountId": "A13",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b11",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        19
+      ],
+      "parentBlockId": "b10",
+      "name": "KS Shrimp",
+      "amountId": "A14",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A12",
+        "A13",
+        "A14",
+        "A15",
+        "A16"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b11",
+        "amountId": "A14",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b12",
+      "kind": "ITEM",
+      "lineIndices": [
+        20
+      ],
+      "parentBlockId": null,
+      "name": "Sleeman Honey Lager",
+      "amountId": "A15",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A13",
+        "A14",
+        "A15",
+        "A16"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b12",
+        "amountId": "A15",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b13",
+      "kind": "ITEM",
+      "lineIndices": [
+        21
+      ],
+      "parentBlockId": null,
+      "name": "Chef Nuit Pad Thai",
+      "amountId": "A16",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A14",
+        "A15",
+        "A16"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b13",
+        "amountId": "A16",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b14",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        22,
+        23
+      ],
+      "parentBlockId": "b13",
+      "name": "PT Chicken, Medium",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A15",
+        "A16",
+        "A17",
+        "A18"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b14",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b15",
+      "kind": "ITEM",
+      "lineIndices": [
+        24
+      ],
+      "parentBlockId": null,
+      "name": "Green Curry",
+      "amountId": "A17",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A17",
+        "A18"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b15",
+        "amountId": "A17",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b16",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        25,
+        26
+      ],
+      "parentBlockId": "b15",
+      "name": "GC Shrimp, Jasmine",
+      "amountId": "A18",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A17",
+        "A18",
+        "A19",
+        "A20"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b16",
+        "amountId": "A18",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b17",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        27
+      ],
+      "parentBlockId": "b15",
+      "name": "Add Shrimp",
+      "amountId": "A19",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A18",
+        "A19",
+        "A20"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b17",
+        "amountId": "A19",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b18",
+      "kind": "ITEM",
+      "lineIndices": [
+        28
+      ],
+      "parentBlockId": null,
+      "name": "BTL Campo Viejo Tempranillo",
+      "amountId": "A20",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A19",
+        "A20",
+        "A21"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b18",
+        "amountId": "A20",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b19",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        29
+      ],
+      "parentBlockId": "b18",
+      "name": "4 Glasses",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A19",
+        "A20",
+        "A21"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b19",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b20",
+      "kind": "ITEM",
+      "lineIndices": [
+        30
+      ],
+      "parentBlockId": null,
+      "name": "BTL Campo Viejo Tempranillo",
+      "amountId": "A21",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A20",
+        "A21",
+        "A22"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b20",
+        "amountId": "A21",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b21",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        31
+      ],
+      "parentBlockId": "b20",
+      "name": "4 Glasses",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A21",
+        "A22"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b21",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b22",
+      "kind": "ITEM",
+      "lineIndices": [
+        32
+      ],
+      "parentBlockId": null,
+      "name": "Khao Soi",
+      "amountId": "A22",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A21",
+        "A22",
+        "A23"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b22",
+        "amountId": "A22",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b23",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        33
+      ],
+      "parentBlockId": "b22",
+      "name": "KS Chicken",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A22",
+        "A23",
+        "A24"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b23",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b24",
+      "kind": "ITEM",
+      "lineIndices": [
+        34
+      ],
+      "parentBlockId": null,
+      "name": "Garlic Shrimp",
+      "amountId": "A23",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A22",
+        "A23",
+        "A24"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b24",
+        "amountId": "A23",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b25",
+      "kind": "ITEM",
+      "lineIndices": [
+        35
+      ],
+      "parentBlockId": null,
+      "name": "Pad See Ew",
+      "amountId": "A24",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A23",
+        "A24",
+        "A25"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b25",
+        "amountId": "A24",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b26",
+      "kind": "MODIFIER",
+      "lineIndices": [
+        36
+      ],
+      "parentBlockId": "b25",
+      "name": "PSE Beef",
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A23",
+        "A24",
+        "A25",
+        "A26"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b26",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b27",
+      "kind": "ITEM",
+      "lineIndices": [
+        37
+      ],
+      "parentBlockId": null,
+      "name": "Lowry",
+      "amountId": "A25",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A24",
+        "A25",
+        "A26",
+        "A27"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b27",
+        "amountId": "A25",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b28",
+      "kind": "ITEM",
+      "lineIndices": [
+        38
+      ],
+      "parentBlockId": null,
+      "name": "Gai Satay",
+      "amountId": "A26",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A25",
+        "A26",
+        "A27",
+        "A28"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b28",
+        "amountId": "A26",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b29",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        39
+      ],
+      "parentBlockId": null,
+      "name": "Subtotal",
+      "amountId": "A27",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A25",
+        "A26",
+        "A27",
+        "A28",
+        "A29"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b29",
+        "amountId": "A27",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b30",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        40
+      ],
+      "parentBlockId": null,
+      "name": "Service (18.00%)",
+      "amountId": "A28",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A26",
+        "A27",
+        "A28",
+        "A29",
+        "A30"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b30",
+        "amountId": "A28",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b31",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        41
+      ],
+      "parentBlockId": null,
+      "name": "Tax",
+      "amountId": "A29",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A27",
+        "A28",
+        "A29",
+        "A30"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b31",
+        "amountId": "A29",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b32",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        42
+      ],
+      "parentBlockId": null,
+      "name": "Total",
+      "amountId": "A30",
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A28",
+        "A29",
+        "A30"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b32",
+        "amountId": "A30",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b33",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        43,
+        44
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A29",
+        "A30"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b33",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    }
+  ],
+  "finalItems": [
+    {
+      "itemInstanceId": "b3",
+      "name": "Thai Chicken Wings",
+      "sourceLineIndex": 9,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b4",
+          "name": "",
+          "price": 10.5,
+          "kind": "paid"
+        }
+      ],
+      "effectiveTotal": 24
+    },
+    {
+      "itemInstanceId": "b5",
+      "name": "Pad Gra Prow",
+      "sourceLineIndex": 11,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b6",
+          "name": "PGP Chicken, Mild",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 23
+    },
+    {
+      "itemInstanceId": "b7",
+      "name": "Chef Nuit Pad Thai",
+      "sourceLineIndex": 14,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b8",
+          "name": "PT Shrimp, No Spice",
+          "price": 2,
+          "kind": "paid"
+        }
+      ],
+      "effectiveTotal": 25.75
+    },
+    {
+      "itemInstanceId": "b9",
+      "name": "Spring Rolls",
+      "sourceLineIndex": 17,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 14
+    },
+    {
+      "itemInstanceId": "b10",
+      "name": "Khao Soi",
+      "sourceLineIndex": 18,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b11",
+          "name": "KS Shrimp",
+          "price": 2,
+          "kind": "paid"
+        }
+      ],
+      "effectiveTotal": 25.75
+    },
+    {
+      "itemInstanceId": "b12",
+      "name": "Sleeman Honey Lager",
+      "sourceLineIndex": 20,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 9
+    },
+    {
+      "itemInstanceId": "b13",
+      "name": "Chef Nuit Pad Thai",
+      "sourceLineIndex": 21,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b14",
+          "name": "PT Chicken, Medium",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 23.75
+    },
+    {
+      "itemInstanceId": "b15",
+      "name": "Green Curry",
+      "sourceLineIndex": 24,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b16",
+          "name": "GC Shrimp, Jasmine",
+          "price": 2,
+          "kind": "paid"
+        },
+        {
+          "id": "b17",
+          "name": "Add Shrimp",
+          "price": 6,
+          "kind": "paid"
+        }
+      ],
+      "effectiveTotal": 33
+    },
+    {
+      "itemInstanceId": "b18",
+      "name": "BTL Campo Viejo Tempranillo",
+      "sourceLineIndex": 28,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b19",
+          "name": "4 Glasses",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 48
+    },
+    {
+      "itemInstanceId": "b20",
+      "name": "BTL Campo Viejo Tempranillo",
+      "sourceLineIndex": 30,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b21",
+          "name": "4 Glasses",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 48
+    },
+    {
+      "itemInstanceId": "b22",
+      "name": "Khao Soi",
+      "sourceLineIndex": 32,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b23",
+          "name": "KS Chicken",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 23.75
+    },
+    {
+      "itemInstanceId": "b24",
+      "name": "Garlic Shrimp",
+      "sourceLineIndex": 34,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 17
+    },
+    {
+      "itemInstanceId": "b25",
+      "name": "Pad See Ew",
+      "sourceLineIndex": 35,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [
+        {
+          "id": "b26",
+          "name": "PSE Beef",
+          "price": null,
+          "kind": "free"
+        }
+      ],
+      "effectiveTotal": 24.25
+    },
+    {
+      "itemInstanceId": "b27",
+      "name": "Lowry",
+      "sourceLineIndex": 37,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 15
+    },
+    {
+      "itemInstanceId": "b28",
+      "name": "Gai Satay",
+      "sourceLineIndex": 38,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 20
+    }
+  ],
+  "arithmetic": [
+    "item[0] \"Thai Chicken Wings\" = lineTotal(13.5) + modifiers(10.5) = 24   [running sum = 24]",
+    "item[1] \"Pad Gra Prow\" = lineTotal(23) = 23   [running sum = 47]",
+    "item[2] \"Chef Nuit Pad Thai\" = lineTotal(23.75) + modifiers(2) = 25.75   [running sum = 72.75]",
+    "item[3] \"Spring Rolls\" = lineTotal(14) = 14   [running sum = 86.75]",
+    "item[4] \"Khao Soi\" = lineTotal(23.75) + modifiers(2) = 25.75   [running sum = 112.5]",
+    "item[5] \"Sleeman Honey Lager\" = lineTotal(9) = 9   [running sum = 121.5]",
+    "item[6] \"Chef Nuit Pad Thai\" = lineTotal(23.75) = 23.75   [running sum = 145.25]",
+    "item[7] \"Green Curry\" = lineTotal(25) + modifiers(8) = 33   [running sum = 178.25]",
+    "item[8] \"BTL Campo Viejo Tempranillo\" = lineTotal(48) = 48   [running sum = 226.25]",
+    "item[9] \"BTL Campo Viejo Tempranillo\" = lineTotal(48) = 48   [running sum = 274.25]",
+    "item[10] \"Khao Soi\" = lineTotal(23.75) = 23.75   [running sum = 298]",
+    "item[11] \"Garlic Shrimp\" = lineTotal(17) = 17   [running sum = 315]",
+    "item[12] \"Pad See Ew\" = lineTotal(24.25) = 24.25   [running sum = 339.25]",
+    "item[13] \"Lowry\" = lineTotal(15) = 15   [running sum = 354.25]",
+    "item[14] \"Gai Satay\" = lineTotal(20) = 20   [running sum = 374.25]"
+  ],
+  "calculatedSubtotal": 374.25,
+  "printedSubtotal": 374.25,
+  "printedTotal": 499.03,
+  "subtotalDelta": 0,
+  "reconciles": true,
+  "arithmeticReconciles": true,
+  "expectedTotal": null,
+  "expectedDelta": null,
+  "orphanCount": 6,
+  "unresolvedLines": [
+    {
+      "id": "orphan_A1",
+      "amount": 6,
+      "text": "6",
+      "lineIndex": 3
+    },
+    {
+      "id": "orphan_A2",
+      "amount": 6,
+      "text": "6",
+      "lineIndex": 5
+    },
+    {
+      "id": "orphan_A3",
+      "amount": 10,
+      "text": "10",
+      "lineIndex": 6
+    },
+    {
+      "id": "orphan_A4",
+      "amount": 5.6,
+      "text": "5,6",
+      "lineIndex": 7
+    },
+    {
+      "id": "orphan_A5",
+      "amount": 7.8,
+      "text": "7,8",
+      "lineIndex": 7
+    },
+    {
+      "id": "orphan_A7",
+      "amount": 10,
+      "text": "10",
+      "lineIndex": 10
+    }
+  ],
+  "charges": [
+    {
+      "id": "b30",
+      "name": "Service (18.00%)",
+      "amount": 67.36,
+      "kind": "service"
+    },
+    {
+      "id": "b31",
+      "name": "Tax",
+      "amount": 57.42,
+      "kind": "tax"
+    }
+  ],
+  "suspectedPatterns": {
+    "subtotalCountedAsItem": [],
+    "totalCountedAsItem": [],
+    "taxCountedAsItem": [],
+    "amountClaimedByMultipleBlocks": [],
+    "duplicateWordIdsInLedger": [
+      {
+        "wordId": "W38",
+        "amountIds": [
+          "A4",
+          "A5"
+        ]
+      }
+    ],
+    "overlappingItemLineIndices": [],
+    "itemBlocksAfterFirstSummaryLine": [],
+    "itemsWithQuantityAboveOne": []
+  },
+  "verificationRound1": null,
+  "verificationRound2": null,
+  "reconciliationRetried": false
+}

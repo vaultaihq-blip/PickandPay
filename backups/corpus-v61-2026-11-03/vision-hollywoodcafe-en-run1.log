@@ -1,0 +1,16 @@
+Replaying frozen OCR fixture: supabase/functions/parse-receipt/__fixtures__/vision-hollywoodcafe-en.json (geometric reconstruction)
+OCR: 19 lines, 59 words
+Ledger: 12 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 7223ms, tokens prompt=1506 completion=776 total=2282
+Structure: 18 blocks (merchant=HOLLYWOOD CAFE & SPORTS, BAR, currency=USD)
+Total witness: label -> 26.96 (agreement=agree)
+Geometric ownership: 15/18 confident, 4 anchor-corrected
+Constant-offset arbitration: formDetected=true, hypothesisAdopted=H1
+Suspicious (round 1): 0
+Reconciliation (round 1): reconciles=true, calculatedSubtotal=25.22, printedSubtotal=25.22
+
+Full report written to: backups/corpus-v61-2026-11-03/vision-hollywoodcafe-en-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=25.22, printedSubtotal=25.22, printedTotal=26.96, reconciles=false (arithmeticOnly=true), summaryCoverageValid=false, summaryUnresolved=1, summaryDuplicateRoles=0, structuralGap=0, echoExact=0, echoMult=0, genuineMiss=0, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=true, offsetHypothesisAdopted=H1, totalWitness=label, totalWitnessAgreement=agree, provenNonAdditiveCount=0, provenNonAdditiveBlockedBy=sum_mismatch, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=no_closing_set, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null

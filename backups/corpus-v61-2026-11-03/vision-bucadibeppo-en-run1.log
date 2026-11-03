@@ -1,0 +1,17 @@
+Replaying frozen OCR fixture: supabase/functions/parse-receipt/__fixtures__/vision-bucadibeppo-en.json (geometric reconstruction)
+OCR: 26 lines, 114 words
+Ledger: 12 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 6824ms, tokens prompt=1526 completion=1021 total=2547
+Structure: 24 blocks (merchant=Buca di Beppo, currency=USD)
+Total witness: label -> 109.28 (agreement=disagree)
+Geometric ownership: 19/24 confident, 3 anchor-corrected
+Constant-offset arbitration: formDetected=false, hypothesisAdopted=H0
+Suspicious (round 1): 1
+Suspicious round 1 skipped (no image available under --fixture): 1 would have been checked
+Reconciliation (round 1): reconciles=false, calculatedSubtotal=0, printedSubtotal=null
+
+Full report written to: backups/corpus-v61-2026-11-03/vision-bucadibeppo-en-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=0, printedSubtotal=null, printedTotal=109.28, reconciles=false (arithmeticOnly=false), summaryCoverageValid=false, summaryUnresolved=3, summaryDuplicateRoles=0, structuralGap=0, echoExact=0, echoMult=0, genuineMiss=6, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=false, offsetHypothesisAdopted=H0, totalWitness=label, totalWitnessAgreement=disagree, provenNonAdditiveCount=0, provenNonAdditiveBlockedBy=sum_mismatch, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=items_region_unresolved, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null

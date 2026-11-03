@@ -677,6 +677,56 @@ export function reconstructLines(words: OcrWord[], geometricReconstruction = fal
  * FIX 39 — `options.geometricReconstruction` (default false) forwards to
  * reconstructLines; see its own header for what changes.
  */
+type VisionSymbol = { text?: string; boundingBox?: { vertices?: Array<{ x?: number; y?: number }> } };
+
+/**
+ * 03-11-2026 — a word made only of digits and number marks whose letters
+ * have, somewhere inside, a gap wider than 2 letters (measured along the
+ * word's own direction, so rotated photos work too) is split there into two
+ * words, each with the box of its own letters. Anything else: null (the word
+ * stays as Vision gave it).
+ */
+export function splitNumberWordAtGap(symbols: VisionSymbol[]): {
+  left: { text: string; vertices: { x: number; y: number }[] };
+  right: { text: string; vertices: { x: number; y: number }[] };
+} | null {
+  const text = symbols.map((s) => s.text ?? "").join("");
+  if (symbols.length < 2 || !/^[\d.,()-]+$/.test(text)) return null;
+  const boxes = symbols.map((s) => (s.boundingBox?.vertices ?? []).map((v) => ({ x: v.x ?? 0, y: v.y ?? 0 })));
+  if (boxes.some((b) => b.length === 0)) return null;
+  const centre = (b: { x: number; y: number }[]) => ({ x: b.reduce((s, v) => s + v.x, 0) / b.length, y: b.reduce((s, v) => s + v.y, 0) / b.length });
+  const c0 = centre(boxes[0]), c1 = centre(boxes[boxes.length - 1]);
+  const len = Math.hypot(c1.x - c0.x, c1.y - c0.y);
+  if (len === 0) return null;
+  const d = { x: (c1.x - c0.x) / len, y: (c1.y - c0.y) / len };
+  const spans = boxes.map((b) => {
+    const p = b.map((v) => v.x * d.x + v.y * d.y);
+    return { from: Math.min(...p), to: Math.max(...p) };
+  });
+  const widths = spans.map((s) => s.to - s.from).filter((w) => w > 0).sort((a, b) => a - b);
+  if (widths.length === 0) return null;
+  const letter = widths[Math.floor(widths.length / 2)];
+  let at = -1, widest = 0;
+  for (let i = 1; i < spans.length; i++) {
+    const gap = spans[i].from - spans[i - 1].to;
+    if (gap > widest) { widest = gap; at = i; }
+  }
+  if (at < 0 || widest <= 2 * letter) return null;
+  const leftText = symbols.slice(0, at).map((s) => s.text ?? "").join("");
+  const rightText = symbols.slice(at).map((s) => s.text ?? "").join("");
+  if (!/\d/.test(leftText) || !/\d/.test(rightText)) return null;
+  const rect = (bs: { x: number; y: number }[][]) => {
+    const all = bs.flat();
+    const xs = all.map((v) => v.x), ys = all.map((v) => v.y);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+  };
+  return {
+    left: { text: leftText, vertices: rect(boxes.slice(0, at)) },
+    right: { text: rightText, vertices: rect(boxes.slice(at)) },
+  };
+}
+
 export function normalizeVisionResponse(raw: unknown, options?: { geometricReconstruction?: boolean }): OcrResult {
   const result = raw as {
     fullTextAnnotation?: {
@@ -688,7 +738,7 @@ export function normalizeVisionResponse(raw: unknown, options?: { geometricRecon
             words?: Array<{
               confidence?: number;
               boundingBox?: { vertices?: Array<{ x?: number; y?: number }> };
-              symbols?: Array<{ text?: string; property?: { detectedBreak?: { type?: string } } }>;
+              symbols?: Array<VisionSymbol & { property?: { detectedBreak?: { type?: string } } }>;
             }>;
           }>;
         }>;
@@ -710,11 +760,25 @@ export function normalizeVisionResponse(raw: unknown, options?: { geometricRecon
         }));
         const lastSymbol = w.symbols?.[w.symbols.length - 1];
         const breakType = lastSymbol?.property?.detectedBreak?.type ?? null;
+        const confidence = typeof w.confidence === "number" ? w.confidence : 1;
+        // 03-11-2026 — Vision itself can return "1     600,00" as ONE word
+        // "1600,00" (real Oligark photo: 73 px between the "1" and the "6",
+        // 0–10 px between the other letters). A number word with a gap wider
+        // than 2 letters inside is two words; the ledger then decides
+        // (quantity column, gap) as for any two words.
+        const split = splitNumberWordAtGap(w.symbols ?? []);
+        if (split) {
+          rawWords.push(
+            { wordId: nextWordId(), text: split.left.text, boundingBox: { vertices: split.left.vertices }, confidence, lineIndex: -1, breakType: "SPACE" },
+            { wordId: nextWordId(), text: split.right.text, boundingBox: { vertices: split.right.vertices }, confidence, lineIndex: -1, breakType }
+          );
+          continue;
+        }
         rawWords.push({
           wordId: nextWordId(),
           text,
           boundingBox: { vertices },
-          confidence: typeof w.confidence === "number" ? w.confidence : 1,
+          confidence,
           lineIndex: -1, // assigned by reconstructLines
           breakType,
         });

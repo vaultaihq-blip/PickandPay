@@ -1,0 +1,823 @@
+{
+  "imagePath": null,
+  "fixturePath": "corpus/oligark-istanbul-real-1600.vision.json",
+  "verificationAvailable": false,
+  "merchant": "OLIGARK ISTANBUL",
+  "date": "2026-10-07",
+  "currency": "TRY",
+  "currencyRead": "TRY",
+  "structureTimeMs": 2815,
+  "structureTokenUsage": {
+    "promptTokens": 1453,
+    "completionTokens": 389,
+    "totalTokens": 1842
+  },
+  "structureRetryFired": false,
+  "structuralGapCountBeforeRetry": null,
+  "ocrLines": [
+    {
+      "lineIndex": 0,
+      "text": "*** OLIGARK ISTANBUL***"
+    },
+    {
+      "lineIndex": 1,
+      "text": "ADISYON Fİsi"
+    },
+    {
+      "lineIndex": 2,
+      "text": "7.10.2026 / 23:32:05"
+    },
+    {
+      "lineIndex": 3,
+      "text": "Musteri"
+    },
+    {
+      "lineIndex": 4,
+      "text": "Adisyon :338649"
+    },
+    {
+      "lineIndex": 5,
+      "text": "Garson : EMRE YILDIZ"
+    },
+    {
+      "lineIndex": 6,
+      "text": "Masa : 16"
+    },
+    {
+      "lineIndex": 7,
+      "text": "Ürün Adet Tutar"
+    },
+    {
+      "lineIndex": 8,
+      "text": "Moskow Mule 1 1.100,00"
+    },
+    {
+      "lineIndex": 9,
+      "text": "Moskow Mule 1 1.100,00"
+    },
+    {
+      "lineIndex": 10,
+      "text": "Çerez & Meyva 1 600,00"
+    },
+    {
+      "lineIndex": 11,
+      "text": "Wisky Sour 1 1.100,00"
+    },
+    {
+      "lineIndex": 12,
+      "text": "Wisky Sour 1 1.100,00"
+    },
+    {
+      "lineIndex": 13,
+      "text": "Art of Bosphorus 1 1.100.00"
+    },
+    {
+      "lineIndex": 14,
+      "text": "电 : 6.700,00"
+    },
+    {
+      "lineIndex": 15,
+      "text": "YİYECEK % 10 659,02"
+    },
+    {
+      "lineIndex": 16,
+      "text": "ALKOLLU İÇECEK % 20 6.040.08"
+    }
+  ],
+  "ledger": [
+    {
+      "amountId": "A1",
+      "wordId": "W10",
+      "lineIndex": 2,
+      "rawText": "05",
+      "value": 5,
+      "ocrConfidence": 0.9601939,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 902,
+            "y": 905
+          },
+          {
+            "x": 899,
+            "y": 656
+          },
+          {
+            "x": 946,
+            "y": 655
+          },
+          {
+            "x": 949,
+            "y": 904
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A2",
+      "wordId": "W20",
+      "lineIndex": 6,
+      "rawText": "16",
+      "value": 16,
+      "ocrConfidence": 0.99027455,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1293,
+            "y": 1294
+          },
+          {
+            "x": 1292,
+            "y": 1181
+          },
+          {
+            "x": 1364,
+            "y": 1180
+          },
+          {
+            "x": 1365,
+            "y": 1293
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A3",
+      "wordId": "W27",
+      "lineIndex": 8,
+      "rawText": "1.100,00",
+      "value": 1100,
+      "ocrConfidence": 0.98128587,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1619,
+            "y": 541
+          },
+          {
+            "x": 1619,
+            "y": 267
+          },
+          {
+            "x": 1675,
+            "y": 267
+          },
+          {
+            "x": 1675,
+            "y": 541
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A4",
+      "wordId": "W34",
+      "lineIndex": 9,
+      "rawText": "1.100,00",
+      "value": 1100,
+      "ocrConfidence": 0.9877179,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1725,
+            "y": 542
+          },
+          {
+            "x": 1723,
+            "y": 261
+          },
+          {
+            "x": 1781,
+            "y": 261
+          },
+          {
+            "x": 1783,
+            "y": 542
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A5",
+      "wordId": "W36",
+      "lineIndex": 10,
+      "rawText": "600,00",
+      "value": 600,
+      "ocrConfidence": 0.9336783,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1834,
+            "y": 507
+          },
+          {
+            "x": 1834,
+            "y": 286
+          },
+          {
+            "x": 1894,
+            "y": 286
+          },
+          {
+            "x": 1894,
+            "y": 507
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A6",
+      "wordId": "W38",
+      "lineIndex": 11,
+      "rawText": "1.100,00",
+      "value": 1100,
+      "ocrConfidence": 0.96902907,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 1943,
+            "y": 538
+          },
+          {
+            "x": 1942,
+            "y": 255
+          },
+          {
+            "x": 2004,
+            "y": 255
+          },
+          {
+            "x": 2005,
+            "y": 538
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A7",
+      "wordId": "W44",
+      "lineIndex": 12,
+      "rawText": "1.100,00",
+      "value": 1100,
+      "ocrConfidence": 0.9548833,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2054,
+            "y": 536
+          },
+          {
+            "x": 2052,
+            "y": 251
+          },
+          {
+            "x": 2111,
+            "y": 251
+          },
+          {
+            "x": 2113,
+            "y": 536
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A8",
+      "wordId": "W49",
+      "lineIndex": 13,
+      "rawText": "1.100.00",
+      "value": 1100,
+      "ocrConfidence": 0.94399476,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2164,
+            "y": 535
+          },
+          {
+            "x": 2164,
+            "y": 255
+          },
+          {
+            "x": 2220,
+            "y": 255
+          },
+          {
+            "x": 2220,
+            "y": 535
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A9",
+      "wordId": "W52",
+      "lineIndex": 14,
+      "rawText": "6.700,00",
+      "value": 6700,
+      "ocrConfidence": 0.9919983,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2497,
+            "y": 1119
+          },
+          {
+            "x": 2498,
+            "y": 640
+          },
+          {
+            "x": 2590,
+            "y": 640
+          },
+          {
+            "x": 2589,
+            "y": 1119
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A10",
+      "wordId": "W56",
+      "lineIndex": 15,
+      "rawText": "659,02",
+      "value": 659.02,
+      "ocrConfidence": 0.9677007,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2725,
+            "y": 713
+          },
+          {
+            "x": 2726,
+            "y": 529
+          },
+          {
+            "x": 2770,
+            "y": 529
+          },
+          {
+            "x": 2769,
+            "y": 713
+          }
+        ]
+      }
+    },
+    {
+      "amountId": "A11",
+      "wordId": "W61",
+      "lineIndex": 16,
+      "rawText": "6.040.08",
+      "value": 6040.08,
+      "ocrConfidence": 0.9260658,
+      "boundingBox": {
+        "vertices": [
+          {
+            "x": 2837,
+            "y": 719
+          },
+          {
+            "x": 2834,
+            "y": 488
+          },
+          {
+            "x": 2874,
+            "y": 487
+          },
+          {
+            "x": 2877,
+            "y": 718
+          }
+        ]
+      }
+    }
+  ],
+  "summaryBlocks": [
+    {
+      "blockId": "b7",
+      "name": null,
+      "lineIndices": [
+        14,
+        15,
+        16
+      ],
+      "amountId": null,
+      "value": null
+    }
+  ],
+  "summaryRoleAssignments": [
+    {
+      "amountId": "A9",
+      "role": "GRAND_TOTAL",
+      "value": 6700
+    }
+  ],
+  "summaryCoverage": [
+    {
+      "amountId": "A9",
+      "lineIndex": 14,
+      "role": "GRAND_TOTAL",
+      "value": 6700
+    },
+    {
+      "amountId": "A10",
+      "lineIndex": 15,
+      "role": "UNRESOLVED",
+      "value": 659.02
+    },
+    {
+      "amountId": "A11",
+      "lineIndex": 16,
+      "role": "UNRESOLVED",
+      "value": 6040.08
+    }
+  ],
+  "summaryDuplicateRoles": [],
+  "summaryCoverageValid": false,
+  "summaryMonetaryObservationCount": 3,
+  "summaryClaimedAmountCount": 1,
+  "summaryUnresolvedAmountCount": 2,
+  "summaryDuplicateRoleAttemptCount": 0,
+  "validity": {
+    "valid": false,
+    "structuralGapCount": 0,
+    "echoExactCount": 0,
+    "echoMultiplicativeCount": 0,
+    "descriptiveNumberCount": 0,
+    "zeroValueCount": 0,
+    "rowQuantityProvenCount": 0,
+    "rowUnitPriceProvenCount": 0,
+    "itemsProvenNonAdditiveCount": 0,
+    "unresolvedLoadBearingCount": 0,
+    "duplicateOwnershipCount": 0,
+    "ownershipInvalidCount": 0,
+    "reconciles": false
+  },
+  "finalReconciles": false,
+  "structureAgreement": null,
+  "structureDisagreements": [],
+  "priceKindOverrideCount": 0,
+  "priceKindOverrides": [],
+  "crossingsDetected": 0,
+  "summaryBoundaryPenalties": 0,
+  "offsetFormDetected": false,
+  "offsetHypothesisAdopted": "H0",
+  "totalWitness": "typography",
+  "totalWitnessAgreement": "typography_only",
+  "totalCandidatesFound": null,
+  "totalChosenBy": null,
+  "provenNonAdditiveCount": 0,
+  "provenNonAdditiveBlockedBy": "sum_mismatch",
+  "provenAdditiveCount": 0,
+  "additiveCorroboratedByRate": false,
+  "provenAdditiveBlockedBy": "no_closing_set",
+  "columnRolesDetected": {
+    "quantity": false,
+    "unitPrice": false,
+    "total": true
+  },
+  "rowsArithmeticallyProven": 0,
+  "itemsRegionSaturated": false,
+  "itemsRegionSaturationCount": 0,
+  "itemsRegionSaturationBlockedBy": "no_separate_total_band",
+  "partialNumberTokensRejected": 1,
+  "blocks": [
+    {
+      "blockId": "b0",
+      "kind": "UNCLASSIFIED",
+      "lineIndices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A1",
+        "A2",
+        "A3",
+        "A4"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b0",
+        "amountId": null,
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b1",
+      "kind": "ITEM",
+      "lineIndices": [
+        8
+      ],
+      "parentBlockId": null,
+      "name": "Moskow Mule",
+      "amountId": "A3",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A2",
+        "A3",
+        "A4",
+        "A5"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b1",
+        "amountId": "A3",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b2",
+      "kind": "ITEM",
+      "lineIndices": [
+        9
+      ],
+      "parentBlockId": null,
+      "name": "Moskow Mule",
+      "amountId": "A4",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A3",
+        "A4",
+        "A5",
+        "A6"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b2",
+        "amountId": "A4",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b3",
+      "kind": "ITEM",
+      "lineIndices": [
+        10
+      ],
+      "parentBlockId": null,
+      "name": "Çerez & Meyva",
+      "amountId": "A5",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b3",
+        "amountId": "A5",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b4",
+      "kind": "ITEM",
+      "lineIndices": [
+        11
+      ],
+      "parentBlockId": null,
+      "name": "Wisky Sour",
+      "amountId": "A6",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+        "A8"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b4",
+        "amountId": "A6",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b5",
+      "kind": "ITEM",
+      "lineIndices": [
+        12
+      ],
+      "parentBlockId": null,
+      "name": "Wisky Sour",
+      "amountId": "A7",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A5",
+        "A6",
+        "A7",
+        "A8",
+        "A9"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b5",
+        "amountId": "A7",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b6",
+      "kind": "ITEM",
+      "lineIndices": [
+        13
+      ],
+      "parentBlockId": null,
+      "name": "Art of Bosphorus",
+      "amountId": "A8",
+      "quantity": 1,
+      "priceKind": "lineTotal",
+      "eligibleAmountIds": [
+        "A6",
+        "A7",
+        "A8",
+        "A9",
+        "A10"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b6",
+        "amountId": "A8",
+        "confident": true,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    },
+    {
+      "blockId": "b7",
+      "kind": "SUMMARY",
+      "lineIndices": [
+        14,
+        15,
+        16
+      ],
+      "parentBlockId": null,
+      "name": null,
+      "amountId": null,
+      "quantity": null,
+      "priceKind": null,
+      "eligibleAmountIds": [
+        "A7",
+        "A8",
+        "A9",
+        "A10",
+        "A11"
+      ],
+      "ownershipValid": true,
+      "geometricOwnership": {
+        "blockId": "b7",
+        "amountId": null,
+        "confident": false,
+        "anchorCorrected": false,
+        "crossingDetected": false
+      }
+    }
+  ],
+  "finalItems": [
+    {
+      "itemInstanceId": "b1",
+      "name": "Moskow Mule",
+      "sourceLineIndex": 8,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 1100
+    },
+    {
+      "itemInstanceId": "b2",
+      "name": "Moskow Mule",
+      "sourceLineIndex": 9,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 1100
+    },
+    {
+      "itemInstanceId": "b3",
+      "name": "Çerez & Meyva",
+      "sourceLineIndex": 10,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 600
+    },
+    {
+      "itemInstanceId": "b4",
+      "name": "Wisky Sour",
+      "sourceLineIndex": 11,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 1100
+    },
+    {
+      "itemInstanceId": "b5",
+      "name": "Wisky Sour",
+      "sourceLineIndex": 12,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 1100
+    },
+    {
+      "itemInstanceId": "b6",
+      "name": "Art of Bosphorus",
+      "sourceLineIndex": 13,
+      "priceTokenValue": null,
+      "quantity": 1,
+      "modifiers": [],
+      "effectiveTotal": 1100
+    }
+  ],
+  "arithmetic": [
+    "item[0] \"Moskow Mule\" = lineTotal(1100) = 1100   [running sum = 1100]",
+    "item[1] \"Moskow Mule\" = lineTotal(1100) = 1100   [running sum = 2200]",
+    "item[2] \"Çerez & Meyva\" = lineTotal(600) = 600   [running sum = 2800]",
+    "item[3] \"Wisky Sour\" = lineTotal(1100) = 1100   [running sum = 3900]",
+    "item[4] \"Wisky Sour\" = lineTotal(1100) = 1100   [running sum = 5000]",
+    "item[5] \"Art of Bosphorus\" = lineTotal(1100) = 1100   [running sum = 6100]"
+  ],
+  "calculatedSubtotal": 6100,
+  "printedSubtotal": null,
+  "printedTotal": 6700,
+  "subtotalDelta": null,
+  "reconciles": false,
+  "arithmeticReconciles": false,
+  "expectedTotal": null,
+  "expectedDelta": null,
+  "orphanCount": 4,
+  "unresolvedLines": [
+    {
+      "id": "orphan_A1",
+      "amount": 5,
+      "text": "05",
+      "lineIndex": 2
+    },
+    {
+      "id": "orphan_A2",
+      "amount": 16,
+      "text": "16",
+      "lineIndex": 6
+    },
+    {
+      "id": "orphan_A10",
+      "amount": 659.02,
+      "text": "659,02",
+      "lineIndex": 15
+    },
+    {
+      "id": "orphan_A11",
+      "amount": 6040.08,
+      "text": "6.040.08",
+      "lineIndex": 16
+    }
+  ],
+  "charges": [],
+  "suspectedPatterns": {
+    "subtotalCountedAsItem": [],
+    "totalCountedAsItem": [],
+    "taxCountedAsItem": [],
+    "amountClaimedByMultipleBlocks": [],
+    "duplicateWordIdsInLedger": [],
+    "overlappingItemLineIndices": [],
+    "itemBlocksAfterFirstSummaryLine": [],
+    "itemsWithQuantityAboveOne": []
+  },
+  "verificationRound1": null,
+  "verificationRound2": null,
+  "reconciliationRetried": false
+}

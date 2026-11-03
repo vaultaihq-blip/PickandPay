@@ -1,0 +1,16 @@
+Replaying frozen OCR fixture: supabase/functions/parse-receipt/__fixtures__/vision-vro-bengaluru-en.json (geometric reconstruction)
+OCR: 39 lines, 152 words
+Ledger: 37 monetary tokens
+Calling GPT (structure + assignment)...
+  structure call: 8967ms, tokens prompt=2181 completion=1347 total=3528
+Structure: 30 blocks (merchant=PLAN B, currency=INR)
+Total witness: label -> 5226 (agreement=disagree)
+Geometric ownership: 30/30 confident, 0 anchor-corrected
+Constant-offset arbitration: formDetected=false, hypothesisAdopted=H0
+Suspicious (round 1): 0
+Reconciliation (round 1): reconciles=true, calculatedSubtotal=4525, printedSubtotal=4525
+
+Full report written to: backups/corpus-v61-2026-11-03/vision-vro-bengaluru-en-run1.debug.json
+NOTE: --fixture run — no image, targeted verification rounds skipped. Numbers reflect the structure pass + deterministic ownership only.
+
+SUMMARY: calculatedSubtotal=4525, printedSubtotal=4525, printedTotal=5226, reconciles=false (arithmeticOnly=true), summaryCoverageValid=false, summaryUnresolved=3, summaryDuplicateRoles=0, structuralGap=0, echoExact=5, echoMult=3, genuineMiss=1, priceKindOverrides=0, crossingsDetected=0, summaryBoundaryPenalties=0, offsetFormDetected=false, offsetHypothesisAdopted=H0, totalWitness=label, totalWitnessAgreement=disagree, provenNonAdditiveCount=0, provenNonAdditiveBlockedBy=sum_mismatch, provenAdditiveCount=0, additiveCorroboratedByRate=false, provenAdditiveBlockedBy=items_region_unresolved, retryFired=false, gapBefore=null, expectedTotal=null, expectedDelta=null

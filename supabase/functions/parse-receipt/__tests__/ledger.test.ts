@@ -5,7 +5,7 @@ import {
   buildLedgerFromOcr,
   resetAmountIdCounterForTests,
 } from "../ledger";
-import { normalizeVisionResponse } from "../ocr";
+import { normalizeVisionResponse, splitNumberWordAtGap } from "../ocr";
 import type { OcrLine, OcrWord, BoundingBox } from "../ocr";
 import { readFileSync } from "node:fs";
 
@@ -310,6 +310,35 @@ function oligarkWithGap(gapPx: number): OcrLine[] {
   }
   return normalizeVisionResponse(vision, { geometricReconstruction: true }).lines;
 }
+
+// The main case of this bug (03-11-2026): a real photo of the Oligark, as the
+// app sends it (1478×3200). Vision itself returned "1600,00" as ONE word, with
+// 73 px between the "1" and the "6" — v61 read 1600.
+const REAL_1600_FIXTURE = new URL("../../../../corpus/oligark-istanbul-real-1600-sent.vision.json", import.meta.url);
+
+describe("ocr: a number word with a wide gap inside is two words (03-11-2026)", () => {
+  it("real Oligark photo: the Çerez line reads 1 and 600,00, never 1600", () => {
+    resetAmountIdCounterForTests();
+    const lines = normalizeVisionResponse(JSON.parse(readFileSync(REAL_1600_FIXTURE, "utf8")), { geometricReconstruction: true }).lines;
+    const cerez = lines.findIndex((l) => /erez/i.test(l.text));
+    assert(cerez >= 0, "the Çerez line is there");
+    assertEqual(lines[cerez].text, "Çerez & Meyva 1 600,00");
+    const values = buildLedgerFromOcr(lines).filter((e) => e.lineIndex === cerez).map((e) => e.value);
+    assert(values.includes(600) && !values.includes(1600), `read ${JSON.stringify(values)}`);
+  });
+
+  const sym = (text: string, x0: number, x1: number) => ({ text, boundingBox: { vertices: [{ x: x0, y: 0 }, { x: x1, y: 0 }, { x: x1, y: 20 }, { x: x0, y: 20 }] } });
+  it("splits at a gap wider than 2 letters", () => {
+    const s = splitNumberWordAtGap([sym("1", 0, 20), sym("6", 90, 115), sym("0", 117, 142), sym("0", 144, 169)]);
+    assert(s !== null && s.left.text === "1" && s.right.text === "600", JSON.stringify(s));
+  });
+  it("keeps a word whose letters are close together", () => {
+    assertEqual(splitNumberWordAtGap([sym("1", 0, 20), sym(".", 24, 30), sym("1", 34, 54), sym("0", 58, 82)]), null);
+  });
+  it("never splits a word that is not a number", () => {
+    assertEqual(splitNumberWordAtGap([sym("A", 0, 20), sym("B", 90, 115)]), null);
+  });
+});
 
 describe("ledger: a quantity never glues onto the price (03-11-2026)", () => {
   for (const gap of [20, 10]) {
