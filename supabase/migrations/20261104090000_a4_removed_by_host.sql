@@ -8,7 +8,8 @@
 --     balance if already paid for this session, otherwise with 1 credit.
 --   * After a host transfer (R6b) only the new host passes the check.
 --
--- NOT APPLIED: waiting for the owner's approval.
+-- Applied in production on 2026-11-04 with the owner's approval; post-verify:
+-- the rehearsal's cases, 0 differences.
 
 ALTER TABLE public.session_participants DROP CONSTRAINT IF EXISTS session_participants_removed_reason_check;
 ALTER TABLE public.session_participants ADD CONSTRAINT session_participants_removed_reason_check
