@@ -90,20 +90,20 @@ export function MirrorLinePanel({ line, photoUri, formatMoney, onSave, onDelete,
           ) : null}
 
           <Text style={styles.label}>{t("mirror_panel_name")}</Text>
-          <TextInput value={name} onChangeText={setName} style={styles.input} placeholder={t("mirror_panel_name")} placeholderTextColor="#9CA3AF" />
+          <TextInput value={name} onChangeText={setName} style={styles.input} placeholder={t("mirror_panel_name")} placeholderTextColor={Colors.textMutedDark} />
 
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>{t("mirror_panel_qty")}</Text>
               <View style={styles.qtyRow}>
-                <StepperButton label="−" onPress={() => setQty((q) => Math.max(1, q - 1))} disabled={qty <= 1} color={Colors.primary} mutedColor="#9CA3AF" accessibilityLabel="−1" />
+                <StepperButton label="−" onPress={() => setQty((q) => Math.max(1, q - 1))} disabled={qty <= 1} color={Colors.primary} mutedColor={Colors.textMutedDark} accessibilityLabel="−1" />
                 <Text style={styles.qty}>{qty}</Text>
-                <StepperButton label="+" onPress={() => setQty((q) => q + 1)} color={Colors.primary} mutedColor="#9CA3AF" accessibilityLabel="+1" />
+                <StepperButton label="+" onPress={() => setQty((q) => q + 1)} color={Colors.primary} mutedColor={Colors.textMutedDark} accessibilityLabel="+1" />
               </View>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>{t("mirror_panel_unit")}</Text>
-              <TextInput value={unitText} onChangeText={setUnitText} keyboardType="decimal-pad" style={[styles.input, styles.amount]} placeholder="0,00" placeholderTextColor="#9CA3AF" />
+              <TextInput value={unitText} onChangeText={setUnitText} keyboardType="decimal-pad" style={[styles.input, styles.amount]} placeholder="0,00" placeholderTextColor={Colors.textMutedDark} />
             </View>
           </View>
 
@@ -132,22 +132,22 @@ export function MirrorLinePanel({ line, photoUri, formatMoney, onSave, onDelete,
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" },
+  backdrop: { flex: 1, backgroundColor: Colors.overlay },
   sheetWrap: { position: "absolute", left: 0, right: 0, bottom: 0 },
-  sheet: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, paddingBottom: 28, gap: 8 },
-  grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB", marginBottom: 6 },
-  crop: { overflow: "hidden", borderRadius: 8, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#F3F4F6", marginBottom: 4 },
-  label: { fontSize: 12, color: "#6B7280", fontWeight: "600" },
-  input: { borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: "#111827" },
+  sheet: { backgroundColor: Colors.surfaceDark, borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, borderColor: Colors.cardBorderDark, padding: 16, paddingBottom: 28, gap: 8 },
+  grabber: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.cardBorderDark, marginBottom: 6 },
+  crop: { overflow: "hidden", borderRadius: 8, borderWidth: 1, borderColor: Colors.cardBorderDark, backgroundColor: Colors.cardDark, marginBottom: 4 },
+  label: { fontSize: 12, color: Colors.textSecondaryDark, fontWeight: "600" },
+  input: { borderWidth: 1, borderColor: Colors.cardBorderDark, backgroundColor: Colors.cardDark, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: Colors.textPrimaryDark },
   amount: { textAlign: "right" },
   row: { flexDirection: "row", gap: 12, alignItems: "flex-end" },
   qtyRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48 },
-  qty: { fontSize: 18, fontWeight: "800", minWidth: 24, textAlign: "center", color: "#111827" },
+  qty: { fontSize: 18, fontWeight: "800", minWidth: 24, textAlign: "center", color: Colors.textPrimaryDark },
   totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 },
-  total: { fontSize: 18, fontWeight: "800", color: "#111827" },
+  total: { fontSize: 18, fontWeight: "800", color: Colors.textPrimaryDark },
   actions: { flexDirection: "row", gap: 12, marginTop: 6 },
-  deleteBtn: { flex: 1, minHeight: 48, borderRadius: 12, borderWidth: 1.5, borderColor: "#DC2626", alignItems: "center", justifyContent: "center" },
-  deleteText: { color: "#DC2626", fontWeight: "700", fontSize: 15 },
+  deleteBtn: { flex: 1, minHeight: 48, borderRadius: 12, borderWidth: 1.5, borderColor: Colors.error, alignItems: "center", justifyContent: "center" },
+  deleteText: { color: Colors.errorLight, fontWeight: "700", fontSize: 15 },
   saveBtn: { flex: 2, minHeight: 48, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center", justifyContent: "center" },
-  saveText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
+  saveText: { color: Colors.white, fontWeight: "700", fontSize: 15 },
 });

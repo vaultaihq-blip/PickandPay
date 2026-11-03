@@ -41,7 +41,7 @@ import { meaningfulOrphans } from "@/lib/receipt/orphans";
 import { markScanCharged, useScanCreditGuard } from "@/lib/scanCredit";
 import { useSessionStore } from "@/store/sessionStore";
 import { useI18nStore } from "@/store/i18nStore";
-import { formatCurrency } from "@/utils/formatter";
+import { formatCurrency, getCurrencySymbol } from "@/utils/formatter";
 import { styles } from "@/components/receipt/reviewReceiptStyles";
 import { supabase } from "@/lib/supabase";
 import { expectRows, showWriteError } from "@/lib/checkedWrite";
@@ -578,8 +578,11 @@ export default function ReviewReceiptScreen() {
         { text: t("review_receipt_remove_btn"), style: "destructive", onPress: () => setItems((p) => p.filter((i) => !ids.includes(i.id))) },
       ]);
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: "#F3F4F6" }]}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: Colors.bgDark }]}>
         <MirrorReview
+          merchant={receipt.restaurant ?? ""}
+          date={receipt.date}
+          currencyLabel={`${currency} ${getCurrencySymbol(currency)}`}
           items={items.map((i) => ({ ...i, photoBox: photoBoxById.get(i.id) }))}
           attentionIds={attentionIds}
           reasonFor={reasonFor}
@@ -589,10 +592,10 @@ export default function ReviewReceiptScreen() {
               currency={currency}
               ask={!currencyOk}
               onChoose={setChosenCurrency}
-              textColor={textColor}
-              mutedColor={mutedColor}
-              cardColor={cardColor}
-              borderColor={borderColor}
+              textColor={Colors.textPrimaryDark}
+              mutedColor={Colors.textSecondaryDark}
+              cardColor={Colors.cardDark}
+              borderColor={Colors.cardBorderDark}
             />
           }
           photoUri={rawImageUri}
@@ -611,7 +614,6 @@ export default function ReviewReceiptScreen() {
           onDeleteLine={deleteLine}
           onAddItem={addItem}
           onSeePhoto={() => setImageModalVisible(true)}
-          onSeeList={() => setShowAllItems(true)}
           onContinue={handleContinue}
           onBack={() => router.back()}
         />

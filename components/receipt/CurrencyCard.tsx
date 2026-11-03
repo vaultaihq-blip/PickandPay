@@ -20,13 +20,15 @@ type Props = {
   mutedColor: string;
   cardColor: string;
   borderColor: string;
+  /** R10: opened from the header's "TRY ₺ · Alterar" button — shown expanded. */
+  startOpen?: boolean;
 };
 
 const COMMON: Currency[] = ["EUR", "USD", "GBP", "TRY", "CHF", "BRL"];
 
-export function CurrencyCard({ currency, ask, onChoose, textColor, mutedColor, cardColor, borderColor }: Props) {
+export function CurrencyCard({ currency, ask, onChoose, textColor, mutedColor, cardColor, borderColor, startOpen = false }: Props) {
   const { t } = useI18nStore();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [other, setOther] = useState("");
   const [otherError, setOtherError] = useState(false);
   const expanded = ask || open;
@@ -55,17 +57,17 @@ export function CurrencyCard({ currency, ask, onChoose, textColor, mutedColor, c
       style={[
         styles.card,
         ask
-          ? { backgroundColor: "#FEF2F2", borderColor: "#FCA5A5" }
+          ? { backgroundColor: Colors.errorBg, borderColor: Colors.error }
           : { backgroundColor: cardColor, borderColor },
       ]}
     >
       {ask ? (
         <>
           <View style={styles.row}>
-            <Ionicons name="alert-circle" size={18} color="#DC2626" />
-            <Text style={[styles.title, { color: "#7F1D1D" }]}>{t("currency_ask_title")}</Text>
+            <Ionicons name="alert-circle" size={18} color={Colors.errorLight} />
+            <Text style={[styles.title, { color: textColor }]}>{t("currency_ask_title")}</Text>
           </View>
-          <Text style={[styles.msg, { color: "#7F1D1D" }]}>{t("currency_ask_msg")}</Text>
+          <Text style={[styles.msg, { color: mutedColor }]}>{t("currency_ask_msg")}</Text>
         </>
       ) : (
         <View style={styles.row}>
@@ -139,5 +141,5 @@ const styles = StyleSheet.create({
   input: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14 },
   useBtn: { backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
   useBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
-  error: { color: "#DC2626", fontSize: 12, lineHeight: 17 },
+  error: { color: Colors.errorLight, fontSize: 12, lineHeight: 17 },
 });

@@ -105,10 +105,13 @@ export const Colors = {
   // Semantic
   success: "#22C55E",
   successBg: "#0B2A1A",
+  // On dark surfaces: icons and figures (contrast ≥ 4.5:1 on cardDark).
+  successLight: "#4ADE80",
   warning: "#F59E0B",
   warningBg: "#332207",
   error: "#EF4444",
   errorBg: "#331112",
+  errorLight: "#F87171",
 
   // Category icons
   starters: "#F97316",
