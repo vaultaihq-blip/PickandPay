@@ -23,6 +23,7 @@ import { validateReceiptOCR } from "@/lib/receipt-validator";
 import { useI18nStore } from "@/store/i18nStore";
 import { ensureCreditsForNewSession, fetchFreshCredits, showNoCreditsDialog } from "@/lib/credits";
 import { showDialog } from "@/lib/dialog";
+import { markScanCharged } from "@/lib/scanCredit";
 
 const { width, height } = Dimensions.get("window");
 
@@ -99,6 +100,7 @@ export default function ReceiptPreviewScreen() {
     const sentAt = Date.now();
     console.log(`[scan] sending ${Math.round(currentBase64.length / 1024)} KB of base64`);
     await markScanStep("sending");
+    markScanCharged(false); // a new reading: the previous one (if any) is given up
     try {
       const { receipt: parsed } = await Promise.race([
         // The session Start split created: the scan's credit pays it (C.3).
@@ -132,6 +134,8 @@ export default function ReceiptPreviewScreen() {
       console.log(
         `[receipt-preview] validation: isValid=${validation.isValid} isWarning=${validation.isWarning} errors=${validation.errors.length} warnings=${validation.warnings.length} -> routing to ${target}`
       );
+      // C1 (point 3): this reading was paid for — going back from here asks first.
+      markScanCharged(true);
       router.push(target);
     } catch (err) {
       const code = (err as { code?: string }).code;

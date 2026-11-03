@@ -35,6 +35,7 @@ import {
 import { moneyToMajorNumber } from "@/lib/receipt/money";
 import { Currency, ItemCategory, ParsedReceipt, ReceiptItem } from "@/types";
 import { CurrencyCard } from "@/components/receipt/CurrencyCard";
+import { markScanCharged, useScanCreditGuard } from "@/lib/scanCredit";
 import { useSessionStore } from "@/store/sessionStore";
 import { useI18nStore } from "@/store/i18nStore";
 import { formatCurrency } from "@/utils/formatter";
@@ -172,6 +173,8 @@ export default function ReviewReceiptScreen() {
   // Every step renders inside this same component, so nothing unmounts and no
   // edit is ever lost by moving back and forth between steps.
   const [step, setStep] = useState<GuidedStep>("total");
+  // C1 (point 3): every way back after a paid scan asks first.
+  useScanCreditGuard("review-receipt", true);
   const [queueIndex, setQueueIndex] = useState(0);
   const [showAllItems, setShowAllItems] = useState(false);
 
@@ -439,6 +442,7 @@ export default function ReviewReceiptScreen() {
       `[review-receipt] R2: items ${calculatedTotal} + charges ${chargesSum} + gap ${answeredSigned} = printed ${confirmedTotal} (${rebuilt.validation.status})`
     );
     setReceipt(rebuilt);
+    markScanCharged(false); // accepted: no longer a reading to lose
 
     const liveId = currentSession?.id;
     const isLiveSession = liveId && !liveId.startsWith("session_");

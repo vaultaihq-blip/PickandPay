@@ -36,6 +36,7 @@ import { isOfflineSessionId } from "@/constants/dev";
 import { expectRows, showWriteError, WriteError } from "@/lib/checkedWrite";
 import { showDialog } from "@/lib/dialog";
 import { endSession, showEndSessionError } from "@/lib/endSession";
+import { isScanCharged, markScanCharged, useScanCreditGuard } from "@/lib/scanCredit";
 
 const ORDERED_CATEGORIES: ItemCategory[] = [
   "starters",
@@ -121,9 +122,12 @@ export default function ReviewScreen() {
     }
   }, [receipt]);
 
+  // C1 (point 3): every way back after a paid scan asks first (lib/scanCredit.ts).
+  useScanCreditGuard("review", !isFromLobby);
+
   const handleBack = useCallback(() => {
-    if (isFromLobby) {
-      router.back();
+    if (isFromLobby || isScanCharged()) {
+      router.back(); // after a paid scan the guard asks "Continuar / Fazer novo scan"
       return;
     }
     showDialog(
@@ -580,6 +584,7 @@ export default function ReviewScreen() {
         })();
       }
 
+      markScanCharged(false); // accepted: no longer a reading to lose
       router.replace(`/(app)/session-lobby/${sessionId}`);
     } catch (err: unknown) {
       console.error("[review] handleConfirm failed:", err);
