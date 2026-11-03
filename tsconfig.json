@@ -33,6 +33,7 @@
   "exclude": [
     "node_modules",
     "supabase/functions",
+    "backups",
     "scripts/debug-parse-receipt.ts",
     "scripts/fetch-vision-fixture.ts"
   ],

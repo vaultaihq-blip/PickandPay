@@ -26,13 +26,16 @@ const EVIDENCE_MISMATCH_CONFIDENCE = 0.95;
  *
  * A space joins two runs only as a thousands mark — a run of 1–3 digits
  * followed by exactly three digits (and optional decimals): "1 100,00" is
- * 1100, but "1 1.100,00" stays quantity 1 and 1100.
+ * 1100, but "1 1.100,00" stays quantity 1 and 1100, and "1     600,00" (more
+ * than one space) is quantity 1 and 600 — the same rule as parseMoneyString.
  */
 export function amountsOnLine(lineText: string, currency: CurrencyCode): number[] {
   const tokens = lineText.split(/[\s\u00A0\u202F]+/).filter((tok) => /\d/.test(tok));
   const candidates = [...tokens];
   for (let i = 0; i + 1 < tokens.length; i++) {
-    if (/^\d{1,3}$/.test(tokens[i]) && /^\d{3}([.,]\d{1,2})?$/.test(tokens[i + 1])) {
+    if (/^\d{1,3}$/.test(tokens[i]) && /^\d{3}([.,]\d{1,2})?$/.test(tokens[i + 1]) &&
+        // exactly one space on the line (03-11-2026): "1     600,00" is two numbers
+        lineText.includes(`${tokens[i]} ${tokens[i + 1]}`)) {
       candidates.push(tokens[i] + tokens[i + 1]);
     }
   }

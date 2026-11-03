@@ -207,6 +207,16 @@ export function moneyFromMajorNumber(
  * Returns null when the input cannot be parsed unambiguously — callers must
  * treat null as "unreadable", never as zero.
  */
+/**
+ * The one rule for a space inside a number (03-11-2026): each space is a
+ * single space (plain, no-break or narrow no-break) followed by exactly 3
+ * digits — "1 100,00", "12 345 678.90". "1  600,00" (two spaces) or
+ * "1 60,00" are not one number.
+ */
+export function isSpaceGroupedNumber(text: string): boolean {
+  return /^[+-]?\(?\d{1,3}(?:[ \u00A0\u202F]\d{3})+(?:[.,]\d{1,2})?\)?$/.test(text.trim());
+}
+
 export function parseMoneyString(
   raw: string,
   currency: CurrencyCode
@@ -225,6 +235,12 @@ export function parseMoneyString(
 
   // Strip currency symbols, ISO codes and whitespace used as grouping.
   text = text.replace(/[A-Za-z$€£¥₩₹]/g, "").trim();
+  // 03-11-2026 (owner) — a space groups thousands only as ONE space before
+  // exactly 3 digits ("1 100,00" = 1100). Anything else is two numbers
+  // ("1     600,00" is quantity 1 and 600,00): not one amount, so null —
+  // never glued into 1600. The parser applies the same rule (ledger.ts).
+  text = text.replace(/^([+-])\s+/, "$1"); // "- 4,50" is still one amount
+  if (/[\s\u00A0\u202F]/.test(text) && !isSpaceGroupedNumber(text)) return null;
   text = text.replace(/[\s\u00A0\u202F']/g, "");
 
   if (text.startsWith("-")) {

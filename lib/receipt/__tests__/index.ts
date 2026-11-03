@@ -12,6 +12,7 @@ import "./units.test";
 import "./currency.test";
 import "./evidence.test";
 import "./orphans.test";
+import "./spaces.test";
 import { run } from "./harness";
 
 run();
